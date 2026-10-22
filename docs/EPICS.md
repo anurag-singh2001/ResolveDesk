@@ -8,7 +8,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 | Sprint | Dates | Goal |
 | --- | --- | --- |
 | 0 | 2026-10-23 → 2026-10-24 | Tools, process, research, project skeleton |
-| 1 | 2026-10-26 → 2026-10-28 | Foundation (tenancy, RLS, settings, auth) + data & money core |
+| 1 | 2026-10-26 → 2026-10-28 (starting early 2026-10-23) | Foundation (tenancy, RLS, settings, auth) + data & money core |
 | 2 | 2026-10-29 → 2026-10-31 | AI pipeline + safe execution |
 | 3 | 2026-11-02 → 2026-11-04 | UI + evals |
 | 4 | 2026-11-05 → 2026-11-06 | Ship (+ growth stretch) |
@@ -18,13 +18,13 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 ## E0 · Setup & process — Sprint 0
 - [x] E0.1 Install make, uv, Python 3.12, ruff — done when: `make --version`, `uv --version`, `ruff --version` work
 - [x] E0.2 Git repo + .gitignore + first commit — done when: `git log` shows spec commit [047cb5d]
-- [ ] E0.3 Neon project, `main` + `test` branches, `resolvedesk_app` role via `scripts/neon_bootstrap.sql`, `.env` filled (human) — done when: `make db-check` shows app role with `bypassrls = False` on both branches
-- [~] E0.4 Scrum-master + business-analyst agents, EPICS.md, sprint files — done when: sprint-0.md has a planning section written by scrum-master
-- [~] E0.5 Docs: Docker → Neon in PROJECT.md/CLAUDE.md, decisions logged — done when: DECISIONS.md has the entries
-- [ ] E0.6 BA market research (`docs/research/market.md`) — done when: file exists with sources + recommendations mapped to stories
+- [ ] E0.3 (BLOCKED on human, carried to Sprint 1) Neon project, `main` + `test` branches, `resolvedesk_app` role via `scripts/neon_bootstrap.sql`, `.env` filled (human) — done when: `make db-check` shows app role with `bypassrls = False` on both branches
+- [x] E0.4 Scrum-master + business-analyst agents, EPICS.md, sprint files — done when: sprint-0.md has a planning section written by scrum-master [a2b9846]
+- [x] E0.5 Docs: Docker → Neon in PROJECT.md/CLAUDE.md, decisions logged — done when: DECISIONS.md has the entries [a2b9846]
+- [ ] E0.6 (carried to Sprint 1, BA in progress) BA market research (`docs/research/market.md`) — done when: file exists with sources + recommendations mapped to stories
 
 ## E1 · Foundation — Sprint 0–1
-- [~] E1.1 Project skeleton: pyproject, Makefile, config, `/health`, ruff, tests layout — done when: `make test` passes + `make lint` clean
+- [x] E1.1 Project skeleton: pyproject, Makefile, config, `/health`, ruff, tests layout — done when: `make test` passes + `make lint` clean [a2b9846]
 - [ ] E1.2 Tenancy tables + RLS (organizations, brands, locations, users, memberships), app role, tenant session helper — done when: `make migrate && make test-isolation` passes
 - [ ] E1.3 Vertical packs, tenant folders (config + catalogue), tenant_settings/feature_flags, loader, settings resolver — done when: `make seed TENANT=all && make test` passes; no tenant slug in `app/`
 - [ ] E1.4 Demo auth (JWT), TenantContext, roles/scope, `POST /auth/login` — done when: `make test` + `make test-isolation` pass; safety-reviewer clean
