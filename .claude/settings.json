@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(make test*)",
+      "Bash(make lint)",
+      "Bash(make eval*)",
+      "Bash(make migrate)",
+      "Bash(make seed*)",
+      "Bash(uv run pytest*)",
+      "Bash(git diff*)",
+      "Bash(git status)",
+      "Bash(git log*)"
+    ],
+    "deny": [
+      "Read(.env)",
+      "Read(.env.*)",
+      "Edit(docs/LEARNING.md)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v ruff >/dev/null && (ruff format --quiet . ; ruff check --fix --quiet . ) ; exit 0"
+          }
+        ]
+      }
+    ]
+  }
+}
