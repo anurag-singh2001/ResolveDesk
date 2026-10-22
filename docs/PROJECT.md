@@ -67,7 +67,8 @@ Real integrations, chargebacks, fraud decisions, partial returns spanning orders
 | Tests | pytest, pytest-asyncio, httpx |
 | UI | Streamlit |
 | Lint/format | ruff |
-| Dev env | Docker Compose (postgres), `uv` for Python deps, Makefile |
+| Database hosting | Neon (hosted Postgres 16 + pgvector); branches `main` (dev/demo) and `test` (pytest). No Docker. |
+| Dev env | `uv` for Python deps, Makefile (GNU make; on Windows via winget `ezwinports.make`) |
 
 ### LLM providers (all free tiers / local)
 
@@ -131,7 +132,8 @@ evals/                  harness, metrics, report
 ui/                     Streamlit pages
 migrations/             Alembic
 tests/                  unit/ integration/ isolation/ chaos/
-docs/                   PROJECT.md DECISIONS.md LEARNING.md
+scripts/                neon_bootstrap.sql, db_check.py
+docs/                   PROJECT.md DECISIONS.md LEARNING.md EPICS.md sprints/ research/
 ```
 
 ---
@@ -440,7 +442,7 @@ If a request fits none of these, discuss it before writing code.
 | Day | Build | Done when |
 | --- | --- | --- |
 | 0 | This spec, CLAUDE.md, .claude setup, DECISIONS.md | A fresh session can describe the project from docs alone |
-| 1 | Repo, Docker Compose, Makefile, config, Alembic, tenancy tables + RLS, auth + roles, settings resolver, tenant YAML loader, both tenant folders (config + catalogue) | Both tenants load; isolation tests pass |
+| 1 | Repo, Neon setup, Makefile, config, Alembic, tenancy tables + RLS, auth + roles, settings resolver, tenant YAML loader, both tenant folders (config + catalogue) | Both tenants load; isolation tests pass |
 | 2 | Canonical tables, mock services with failure injection, connector + action registries, deterministic eligibility, simulator history | A refund resolves via API with no LLM, for both tenants |
 | 3 | LLM provider factory, policy files, RAG ingest + retrieve, LangGraph classify → investigate → policy → propose | Cited, validated proposals for 3 scenarios per tenant |
 | 4 | Approval interrupt/resume, executor, reconciliation, verifier, tickets, audit, events | Chaos tests show zero duplicate refunds |

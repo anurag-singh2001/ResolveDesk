@@ -4,11 +4,12 @@ Multi-tenant AI support (+ growth, stretch) platform. Tenants: `spice_route` (cl
 Full spec: @docs/PROJECT.md. Read only the sections relevant to the current task.
 
 ## Stack
-Python 3.12, FastAPI, Pydantic v2, LangGraph, PostgreSQL 16 + pgvector, SQLAlchemy 2, Alembic, pytest, Streamlit, ruff, uv, Docker Compose.
+Python 3.12, FastAPI, Pydantic v2, LangGraph, PostgreSQL 16 + pgvector on Neon (no Docker), SQLAlchemy 2, Alembic, pytest, Streamlit, ruff, uv.
+DB roles: runtime/tests use `resolvedesk_app` (non-owner, NOBYPASSRLS); migrations use the owner via `MIGRATION_DATABASE_URL` (direct endpoint). Set tenant with `set_config('app.tenant_id', x, true)` (transaction-local; pooled endpoint is PgBouncer).
 LLMs via provider factory in `app/llm/`: Gemini Flash (main), Groq (classifier + fallback), Ollama (offline). Local embeddings (bge-small, 384 dims).
 
 ## Commands
-- `make up` / `make down` — start/stop Postgres
+- `make db-check` (alias `make up`) — check Neon connectivity and that the app role can't bypass RLS
 - `make migrate` — run Alembic migrations
 - `make seed TENANT=all` — load tenants + generate history (SEED=42)
 - `make test` · `make test-tenant T=<slug>` · `make test-isolation` · `make test-chaos`
@@ -36,6 +37,7 @@ tenants/<slug>/ (config, catalogue, policies, scenarios) · verticals/*.yaml · 
 - Plan before coding. Small diffs. One feature per session.
 - If the spec is ambiguous or code and spec disagree, ask; don't guess.
 - Run tests via the `test-runner` agent. Before committing changes to money, approvals, tenancy, RLS or migrations, run the `safety-reviewer` agent.
+- Work runs in sprints: backlog + status in docs/EPICS.md, per-sprint notes in docs/sprints/. Use the `scrum-master` agent for planning/stand-up/review/retro and to tick stories (only after the done-when check passes). Use the `business-analyst` agent (and the deep-research skill for big topics) for product/market research into docs/research/.
 - Record design choices in docs/DECISIONS.md (date, decision, why, alternative rejected).
 - Don't edit docs/LEARNING.md; the human writes it.
 - Prefer explaining the why in 1–2 lines when you make a non-obvious choice; the human is learning from this project.
