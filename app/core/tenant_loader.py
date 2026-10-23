@@ -28,14 +28,9 @@ from app.core.models import (
     User,
     VerticalPackRow,
 )
+from app.core.tenancy import NAMESPACE, tenant_id_for
 from app.core.tenant_config import TenantConfig, validate_tenant
 from app.core.verticals import VerticalPack
-
-NAMESPACE = uuid.UUID("6f1c2a52-5f0e-4c7e-9a43-6a3e0b1d2c10")
-
-
-def tenant_id_for(slug: str) -> uuid.UUID:
-    return uuid.uuid5(NAMESPACE, f"org:{slug}")
 
 
 def _id(tenant_id: uuid.UUID, kind: str, key: str) -> uuid.UUID:

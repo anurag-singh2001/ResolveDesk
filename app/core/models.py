@@ -115,8 +115,8 @@ class User(TenantOwned, Base):
 
 
 class Membership(TenantOwned, Base):
-    """A user's role. Scope rows live in membership_brands / membership_locations;
-    no scope rows means the whole org (checked in code, 1d)."""
+    """A user's role. Scope rows live in membership_brands / membership_locations.
+    Only hq_owner sees the whole org; scoped roles with no rows see nothing (tenancy.py)."""
 
     __tablename__ = "memberships"
     __table_args__ = (
@@ -128,6 +128,7 @@ class Membership(TenantOwned, Base):
             name="ck_memberships_role",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_memberships_tenant_id"),
+        UniqueConstraint("tenant_id", "user_id", name="uq_memberships_tenant_user"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
