@@ -8,6 +8,13 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-24 · Proposals, approvals and the refund ledger are enforced by the database
+- Decision: `action_proposals` are immutable (UPDATE rejected by trigger) and unique on `(tenant_id, id, payload_hash)`; `approvals` reference that triple (so an approval can only exist for the exact hash) and are unique per proposal (two managers can't both decide); a human approval needs `decided_by`, an auto one must not have it, and `expires_at > decided_at`. `executions` and `refund_operations` have unique idempotency keys per tenant; refund amounts are `bigint > 0`. `audit_events` is append-only for the app role (no UPDATE/DELETE/TRUNCATE). The payload hash is sha256 of canonical JSON of `{action, case_id, params}`, floats refused; params are validated in JSON mode against the action's strict `Input` (`extra="forbid"`, ints stay ints).
+- Connectors are chosen per tenant by settings (`payment_connector`, `messaging_connector`, `orders_connector`), always addressed with `merchant_id_for(ctx.tenant_id)`; they translate provider exceptions into outcomes (`unknown` after a timeout, `unavailable` for transient errors) and never decide retries.
+- Reseeding history (dev only) clears engine tables before commerce tables; audit rows stay.
+- Why: the executor (E2.3b) will re-check all of this in code, but the database is the last line of defence against a bug, a race between two approvers, or a replayed approval.
+- Alternative rejected: storing approval state on the proposal row (mutable proposal, approval not bound to a hash).
+
 ## 2026-10-23 · Mocks: in-process fakes with one idempotency core
 - Decision: `mocks/` holds in-process fakes (payment, messaging, POS, delivery app) shared through a process-wide registry. Payment and messaging share `IdempotentMock`: one stored operation per (merchant, idempotency key); same key + same canonical-JSON payload hash → the stored operation (never re-applied, even after a decline); same key + other payload → `IdempotencyConflict` (HTTP 409); `get_by_key` for reconciliation is never subject to chaos. Seeded chaos: timeout before accept (nothing applied), accept-then-timeout (applied, caller can't tell), decline, processing-then-settle, delay. `/admin/chaos` (hq_owner) is only mounted when `APP_ENV` is not prod.
 - Why: fast, deterministic contract and chaos tests with no extra processes (the dev machine has little headroom); keys scoped per merchant mirror real providers, so two tenants can never collide.

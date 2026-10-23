@@ -26,7 +26,7 @@ def _snapshot(engine, tenant_id):
         return {
             m.__tablename__: (
                 s.scalar(select(func.count()).select_from(m)),
-                s.scalar(select(func.max(m.updated_at))),
+                s.scalar(select(func.max(getattr(m, "updated_at", None) or m.occurred_at))),
             )
             for m in TENANT_MODELS
         }

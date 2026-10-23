@@ -4,7 +4,15 @@ import pytest
 from sqlalchemy import func, select, text
 
 from app.core.db import tenant_session
-from app.core.models import COMMERCE_MODELS, Customer, LineItem, Payment, Transaction, User
+from app.core.models import (
+    COMMERCE_MODELS,
+    ENGINE_MODELS,
+    Customer,
+    LineItem,
+    Payment,
+    Transaction,
+    User,
+)
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_loader import TenantLoadError, load_tenant_into_db
 from app.core.verticals import load_pack
@@ -12,9 +20,11 @@ from simulator.load import load_history
 from tests.helpers import HISTORY_SCALE
 
 COMMERCE_TABLES = {m.__tablename__ for m in COMMERCE_MODELS}
+# Reseeding clears engine tables before commerce tables, so they may reference commerce rows.
+RESEED_CLEARED = COMMERCE_TABLES | {m.__tablename__ for m in ENGINE_MODELS}
 
 
-def test_only_commerce_tables_reference_commerce_tables(app_engine):
+def test_only_reseed_cleared_tables_reference_commerce_tables(app_engine):
     """Reseeding deletes every commerce row. A new table pointing at orders/payments (cases,
     refunds, approvals...) must not be silently wiped or block a reseed: this fails until the
     reseed path is taught about it."""
@@ -25,7 +35,7 @@ def test_only_commerce_tables_reference_commerce_tables(app_engine):
                 "FROM pg_constraint WHERE contype = 'f'"
             )
         ).all()
-    outside = [r for r in refs if r.parent in COMMERCE_TABLES and r.child not in COMMERCE_TABLES]
+    outside = [r for r in refs if r.parent in COMMERCE_TABLES and r.child not in RESEED_CLEARED]
     assert outside == []
 
 

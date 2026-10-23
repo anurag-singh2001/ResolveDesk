@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import Engine, delete
@@ -10,11 +10,18 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.db import tenant_session
 from app.core.models import (
+    APPEND_ONLY_MODELS,
     TENANT_MODELS,
+    ActionProposal,
+    Approval,
+    AuditEvent,
     Brand,
+    Case,
     CatalogueItem,
     Consent,
     Customer,
+    DomainEvent,
+    Execution,
     FeatureFlag,
     Fulfilment,
     LineItem,
@@ -25,11 +32,14 @@ from app.core.models import (
     MembershipLocation,
     Organization,
     Payment,
+    RefundOperation,
     TenantSetting,
     Ticket,
     TicketMessage,
     Transaction,
     User,
+    Verification,
+    WorkflowRun,
 )
 
 
@@ -174,11 +184,91 @@ def _seed_commerce(s, t: SeededTenant) -> None:
     s.add(
         TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
     )
+    _seed_engine(s, t, customer_id, order_id, now)
 
 
-def _cleanup(engine: Engine, t: SeededTenant) -> None:
+def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
+    """One row in every engine table (cases through the refund ledger, events, audit)."""
+    tid = t.tenant_id
+    case_id, run_id, proposal_id, approval_id, execution_id = (uuid.uuid4() for _ in range(5))
+    digest = "0" * 64
+    s.add(
+        Case(
+            id=case_id,
+            tenant_id=tid,
+            customer_id=customer_id,
+            transaction_id=order_id,
+            status="open",
+            channel="app",
+            opened_at=now,
+        )
+    )
+    s.flush()
+    s.add(WorkflowRun(id=run_id, tenant_id=tid, case_id=case_id, status="running"))
+    s.flush()
+    s.add(
+        ActionProposal(
+            id=proposal_id,
+            tenant_id=tid,
+            case_id=case_id,
+            run_id=run_id,
+            action="refund",
+            params={},
+            payload_hash=digest,
+            amount_paise=100,
+            risk="high",
+            reason="test",
+        )
+    )
+    s.flush()
+    s.add(
+        Approval(
+            id=approval_id,
+            tenant_id=tid,
+            proposal_id=proposal_id,
+            payload_hash=digest,
+            decision="approved",
+            mode="human",
+            decided_by=t.user_id,
+            decided_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+    )
+    s.flush()
+    s.add(
+        Execution(
+            id=execution_id,
+            tenant_id=tid,
+            proposal_id=proposal_id,
+            approval_id=approval_id,
+            idempotency_key=f"P-{proposal_id}:refund:1",
+            status="submitted",
+        )
+    )
+    s.add(
+        RefundOperation(
+            tenant_id=tid,
+            transaction_id=order_id,
+            proposal_id=proposal_id,
+            idempotency_key=f"P-{proposal_id}:refund:1",
+            amount_paise=100,
+            status="reserved",
+        )
+    )
+    s.flush()
+    s.add(Verification(tenant_id=tid, execution_id=execution_id, status="unknown"))
+    s.add(DomainEvent(tenant_id=tid, event="test.created", entity_id=case_id))
+    s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
+
+
+def _cleanup(engine: Engine, t: SeededTenant, owner_engine: Engine) -> None:
     with tenant_session(t.tenant_id, engine) as s:
         for model in reversed(TENANT_MODELS):
+            if model not in APPEND_ONLY_MODELS:
+                s.execute(delete(model))
+    # The app role can't delete audit rows (append-only); test cleanup uses the owner.
+    with tenant_session(t.tenant_id, owner_engine) as s:
+        for model in APPEND_ONLY_MODELS:
             s.execute(delete(model))
 
 
@@ -194,7 +284,7 @@ def _with_reconnect(fn, engine, attempts: int = 3):
 
 
 @pytest.fixture(scope="module")
-def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
+def tenants(app_engine, owner_engine) -> tuple[SeededTenant, SeededTenant]:
     """Two freshly generated tenants (never a real tenant slug), shared per test module.
 
     Sharing is safe because the RLS tests only read, or attempt writes that must be rejected
@@ -204,8 +294,8 @@ def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
     try:
         b = _with_reconnect(_seed, app_engine)
     except Exception:
-        _cleanup(app_engine, a)
+        _cleanup(app_engine, a, owner_engine)
         raise
     yield a, b
-    _cleanup(app_engine, a)
-    _cleanup(app_engine, b)
+    _cleanup(app_engine, a, owner_engine)
+    _cleanup(app_engine, b, owner_engine)

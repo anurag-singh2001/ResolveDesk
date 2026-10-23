@@ -29,18 +29,31 @@ def test_tenant_sees_only_own_rows(app_engine, tenants, model):
     assert b.tenant_id not in tenant_ids
 
 
+def _stamp(model):
+    return getattr(model, "updated_at", None) or model.occurred_at
+
+
+def _append_only(model) -> bool:
+    return getattr(model, "append_only", False)
+
+
 @pytest.mark.parametrize("model", TENANT_MODELS, ids=_by_name)
 def test_cannot_update_other_tenant_rows(app_engine, tenants, model):
     a, b = tenants
     with tenant_session(b.tenant_id, app_engine) as s:
-        before = sorted(s.scalars(select(model.updated_at)))
-    with tenant_session(a.tenant_id, app_engine) as s:
-        result = s.execute(
-            update(model).where(model.tenant_id == b.tenant_id).values(updated_at=func.now())
-        )
-    assert result.rowcount == 0
+        before = sorted(s.scalars(select(_stamp(model))))
+    stmt = update(model).where(model.tenant_id == b.tenant_id).values(tenant_id=model.tenant_id)
+    if _append_only(model):  # no UPDATE privilege at all, for any tenant
+        with (
+            pytest.raises(DBAPIError, match="permission denied"),
+            tenant_session(a.tenant_id, app_engine) as s,
+        ):
+            s.execute(stmt)
+    else:
+        with tenant_session(a.tenant_id, app_engine) as s:
+            assert s.execute(stmt).rowcount == 0
     with tenant_session(b.tenant_id, app_engine) as s:
-        assert sorted(s.scalars(select(model.updated_at))) == before
+        assert sorted(s.scalars(select(_stamp(model)))) == before
 
 
 @pytest.mark.parametrize("model", TENANT_MODELS, ids=_by_name)
@@ -48,8 +61,16 @@ def test_cannot_delete_other_tenant_rows(app_engine, tenants, model):
     a, b = tenants
     with tenant_session(b.tenant_id, app_engine) as s:
         before = s.scalar(select(func.count()).select_from(model))
-    with tenant_session(a.tenant_id, app_engine) as s:
-        s.execute(model.__table__.delete().where(model.tenant_id == b.tenant_id))
+    stmt = model.__table__.delete().where(model.tenant_id == b.tenant_id)
+    if _append_only(model):
+        with (
+            pytest.raises(DBAPIError, match="permission denied"),
+            tenant_session(a.tenant_id, app_engine) as s,
+        ):
+            s.execute(stmt)
+    else:
+        with tenant_session(a.tenant_id, app_engine) as s:
+            s.execute(stmt)
     with tenant_session(b.tenant_id, app_engine) as s:
         assert s.scalar(select(func.count()).select_from(model)) == before >= 1
 

@@ -4,7 +4,7 @@ from sqlalchemy import Engine, delete, insert, select
 
 from app.config import get_settings
 from app.core.db import tenant_session
-from app.core.models import COMMERCE_MODELS, Brand, Location, User
+from app.core.models import COMMERCE_MODELS, ENGINE_MODELS, Brand, Location, User
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import TenantConfig
 from app.core.verticals import VerticalPack
@@ -35,7 +35,9 @@ def load_history(
     tenant_id = tenant_id_for(cfg.slug)
     with tenant_session(tenant_id, engine) as session:
         history = generate(cfg, pack, load_refs(session, tenant_id), seed=seed, scale=scale)
-        for model in reversed(COMMERCE_MODELS):  # children first; RLS keeps it to this tenant
+        # Engine rows (cases, proposals, refunds) reference commerce rows: clear them first.
+        # Children first; RLS keeps it to this tenant. Audit events are append-only and stay.
+        for model in [*reversed(ENGINE_MODELS), *reversed(COMMERCE_MODELS)]:
             session.execute(delete(model))
         for model, rows in history.tables():
             for i in range(0, len(rows), BATCH):
