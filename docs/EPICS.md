@@ -26,7 +26,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 ## E1 · Foundation — Sprint 0–1
 - [x] E1.1 Project skeleton: pyproject, Makefile, config, `/health`, ruff, tests layout — done when: `make test` passes + `make lint` clean [a2b9846]
 - [x] E1.2 Tenancy tables + RLS (organizations, brands, locations, users, memberships), app role, tenant session helper — done when: `make migrate && make test-isolation` passes (c8ca319, verified 2026-10-23: 42 isolation tests, lint clean, safety-reviewer 2 passes; follow-up: pin search_path on set_updated_at() in next migration)
-- [ ] E1.3 Vertical packs, tenant folders (config + catalogue), tenant_settings/feature_flags, loader, settings resolver — done when: `make seed TENANT=all && make test` passes; no tenant slug in `app/`
+- [x] E1.3 (done 2026-10-23, feature 374ccca, merged to test 99d3c96) Vertical packs, tenant folders (config + catalogue), tenant_settings/feature_flags, loader, settings resolver — done when: `make seed TENANT=all && make test` passes; no tenant slug in `app/`
 - [ ] E1.4 Demo auth (JWT), TenantContext, roles/scope, `POST /auth/login` — done when: `make test` + `make test-isolation` pass; safety-reviewer clean
 
 ## E2 · Data & money core — Sprint 1

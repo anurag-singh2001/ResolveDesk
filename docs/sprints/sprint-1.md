@@ -40,6 +40,15 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Blocked: .env (human). Open human decisions: move E2.3b/E2.3c/E2.4 to Sprint 2; BA questions (aggregator framing, graduated late tiers, Rs150 voucher cap).
 - Scorecard notes so far: test-runner false failure (accuracy); safety-reviewer 4 findings pass 1, 0 high after fixes.
 
+### 2026-10-23 (second stand-up)
+- E1.3 done, feature 374ccca, merged to test as 99d3c96. Verified: `make seed TENANT=all` loaded both tenants twice with identical ids; `make test` 44 passed; `make test-isolation` 54 passed (Neon); `make lint` clean; test_core_code_never_names_a_tenant passes. Ticked [x] in EPICS.md.
+- Safety: pass 1 = 5 findings (app role DML on vertical_packs; unvalidated unreachable brand settings; loader did not prune removed rows; loader import guard; missing DB-level loosening test), all fixed incl. migration 0004. Pass 2 confirmed all. One suggestion rejected by main: looser integer overrides are clamped by design (spec: effective=min), not errors.
+- E0.3 still [~]: human has not created .env (permission rules stop Claude writing it); DB work runs with URLs from a scratchpad file.
+- New process: GitHub origin; branches main (deployed) <- test (integration) <- feature/<story>; --no-ff merges so `git revert -m 1` undoes a story; see DECISIONS.md. Human works remotely from phone; proceed without waiting unless blocked.
+- Human decision: remedy tiers, voucher auto-approve cap (default Rs150) and refund channel are per-tenant settings (DECISIONS.md). BA questions on these are closed.
+- Still open: Sprint-1 rescope (move E2.3b/E2.3c/E2.4 to Sprint 2). Planning defaults to the recommendation (move them).
+- Next: E1.4 auth + roles (needs safety review). Also pending: pin search_path on set_updated_at().
+
 ## Review
 _to fill at sprint end_
 
