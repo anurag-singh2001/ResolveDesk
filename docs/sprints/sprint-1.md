@@ -59,6 +59,16 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Scorecard notes: safety-reviewer found 7 real issues on E1.4 pass 1 (high value); main session needed 2 rework commits on E1.4.
 - Next: E2.1 canonical tables + simulator. Still open: E0.3 .env (human), Sprint-1 rescope. No story at risk yet (sprint ends 2026-10-28).
 
+### 2026-10-23 (fourth stand-up)
+- E2.1 done: d7e891c, 39bc7d0, 57e6967, merged to test as 0156464. Ticked [x] in EPICS.md. Safety re-review (pass 2) is running: pending, not yet confirmed.
+- Evidence (main session report, git log checked by scrum-master; DB suites not re-run): `make seed TENANT=all` brewco 2500 customers/15000 orders/400 tickets in 32.0s, spice_route 1500/6025 (25 outside window)/300 in 14.9s, 47s total (< 60s). `make test` 122 passed (1 skip); `make test-isolation` 111 passed (1 skip: brand-scope API test needs a multi-brand location, brand scope also covered per tenant by a DB-level test); `make lint` clean.
+- Planted rates, mean of 6 seeds: late 7.99% (cfg 8), missing 1.89% (2), wrong 2.03% (2), Baner weekday-morning wrong 6.41% (6); Baner repeat-rate drop > 5 points after day 35, only at Baner. Deviation (DECISIONS.md): narrow slices (~300 orders) use 3 standard errors, not +-1 point, which is below sampling noise there.
+- Carried E1.4 criterion (brand scope enforced and tested): met.
+- Safety pass 1 = 5 findings (reseed could destroy live data; loader prune vs history FKs; brand scope proven for one tenant only; shared-state test; money not cross-checked), all fixed in 39bc7d0.
+- Infra: a background test run was killed by Claude Code for low machine memory (not a code failure). Isolation suite ~12 -> ~3.5 min by sharing seeded tenants per module. Human confirmed: stay on Neon, no local Postgres.
+- Scorecard notes: main session caught 1 design bug itself before ship (loader prune would have wiped history) and fixed 2 small test bugs; 1 safety-driven rework commit (39bc7d0).
+- Next: E2.2 mocks, then E2.3a (per rescope plan). No story at risk (sprint ends 2026-10-28).
+
 ## Review
 _to fill at sprint end_
 
