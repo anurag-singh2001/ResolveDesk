@@ -19,6 +19,12 @@ Format:
 - Why: one rule for list and detail means they can't disagree; filtering in SQL avoids loading other customers' rows into Python.
 - Alternative rejected: per-row Python checks after a broad query (easy to forget on a new route, and fetches data the caller may not see).
 
+## 2026-10-23 · History safety after E2.1 review
+- Decision: `load_history` refuses to run when `APP_ENV=prod`; a catalog test fails if any non-commerce table gets an FK into commerce tables (so E2.3's cases/refunds must extend the reseed path deliberately). Removing a login user unlinks their customer (`ON DELETE SET NULL (user_id)`, PG15+; Neon runs 18); removing a brand/location that orders reference aborts the whole load with `TenantLoadError`. Money consistency (line items = order total, payments ≤ total) is asserted on DB data by a test.
+- Next for E2.3b (refunds): the refundable balance is enforced in code inside one short transaction with `SELECT … FOR UPDATE` on the transaction row (PROJECT.md section 7), against `payments` minus `refund_operations` in reserved/submitted/succeeded/unknown; not as a DB check constraint, because it spans rows.
+- Why: reseeding must never destroy live data, and config edits must fail loudly instead of half-applying.
+- Alternative rejected: `ON DELETE CASCADE` from brands/locations to orders (silent history loss).
+
 ## 2026-10-23 · Demo auth: thin token, scope from the DB, fail closed
 - Decision: `POST /auth/login {tenant, email, password}` with one demo password for seeded users (`DEMO_AUTH` can switch it off). The HS256 JWT holds only `tid` + `sub` + `exp` (secret must be ≥ 32 bytes). Every request re-reads role and location/brand scope from the DB inside the token's tenant session. Only `hq_owner` sees the whole org; scoped roles with no scope rows see nothing. Out-of-scope and other-tenant records both return 404; a customer on a staff route gets 403 (the route exists for everyone, the record question doesn't arise).
 - Why: a role or scope in the token could be replayed after it was revoked; reading the user under RLS means a token pairing tenant A with a user of tenant B finds no user (401). Failing closed avoids "empty scope = everything".

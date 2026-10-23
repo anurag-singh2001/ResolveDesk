@@ -258,7 +258,13 @@ class Customer(TenantOwned, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "id", name="uq_customers_tenant_id"),
         UniqueConstraint("tenant_id", "external_ref", name="uq_customers_external_ref"),
-        _fk("user_id", "users"),
+        # Removing a login user unlinks the customer; only user_id is cleared (migration 0007).
+        ForeignKeyConstraint(
+            ["tenant_id", "user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (user_id)",
+            name="customers_tenant_id_user_id_fkey",
+        ),
         _fk("home_location_id", "locations"),
     )
 

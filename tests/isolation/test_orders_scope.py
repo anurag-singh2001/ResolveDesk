@@ -1,7 +1,9 @@
 """Order visibility over the API: location, brand and customer-ownership scope, plus tenants."""
 
+import uuid
+
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.db import tenant_session
 from app.core.models import (
@@ -13,7 +15,7 @@ from app.core.models import (
     Transaction,
     User,
 )
-from app.core.tenancy import tenant_id_for
+from app.core.tenancy import TenantContext, tenant_id_for
 from app.core.tenant_loader import load_tenant_into_db
 from app.core.verticals import load_pack
 from tests.helpers import login
@@ -115,3 +117,61 @@ def test_brand_scope_narrows_orders(api, app_engine, seeded_history, tenant):
         assert api.get(f"/orders/{other_brand.id}", headers=headers).status_code == 404
     finally:
         load_tenant_into_db(app_engine, cfg, load_pack(cfg.vertical_pack))
+    with tenant_session(tid, app_engine) as s:  # shared session data is back to the folder
+        assert s.scalar(select(func.count()).select_from(MembershipBrand)) == sum(
+            len(u.brands) for u in cfg.users
+        )
+
+
+@pytest.mark.parametrize("role", ["hq_owner", "location_manager", "franchisee_owner"])
+def test_visible_orders_brand_and_location_rules(app_engine, seeded_history, tenant, role):
+    """Runs the predicate directly with synthetic contexts, so it is proven for every tenant
+    (including single-brand ones) without changing shared data."""
+    cfg = seeded_history[tenant.name]
+    tid = tenant_id_for(cfg.slug)
+    with tenant_session(tid, app_engine) as s:
+        orders = s.execute(select(Transaction.id, Transaction.location_id, Transaction.brand_id))
+        orders = orders.all()
+        first = orders[0]
+        locations = frozenset() if role == "hq_owner" else frozenset({first.location_id})
+
+        def visible(brands):
+            ctx = TenantContext(tid, uuid.uuid4(), uuid.uuid4(), role, brands, locations)
+            return set(s.scalars(select(Transaction.id).where(ctx.visible_orders())))
+
+        in_scope = {
+            o.id for o in orders if role == "hq_owner" or o.location_id == first.location_id
+        }
+        assert visible(frozenset()) == in_scope
+        assert visible(frozenset({first.brand_id})) == {
+            o.id for o in orders if o.id in in_scope and o.brand_id == first.brand_id
+        }
+        assert visible(frozenset({uuid.uuid4()})) == set()  # unknown brand: nothing
+
+
+def test_customer_cannot_see_orders_of_a_customer_sharing_their_phone(
+    api, app_engine, seeded_history, tenant
+):
+    cfg = seeded_history[tenant.name]
+    user = next(u for u in cfg.users if u.role == "customer")
+    tid = tenant_id_for(cfg.slug)
+    with tenant_session(tid, app_engine) as s:
+        user_id = s.scalar(select(User.id).where(User.email == user.email))
+        mine = s.scalar(select(Customer).where(Customer.user_id == user_id))
+        other = s.scalar(
+            select(Customer)
+            .join(Transaction, Transaction.customer_id == Customer.id)
+            .where(Customer.id != mine.id, Customer.user_id.is_(None))
+            .limit(1)
+        )
+        other_id, original_phone = other.id, other.phone
+        other.phone = mine.phone  # messy data: two customers, one phone number
+        other_order = s.scalar(select(Transaction.id).where(Transaction.customer_id == other.id))
+    try:
+        headers = login(api, cfg.slug, user.email)
+        listed = {o["id"] for o in api.get(f"/orders?limit={LIMIT}", headers=headers).json()}
+        assert str(other_order) not in listed
+        assert api.get(f"/orders/{other_order}", headers=headers).status_code == 404
+    finally:
+        with tenant_session(tid, app_engine) as s:
+            s.get(Customer, other_id).phone = original_phone
