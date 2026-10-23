@@ -28,3 +28,22 @@ users:
   - {email: kharadi.manager@spiceroute.test, name: Rohit Shinde, role: location_manager, locations: [kharadi]}
   - {email: riya@customer.test, name: Riya M., role: customer}
   - {email: kabir@customer.test, name: Kabir S., role: customer}
+
+# History for `make seed` (simulator/). Rates are assumptions, see docs/research/market.md.
+simulation:
+  end_date: 2026-09-30
+  days: 60
+  customers: 1500
+  orders: 6000
+  past_tickets: 300
+  hours: [11, 24]
+  items_per_order: [1, 3]
+  promise_minutes: [30, 45]
+  delay_minutes: [-10, 25]
+  problems:
+    - {kind: late, rate: 0.08, extra_minutes: [46, 90]}
+    - {kind: missing_item, rate: 0.02}
+  messy:
+    duplicate_phone_rate: 0.03
+    orders_outside_window: 25
+  ticket_categories: {late: late_delivery, missing_item: missing_items}

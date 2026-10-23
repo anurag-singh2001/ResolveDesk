@@ -11,3 +11,7 @@ def login(api: TestClient, tenant_slug: str, email: str) -> dict[str, str]:
     )
     assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['access_token']}"}
+
+
+# ~5% of configured history volumes: enough rows for scope tests, quick on Neon.
+HISTORY_SCALE = 0.05

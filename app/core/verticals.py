@@ -34,6 +34,7 @@ class VerticalPack(BaseModel):
     version: int
     vocabulary: dict[str, str]
     order_sources: list[str]
+    fulfilment_kinds: dict[str, str] = {}  # order source -> delivery | pickup | counter
     issue_categories: list[str]
     actions: list[str]
     metrics: list[str]

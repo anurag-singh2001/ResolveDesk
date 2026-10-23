@@ -1,4 +1,5 @@
-"""Tenancy models. Every table carries tenant_id and is protected by RLS (see migrations)."""
+"""Models. Every tenant-owned table carries tenant_id and is protected by RLS (see migrations).
+Money columns end in _paise and are bigint (hard rule 3)."""
 
 import uuid
 from datetime import datetime
@@ -13,6 +14,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Integer,
     String,
+    Text,
     UniqueConstraint,
     func,
 )
@@ -241,8 +243,187 @@ class CatalogueItem(TenantOwned, Base):
     price_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
 
 
-# Parents before children: cleanup code deletes in reverse order.
-TENANT_MODELS = [
+# --- Canonical commerce data (what connectors translate source systems into) -------------
+
+
+def _fk(column: str, target: str, ondelete: str | None = None) -> ForeignKeyConstraint:
+    """Composite (tenant_id, x) -> target(tenant_id, id): a row can't point across tenants."""
+    return ForeignKeyConstraint(
+        ["tenant_id", column], [f"{target}.tenant_id", f"{target}.id"], ondelete=ondelete
+    )
+
+
+class Customer(TenantOwned, Base):
+    __tablename__ = "customers"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_customers_tenant_id"),
+        UniqueConstraint("tenant_id", "external_ref", name="uq_customers_external_ref"),
+        # Removing a login user unlinks the customer; only user_id is cleared (migration 0007).
+        ForeignKeyConstraint(
+            ["tenant_id", "user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (user_id)",
+            name="customers_tenant_id_user_id_fkey",
+        ),
+        _fk("home_location_id", "locations"),
+    )
+
+    external_ref: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    phone: Mapped[str | None] = mapped_column(String(20))  # not unique: real data has dupes
+    email: Mapped[str | None] = mapped_column(String(320))
+    # Set only for customers who can log in; ownership checks go through this link.
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    home_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class Transaction(TenantOwned, Base):
+    """An order (delivery, pickup or counter)."""
+
+    __tablename__ = "transactions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_transactions_tenant_id"),
+        UniqueConstraint("tenant_id", "source", "external_ref", name="uq_transactions_source_ref"),
+        _fk("customer_id", "customers"),
+        _fk("brand_id", "brands"),
+        _fk("location_id", "locations"),
+        CheckConstraint("total_paise >= 0", name="ck_transactions_total"),
+        CheckConstraint(
+            "status IN ('placed', 'completed', 'cancelled')", name="ck_transactions_status"
+        ),
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    brand_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_ref: Mapped[str] = mapped_column(String(64), nullable=False)
+    placed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    total_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class LineItem(TenantOwned, Base):
+    __tablename__ = "line_items"
+    __table_args__ = (
+        _fk("transaction_id", "transactions", ondelete="CASCADE"),
+        CheckConstraint("quantity > 0", name="ck_line_items_quantity"),
+        CheckConstraint(
+            "quantity_fulfilled BETWEEN 0 AND quantity", name="ck_line_items_fulfilled"
+        ),
+        CheckConstraint(
+            "unit_price_paise >= 0 AND total_paise = unit_price_paise * quantity",
+            name="ck_line_items_money",
+        ),
+    )
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    # Less than quantity = item missing from the order.
+    quantity_fulfilled: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    total_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+class Payment(TenantOwned, Base):
+    __tablename__ = "payments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_payments_tenant_id"),
+        _fk("transaction_id", "transactions", ondelete="CASCADE"),
+        CheckConstraint("amount_paise > 0", name="ck_payments_amount"),
+        CheckConstraint(
+            "status IN ('captured', 'failed', 'refunded', 'partially_refunded')",
+            name="ck_payments_status",
+        ),
+    )
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    method: Mapped[str] = mapped_column(String(16), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    provider_reference: Mapped[str] = mapped_column(String(64), nullable=False)
+    captured_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Fulfilment(TenantOwned, Base):
+    __tablename__ = "fulfilments"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "transaction_id", name="uq_fulfilments_transaction"),
+        _fk("transaction_id", "transactions", ondelete="CASCADE"),
+        CheckConstraint(
+            "status IN ('pending', 'completed', 'cancelled')", name="ck_fulfilments_status"
+        ),
+    )
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)  # delivery | pickup | counter
+    promised_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    # e.g. {"wrong_item": true}; lateness is derived from promised_at vs completed_at.
+    attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class Ticket(TenantOwned, Base):
+    __tablename__ = "tickets"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_tickets_tenant_id"),
+        _fk("customer_id", "customers"),
+        _fk("transaction_id", "transactions"),
+        CheckConstraint(
+            "status IN ('open', 'resolved', 'escalated', 'closed')", name="ck_tickets_status"
+        ),
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class TicketMessage(TenantOwned, Base):
+    __tablename__ = "ticket_messages"
+    __table_args__ = (
+        _fk("ticket_id", "tickets", ondelete="CASCADE"),
+        CheckConstraint(
+            "author IN ('customer', 'system', 'staff')", name="ck_ticket_messages_author"
+        ),
+    )
+
+    ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    author: Mapped[str] = mapped_column(String(16), nullable=False)
+    body: Mapped[str] = mapped_column(Text, nullable=False)
+    sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Consent(TenantOwned, Base):
+    __tablename__ = "consents"
+    __table_args__ = (
+        UniqueConstraint(
+            "tenant_id", "customer_id", "channel", "purpose", name="uq_consents_scope"
+        ),
+        _fk("customer_id", "customers", ondelete="CASCADE"),
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)  # whatsapp | sms | email
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)  # marketing | service
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+# Loaded from tenant folders (the loader syncs these and only these).
+CONFIG_MODELS = [
     Organization,
     Brand,
     Location,
@@ -255,4 +436,17 @@ TENANT_MODELS = [
     FeatureFlag,
     CatalogueItem,
 ]
+# Generated history / live operational data.
+COMMERCE_MODELS = [
+    Customer,
+    Transaction,
+    LineItem,
+    Payment,
+    Fulfilment,
+    Ticket,
+    TicketMessage,
+    Consent,
+]
+# Parents before children: cleanup code deletes in reverse order.
+TENANT_MODELS = CONFIG_MODELS + COMMERCE_MODELS
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]

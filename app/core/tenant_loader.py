@@ -10,11 +10,12 @@ from typing import Any
 
 from sqlalchemy import Engine, delete, or_
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.db import tenant_session
 from app.core.models import (
-    TENANT_MODELS,
+    CONFIG_MODELS,
     Brand,
     CatalogueItem,
     FeatureFlag,
@@ -204,7 +205,18 @@ def load_tenant_into_db(engine: Engine, cfg: TenantConfig, pack: VerticalPack) -
         )
         # Removed from the folder => removed from the DB, so a dropped scope can't stay live.
         # Children first; RLS limits the delete to this tenant.
-        for model in reversed(TENANT_MODELS):
-            if model is not Organization:
+        for model in reversed(CONFIG_MODELS):
+            if model is Organization:
+                continue
+            try:
                 s.execute(delete(model).where(model.id.not_in(loaded.get(model, set()))))
+            except IntegrityError as exc:  # whole load rolls back; nothing half-applied
+                raise TenantLoadError(
+                    f"{cfg.slug}: can't remove {model.__tablename__} rows that orders or other "
+                    "history still reference. Keep them in the folder, or reseed history first."
+                ) from exc
     return tid
+
+
+class TenantLoadError(ValueError):
+    pass

@@ -2,6 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import Engine, delete
@@ -12,14 +13,22 @@ from app.core.models import (
     TENANT_MODELS,
     Brand,
     CatalogueItem,
+    Consent,
+    Customer,
     FeatureFlag,
+    Fulfilment,
+    LineItem,
     Location,
     LocationBrand,
     Membership,
     MembershipBrand,
     MembershipLocation,
     Organization,
+    Payment,
     TenantSetting,
+    Ticket,
+    TicketMessage,
+    Transaction,
     User,
 )
 
@@ -87,7 +96,84 @@ def _seed(engine: Engine) -> SeededTenant:
                 price_paise=100,
             )
         )
+        s.flush()
+        _seed_commerce(s, t)
     return t
+
+
+def _seed_commerce(s, t: SeededTenant) -> None:
+    """One row in every commerce table, so the generic RLS tests cover them too."""
+    now = datetime.now(UTC)
+    tid = t.tenant_id
+    customer_id, order_id, ticket_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    s.add(Customer(id=customer_id, tenant_id=tid, external_ref="C1", name="Customer"))
+    s.flush()
+    s.add(
+        Transaction(
+            id=order_id,
+            tenant_id=tid,
+            customer_id=customer_id,
+            brand_id=t.brand_id,
+            location_id=t.location_id,
+            source="test",
+            external_ref="O1",
+            placed_at=now,
+            total_paise=100,
+            status="completed",
+        )
+    )
+    s.flush()
+    s.add_all(
+        [
+            LineItem(
+                tenant_id=tid,
+                transaction_id=order_id,
+                sku="SKU-1",
+                name="Item",
+                quantity=1,
+                quantity_fulfilled=1,
+                unit_price_paise=100,
+                total_paise=100,
+            ),
+            Payment(
+                tenant_id=tid,
+                transaction_id=order_id,
+                method="upi",
+                amount_paise=100,
+                status="captured",
+                provider_reference="P1",
+                captured_at=now,
+            ),
+            Fulfilment(
+                tenant_id=tid,
+                transaction_id=order_id,
+                kind="pickup",
+                promised_at=now,
+                status="completed",
+            ),
+            Ticket(
+                id=ticket_id,
+                tenant_id=tid,
+                customer_id=customer_id,
+                transaction_id=order_id,
+                category="test",
+                status="open",
+                channel="app",
+                opened_at=now,
+            ),
+            Consent(
+                tenant_id=tid,
+                customer_id=customer_id,
+                channel="whatsapp",
+                purpose="marketing",
+                granted=True,
+            ),
+        ]
+    )
+    s.flush()
+    s.add(
+        TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
+    )
 
 
 def _cleanup(engine: Engine, t: SeededTenant) -> None:
@@ -107,9 +193,13 @@ def _with_reconnect(fn, engine, attempts: int = 3):
                 raise
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
-    """Two freshly generated tenants (never a real tenant slug)."""
+    """Two freshly generated tenants (never a real tenant slug), shared per test module.
+
+    Sharing is safe because the RLS tests only read, or attempt writes that must be rejected
+    (a write that wrongly succeeded fails its own test). Seeding per test cost ~70 Neon round
+    trips each and made the suite ~12 minutes."""
     a = _with_reconnect(_seed, app_engine)
     try:
         b = _with_reconnect(_seed, app_engine)

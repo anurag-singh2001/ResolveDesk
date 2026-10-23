@@ -81,7 +81,7 @@ def _tenant_identifiers() -> set[str]:
     return names
 
 
-@pytest.mark.parametrize("code_dir", ["app", "scripts", "migrations"])
+@pytest.mark.parametrize("code_dir", ["app", "scripts", "migrations", "simulator"])
 def test_core_code_never_names_a_tenant(code_dir):
     """Hard rule 2: tenant differences live in config, never in core code."""
     pattern = re.compile(

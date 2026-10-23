@@ -1,5 +1,6 @@
 # Recipes are single commands so they run under cmd (Windows) or sh.
 TENANT ?= all
+SEED ?= 42
 T ?=
 
 .PHONY: up down db-check migrate seed test test-tenant test-isolation test-chaos eval lint ui
@@ -16,7 +17,7 @@ migrate:
 	uv run alembic upgrade head
 
 seed:
-	uv run python -m scripts.seed $(TENANT)
+	uv run python -m scripts.seed $(TENANT) --seed $(SEED)
 
 test:
 	uv run pytest -q -m "not isolation and not chaos and not live"

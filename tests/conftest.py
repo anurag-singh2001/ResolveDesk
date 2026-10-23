@@ -18,6 +18,8 @@ from app.core.tenant_config import TenantConfig, load_tenant, tenant_dirs
 from app.core.tenant_loader import load_pack_into_db, load_tenant_into_db
 from app.core.verticals import load_pack
 from app.main import create_app
+from simulator.load import load_history
+from tests.helpers import HISTORY_SCALE
 
 
 @pytest.fixture
@@ -64,6 +66,14 @@ def seeded(app_engine, owner_engine) -> dict[str, TenantConfig]:
         load_tenant_into_db(app_engine, cfg, pack)
         configs[folder.name] = cfg
     return configs
+
+
+@pytest.fixture(scope="session")
+def seeded_history(app_engine, seeded) -> dict[str, TenantConfig]:
+    """seeded + a small generated order history per tenant."""
+    for cfg in seeded.values():
+        load_history(app_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+    return seeded
 
 
 @pytest.fixture

@@ -4,6 +4,7 @@ name: Coffee chain
 version: 1
 vocabulary: {location: outlet, order: order, customer: guest}
 order_sources: [pos, pickup_app]
+fulfilment_kinds: {pos: counter, pickup_app: pickup}
 issue_categories:
   - status_question
   - wrong_order
