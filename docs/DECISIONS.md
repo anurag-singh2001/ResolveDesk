@@ -8,6 +8,21 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-23 · Git branches: feature → test → main
+- Decision: GitHub `origin`; `main` = deployed/stable, `test` = integration, `feature/<story-id>-<name>` cut from `test`. A story merges into `test` only after `make lint`, `make test`, `make test-isolation` (and safety-reviewer where required) pass; `test` is promoted to `main` at sprint review. Merges use `--no-ff` so one `git revert -m 1 <merge>` undoes a whole story.
+- Why: the human reviews remotely; every story is isolated and revertible, and `main` only ever holds verified work.
+- Alternative rejected: committing straight to `main` (no safe rollback point, unreviewed work deployed).
+
+## 2026-10-23 · Remedy rules are tenant settings, not code or fixed spec values
+- Decision: late-delivery tiers, voucher auto-approve cap (default ₹150 = 15000 paise), refund channel (`tenant_gateway` | `aggregator_only`) and money limits are vertical-pack settings that a tenant overrides at org/brand/location. Settings have a kind: `limit` (integer ceiling; lower levels may only lower it) or `value` (replaced). Refunds always need human approval: that stays a hard rule, not a setting.
+- Why: the human asked that business answers (tiers, caps, aggregator handling) be configurable from the platform, not decided in code. Overrides live in `tenant_settings`, so a future admin UI/API can change them without a deploy.
+- Alternative rejected: hard-coded tiers and caps (BA research found no market norm to justify one fixed value).
+
+## 2026-10-23 · Deterministic tenant IDs for the loader
+- Decision: tenant and child IDs are `uuid5` of slugs; the loader upserts by id and only rewrites a row when a value differs (`IS DISTINCT FROM`). Packs are stored in `vertical_packs` (platform-wide, no RLS). The seed CLI sets the tenant from the folder it loads; this is an admin path, not a request path.
+- Why: with RLS the loader can't look an org up by slug before the tenant is set; deterministic ids make reruns a no-op (`updated_at` unchanged), which the idempotency test checks.
+- Alternative rejected: lookup-then-insert as owner (bypasses RLS on the write path).
+
 ## 2026-10-23 · Test database instead of a Neon test branch
 - Decision: tests use a second database `resolvedesk_test` on the same Neon branch; the app role is cluster-wide so it works in both. Bootstrap (role, vector, `lg` schema, grants) runs in both databases.
 - Why: creating a branch needs the Neon CLI/console login; a database needs only the owner URL. Same isolation for tests.

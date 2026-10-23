@@ -1,0 +1,35 @@
+slug: brewco
+name: BrewCo
+vertical_pack: coffee_chain
+
+brands:
+  - {slug: brewco_coffee, name: BrewCo Coffee}
+
+# Koregaon Park is HQ-owned; franchisee A runs Baner + Viman Nagar, franchisee B runs Aundh + Kothrud.
+locations:
+  - {slug: koregaon_park, name: Koregaon Park, brands: [brewco_coffee]}
+  - {slug: baner, name: Baner, brands: [brewco_coffee]}
+  - {slug: viman_nagar, name: Viman Nagar, brands: [brewco_coffee]}
+  - {slug: aundh, name: Aundh, brands: [brewco_coffee]}
+  - {slug: kothrud, name: Kothrud, brands: [brewco_coffee]}
+
+feature_flags:
+  growth: true
+
+settings:
+  org:
+    voucher_auto_approve_max_paise: 10000
+  brands: {}
+  locations:
+    baner:
+      refund_without_escalation_paise: 30000
+
+users:
+  - {email: owner@brewco.test, name: Meera Iyer, role: hq_owner}
+  - {email: franchisee.a@brewco.test, name: Vikram Rao, role: franchisee_owner, locations: [baner, viman_nagar]}
+  - {email: franchisee.b@brewco.test, name: Sana Shaikh, role: franchisee_owner, locations: [aundh, kothrud]}
+  - {email: kp.manager@brewco.test, name: Arjun Mehta, role: location_manager, locations: [koregaon_park]}
+  - {email: baner.manager@brewco.test, name: Neha Joshi, role: location_manager, locations: [baner]}
+  - {email: kothrud.manager@brewco.test, name: Omkar Patil, role: location_manager, locations: [kothrud]}
+  - {email: dev@customer.test, name: Dev P., role: customer}
+  - {email: ananya@customer.test, name: Ananya K., role: customer}

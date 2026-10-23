@@ -2,17 +2,21 @@
 
 import uuid
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
+    BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Integer,
     String,
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 ROLES = ("customer", "location_manager", "franchisee_owner", "hq_owner")
@@ -170,6 +174,73 @@ class MembershipLocation(TenantOwned, Base):
     location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
 
+class VerticalPackRow(Base):
+    """Platform-wide pack definition (not tenant-owned, so no tenant_id / RLS)."""
+
+    __tablename__ = "vertical_packs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True)
+    slug: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    definition: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class TenantSetting(TenantOwned, Base):
+    """One override. Neither brand nor location = org level."""
+
+    __tablename__ = "tenant_settings"
+    __table_args__ = (
+        CheckConstraint(
+            "brand_id IS NULL OR location_id IS NULL", name="ck_tenant_settings_one_scope"
+        ),
+        UniqueConstraint(
+            "tenant_id",
+            "brand_id",
+            "location_id",
+            "key",
+            name="uq_tenant_settings_scope_key",
+            postgresql_nulls_not_distinct=True,
+        ),
+        ForeignKeyConstraint(["tenant_id", "brand_id"], ["brands.tenant_id", "brands.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+    )
+
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    value: Mapped[Any] = mapped_column(JSONB, nullable=False)
+
+
+class FeatureFlag(TenantOwned, Base):
+    __tablename__ = "feature_flags"
+    __table_args__ = (UniqueConstraint("tenant_id", "key", name="uq_feature_flags_key"),)
+
+    key: Mapped[str] = mapped_column(String(100), nullable=False)
+    enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class CatalogueItem(TenantOwned, Base):
+    __tablename__ = "catalogue_items"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "sku", name="uq_catalogue_items_sku"),
+        ForeignKeyConstraint(["tenant_id", "brand_id"], ["brands.tenant_id", "brands.id"]),
+        CheckConstraint("price_paise >= 0", name="ck_catalogue_items_price"),
+    )
+
+    brand_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    sku: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    category: Mapped[str] = mapped_column(String(64), nullable=False)
+    price_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
+# Parents before children: cleanup code deletes in reverse order.
 TENANT_MODELS = [
     Organization,
     Brand,
@@ -179,5 +250,8 @@ TENANT_MODELS = [
     Membership,
     MembershipBrand,
     MembershipLocation,
+    TenantSetting,
+    FeatureFlag,
+    CatalogueItem,
 ]
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]

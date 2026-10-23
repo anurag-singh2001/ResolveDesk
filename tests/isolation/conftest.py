@@ -1,39 +1,26 @@
-"""DB fixtures for isolation tests. Runs against the Neon `test` branch as the app role."""
+"""Seeded tenants for isolation tests (app_engine lives in tests/conftest.py)."""
 
 import uuid
 from dataclasses import dataclass
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import Engine, create_engine, delete
+from sqlalchemy import Engine, delete
 
-from app.config import get_settings
 from app.core.db import tenant_session
 from app.core.models import (
     TENANT_MODELS,
     Brand,
+    CatalogueItem,
+    FeatureFlag,
     Location,
     LocationBrand,
     Membership,
     MembershipBrand,
     MembershipLocation,
     Organization,
+    TenantSetting,
     User,
 )
-
-
-@pytest.fixture(scope="session")
-def app_engine() -> Engine:
-    s = get_settings()
-    if not (s.test_database_url and s.test_migration_database_url):
-        pytest.skip("TEST_DATABASE_URL / TEST_MIGRATION_DATABASE_URL not set")
-    cfg = Config("alembic.ini")
-    cfg.attributes["url"] = s.test_migration_database_url
-    command.upgrade(cfg, "head")
-    engine = create_engine(s.test_database_url, pool_pre_ping=True)
-    yield engine
-    engine.dispose()
 
 
 @dataclass
@@ -85,6 +72,18 @@ def _seed(engine: Engine) -> SeededTenant:
         s.add(
             MembershipLocation(
                 tenant_id=t.tenant_id, membership_id=t.membership_id, location_id=t.location_id
+            )
+        )
+        s.add(TenantSetting(tenant_id=t.tenant_id, key="voucher_max_paise", value=1000))
+        s.add(FeatureFlag(tenant_id=t.tenant_id, key="growth", enabled=False))
+        s.add(
+            CatalogueItem(
+                tenant_id=t.tenant_id,
+                brand_id=t.brand_id,
+                sku="SKU-1",
+                name="Item",
+                category="test",
+                price_paise=100,
             )
         )
     return t

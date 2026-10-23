@@ -1,0 +1,33 @@
+# Vertical pack: defaults for any cloud-kitchen tenant. Tenants override in tenant.yaml.
+slug: cloud_kitchen
+name: Cloud kitchen
+version: 1
+vocabulary: {location: kitchen, order: order, customer: customer}
+order_sources: [delivery_app]
+issue_categories:
+  - status_question
+  - late_delivery
+  - missing_items
+  - wrong_item
+  - food_quality
+  - payment_issue
+actions: [refund, free_item_voucher, send_status_update]
+metrics: [late_rate, missing_item_rate, repeat_rate, ticket_rate]
+features:
+  growth: false
+
+# kind=limit: integer ceiling; a lower level may only lower it (effective = min(parent, override)).
+# kind=value: a lower level replaces it.
+settings:
+  refund_max_percent: {kind: limit, default: 50}
+  refund_without_escalation_paise: {kind: limit, default: 50000}
+  voucher_max_paise: {kind: limit, default: 30000}
+  voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  approval_expiry_minutes: {kind: limit, default: 240}
+  refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
+  late_delivery_tiers:
+    kind: value
+    default:
+      - {min_minutes_late: 0, remedy: apology}
+      - {min_minutes_late: 20, remedy: voucher}
+      - {min_minutes_late: 45, remedy: refund_percent, percent: 50}

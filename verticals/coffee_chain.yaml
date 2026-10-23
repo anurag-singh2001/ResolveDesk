@@ -1,0 +1,32 @@
+# Vertical pack: defaults for any multi-outlet coffee chain. Tenants override in tenant.yaml.
+slug: coffee_chain
+name: Coffee chain
+version: 1
+vocabulary: {location: outlet, order: order, customer: guest}
+order_sources: [pos, pickup_app]
+issue_categories:
+  - status_question
+  - wrong_order
+  - missing_items
+  - quality
+  - payment_issue
+  - loyalty
+actions: [refund, free_item_voucher, loyalty_credit, send_status_update]
+metrics: [wrong_order_rate, repeat_rate, ticket_rate, avg_ticket_paise]
+features:
+  growth: false
+
+# kind=limit: integer ceiling; a lower level may only lower it. kind=value: a lower level replaces it.
+settings:
+  refund_max_percent: {kind: limit, default: 100}
+  refund_without_escalation_paise: {kind: limit, default: 50000}
+  voucher_max_paise: {kind: limit, default: 30000}
+  voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  loyalty_credit_max_points: {kind: limit, default: 500}
+  approval_expiry_minutes: {kind: limit, default: 240}
+  refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
+  late_delivery_tiers:
+    kind: value
+    default:
+      - {min_minutes_late: 0, remedy: apology}
+      - {min_minutes_late: 15, remedy: voucher}
