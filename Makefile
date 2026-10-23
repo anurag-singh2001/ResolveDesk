@@ -16,7 +16,7 @@ migrate:
 	uv run alembic upgrade head
 
 seed:
-	@echo not implemented yet
+	uv run python -m scripts.seed $(TENANT)
 
 test:
 	uv run pytest -q -m "not isolation and not chaos and not live"

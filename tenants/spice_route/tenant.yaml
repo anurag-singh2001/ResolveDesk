@@ -1,0 +1,30 @@
+slug: spice_route
+name: Spice Route Foods
+vertical_pack: cloud_kitchen
+
+brands:
+  - {slug: biryani_box, name: Biryani Box}
+  - {slug: midnight_pizza, name: Midnight Pizza Co.}
+  - {slug: bowl_theory, name: Bowl Theory}
+
+locations:
+  - {slug: kharadi, name: Kharadi kitchen, brands: [biryani_box, midnight_pizza, bowl_theory]}
+
+feature_flags:
+  growth: false
+
+# Overrides of vertical-pack settings. Limits may only be lowered at brand/location level.
+settings:
+  org:
+    refund_channel: tenant_gateway
+  brands:
+    bowl_theory:
+      voucher_auto_approve_max_paise: 10000
+  locations: {}
+
+# Demo users; password "demo" (auth, story E1.4). No scope = whole org.
+users:
+  - {email: owner@spiceroute.test, name: Asha Kulkarni, role: hq_owner}
+  - {email: kharadi.manager@spiceroute.test, name: Rohit Shinde, role: location_manager, locations: [kharadi]}
+  - {email: riya@customer.test, name: Riya M., role: customer}
+  - {email: kabir@customer.test, name: Kabir S., role: customer}
