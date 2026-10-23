@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 import pytest
 from sqlalchemy import Engine, delete
+from sqlalchemy.exc import OperationalError
 
 from app.core.db import tenant_session
 from app.core.models import (
@@ -95,10 +96,21 @@ def _cleanup(engine: Engine, t: SeededTenant) -> None:
             s.execute(delete(model))
 
 
+def _with_reconnect(fn, engine, attempts: int = 3):
+    """Neon's free tier sometimes drops a connection mid-statement. Retry setup only; the
+    transaction rolled back, and a fresh tenant id is generated each attempt."""
+    for attempt in range(attempts):
+        try:
+            return fn(engine)
+        except OperationalError as exc:
+            if not exc.connection_invalidated or attempt == attempts - 1:
+                raise
+
+
 @pytest.fixture
 def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
     """Two freshly generated tenants (never a real tenant slug)."""
-    a, b = _seed(app_engine), _seed(app_engine)
+    a, b = _with_reconnect(_seed, app_engine), _with_reconnect(_seed, app_engine)
     yield a, b
     _cleanup(app_engine, a)
     _cleanup(app_engine, b)

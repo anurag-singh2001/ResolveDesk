@@ -21,8 +21,12 @@ def get_engine(url: str | None = None) -> Engine:
     url = url or get_settings().database_url
     if not url:
         raise RuntimeError("DATABASE_URL is not set")
-    # pre_ping: Neon suspends idle computes, so pooled connections can go stale.
-    return create_engine(url, pool_pre_ping=True)
+    return create_engine(url, **ENGINE_OPTIONS)
+
+
+# Neon suspends idle computes and its pooler drops long-lived connections: test each connection
+# on checkout and replace any older than 2 minutes.
+ENGINE_OPTIONS = {"pool_pre_ping": True, "pool_recycle": 120}
 
 
 @contextmanager

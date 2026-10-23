@@ -44,6 +44,10 @@ extend-exclude = [".venv", "*.md"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM", "DTZ"]
 
+[tool.ruff.lint.per-file-ignores]
+# Test env vars must be set before app modules are imported.
+"tests/conftest.py" = ["E402"]
+
 [tool.ruff.lint.flake8-bugbear]
 # FastAPI's dependency-injection idiom.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]

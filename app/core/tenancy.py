@@ -55,9 +55,10 @@ def load_context(
     user = session.get(User, user_id)
     if user is None or user.tenant_id != tenant_id:
         return None
-    membership = session.scalars(select(Membership).where(Membership.user_id == user_id)).first()
-    if membership is None:
+    memberships = session.scalars(select(Membership).where(Membership.user_id == user_id)).all()
+    if len(memberships) != 1:  # unique in the schema; fail closed rather than pick a role
         return None
+    membership = memberships[0]
     brand_ids = session.scalars(
         select(MembershipBrand.brand_id).where(MembershipBrand.membership_id == membership.id)
     )

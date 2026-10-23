@@ -21,10 +21,13 @@ def get_db_engine() -> Engine:
     return get_engine()
 
 
-def get_tenant_context(
+def _request_session(
     creds: HTTPAuthorizationCredentials | None = Depends(_bearer),
     engine: Engine = Depends(get_db_engine),
-) -> TenantContext:
+) -> Iterator[Session]:
+    """One tenant-scoped transaction per request. The caller's role/scope is read in the same
+    transaction the route then uses, so the access decision and the data can't disagree.
+    FastAPI caches this per request: get_tenant_context and tenant_db share it."""
     if creds is None:
         raise _UNAUTHORIZED
     try:
@@ -33,17 +36,19 @@ def get_tenant_context(
         raise _UNAUTHORIZED from None
     with tenant_session(tenant_id, engine) as session:
         ctx = load_context(session, tenant_id, user_id)
-    if ctx is None:
-        raise _UNAUTHORIZED
-    return ctx
-
-
-def tenant_db(
-    ctx: TenantContext = Depends(get_tenant_context), engine: Engine = Depends(get_db_engine)
-) -> Iterator[Session]:
-    """A session scoped (RLS) to the caller's tenant for the rest of the request."""
-    with tenant_session(ctx.tenant_id, engine) as session:
+        if ctx is None:
+            raise _UNAUTHORIZED
+        session.info["ctx"] = ctx
         yield session
+
+
+def get_tenant_context(session: Session = Depends(_request_session)) -> TenantContext:
+    return session.info["ctx"]
+
+
+def tenant_db(session: Session = Depends(_request_session)) -> Session:
+    """The request's session, scoped (RLS) to the caller's tenant."""
+    return session
 
 
 def require_staff(ctx: TenantContext = Depends(get_tenant_context)) -> TenantContext:

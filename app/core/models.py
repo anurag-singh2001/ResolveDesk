@@ -128,6 +128,7 @@ class Membership(TenantOwned, Base):
             name="ck_memberships_role",
         ),
         UniqueConstraint("tenant_id", "id", name="uq_memberships_tenant_id"),
+        UniqueConstraint("tenant_id", "user_id", name="uq_memberships_tenant_user"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

@@ -29,6 +29,8 @@ def issue_token(tenant_id: uuid.UUID, user_id: uuid.UUID, now: datetime | None =
     claims = {
         "sub": str(user_id),
         "tid": str(tenant_id),
+        "iss": s.jwt_issuer,
+        "aud": s.jwt_audience,
         "iat": now,
         "exp": now + timedelta(minutes=s.jwt_ttl_minutes),
     }
@@ -37,30 +39,36 @@ def issue_token(tenant_id: uuid.UUID, user_id: uuid.UUID, now: datetime | None =
 
 def read_token(token: str) -> tuple[uuid.UUID, uuid.UUID]:
     """(tenant_id, user_id) from a valid token. Raises AuthError otherwise."""
+    s = get_settings()
     try:
         claims = jwt.decode(
             token,
-            get_settings().jwt_secret,
+            s.jwt_secret,
             algorithms=[ALGORITHM],  # pinned: rejects "none" and algorithm confusion
-            options={"require": ["exp", "sub", "tid"]},
+            issuer=s.jwt_issuer,
+            audience=s.jwt_audience,
+            options={"require": ["exp", "sub", "tid", "iss", "aud"]},
         )
         return uuid.UUID(claims["tid"]), uuid.UUID(claims["sub"])
     except (jwt.PyJWTError, ValueError) as exc:
         raise AuthError("invalid token") from exc
 
 
+# Valid slug that no tenant uses: unknown tenants still run the same queries (timing).
+_NO_TENANT_SLUG = "_no_such_tenant"
+
+
 def authenticate(engine: Engine, tenant_slug: str, email: str, password: str) -> str | None:
-    """Token for a seeded demo user, or None. Same None for every failure (no user probing)."""
+    """Token for a seeded demo user, or None. Same None, and the same DB work, for every failure,
+    so neither the body nor the response time tells which part was wrong."""
     s = get_settings()
-    if not s.demo_auth or not hmac.compare_digest(password.encode(), s.demo_password.encode()):
-        return None
-    if not SLUG_RE.match(tenant_slug):
-        return None
-    tenant_id = tenant_id_for(tenant_slug)
+    slug = tenant_slug if SLUG_RE.match(tenant_slug) else _NO_TENANT_SLUG
+    tenant_id = tenant_id_for(slug)
     with tenant_session(tenant_id, engine) as session:
-        if session.get(Organization, tenant_id) is None:
-            return None
+        org_exists = session.get(Organization, tenant_id) is not None
         user_id = session.scalar(select(User.id).where(User.email == email))
-        if user_id is None or load_context(session, tenant_id, user_id) is None:
-            return None
+        ctx = load_context(session, tenant_id, user_id or uuid.UUID(int=0))
+    password_ok = hmac.compare_digest(password.encode(), s.demo_password.encode())
+    if not (s.demo_auth and password_ok and org_exists and user_id and ctx):
+        return None
     return issue_token(tenant_id, user_id)

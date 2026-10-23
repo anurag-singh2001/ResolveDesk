@@ -1,4 +1,9 @@
+import os
 from pathlib import Path
+
+# Tests log in as seeded demo users; demo auth is opt-in (off by default).
+os.environ.setdefault("APP_ENV", "test")
+os.environ.setdefault("DEMO_AUTH", "true")
 
 import pytest
 from alembic import command
@@ -8,6 +13,7 @@ from sqlalchemy import Engine, create_engine
 
 from app.api.deps import get_db_engine
 from app.config import get_settings
+from app.core.db import ENGINE_OPTIONS
 from app.core.tenant_config import TenantConfig, load_tenant, tenant_dirs
 from app.core.tenant_loader import load_pack_into_db, load_tenant_into_db
 from app.core.verticals import load_pack
@@ -34,7 +40,7 @@ def app_engine() -> Engine:
     cfg = Config("alembic.ini")
     cfg.attributes["url"] = s.test_migration_database_url
     command.upgrade(cfg, "head")
-    engine = create_engine(s.test_database_url, pool_pre_ping=True)
+    engine = create_engine(s.test_database_url, **ENGINE_OPTIONS)
     yield engine
     engine.dispose()
 
@@ -42,7 +48,7 @@ def app_engine() -> Engine:
 @pytest.fixture(scope="session")
 def owner_engine(app_engine) -> Engine:
     """Owner role on the test database: only for platform-wide writes (vertical packs)."""
-    engine = create_engine(get_settings().test_migration_database_url, pool_pre_ping=True)
+    engine = create_engine(get_settings().test_migration_database_url, **ENGINE_OPTIONS)
     yield engine
     engine.dispose()
 
