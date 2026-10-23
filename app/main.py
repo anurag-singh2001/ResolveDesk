@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 
-from app.api import routes_auth, routes_locations
+from app.api import routes_auth, routes_locations, routes_orders
 
 
 def create_app() -> FastAPI:
@@ -12,6 +12,7 @@ def create_app() -> FastAPI:
 
     app.include_router(routes_auth.router)
     app.include_router(routes_locations.router)
+    app.include_router(routes_orders.router)
     return app
 
 

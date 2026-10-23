@@ -8,6 +8,17 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-23 · Simulator: config-driven, fixed calendar, replace-on-reseed
+- Decision: volumes, planted problems (late / missing_item / wrong_item / repeat_drop with location, hour and weekday filters) and messy-data rates live in each tenant's `simulation:` block; the generic simulator reads them plus the vertical pack (`fulfilment_kinds`). The window ends on a configured `end_date`, not today. Ids are uuid5 of the tenant + row number; reseeding deletes and reinserts the tenant's commerce rows in one transaction. The loader now prunes only config tables (`CONFIG_MODELS`).
+- Why: no tenant names in code (hard rule 2); same seed → byte-identical data on any day; delete+insert is simpler and faster than upserting ~80k rows. Measured: full seed of both tenants 47 s on Neon.
+- Rate tolerance: planted rates must match within ±1 point, or 3 standard errors for narrow slices (e.g. one outlet's weekday mornings, ~300 orders, where ±1 point is below sampling noise). Averaged over 6 seeds every planted rate is on target (bias check).
+- Alternative rejected: hard-coding the spec's planted problems per tenant in Python; dates relative to `now()` (non-reproducible).
+
+## 2026-10-23 · Order visibility as one SQL predicate
+- Decision: `TenantContext.visible_orders()` returns a WHERE clause used by both list and detail routes: hq_owner all; scoped roles by location, narrowed by brand when the membership has brands (closes the E1.4 brand-scope gap); customers only orders of the customer row linked to their own user id. Not visible → 404.
+- Why: one rule for list and detail means they can't disagree; filtering in SQL avoids loading other customers' rows into Python.
+- Alternative rejected: per-row Python checks after a broad query (easy to forget on a new route, and fetches data the caller may not see).
+
 ## 2026-10-23 · Demo auth: thin token, scope from the DB, fail closed
 - Decision: `POST /auth/login {tenant, email, password}` with one demo password for seeded users (`DEMO_AUTH` can switch it off). The HS256 JWT holds only `tid` + `sub` + `exp` (secret must be ≥ 32 bytes). Every request re-reads role and location/brand scope from the DB inside the token's tenant session. Only `hq_owner` sees the whole org; scoped roles with no scope rows see nothing. Out-of-scope and other-tenant records both return 404; a customer on a staff route gets 403 (the route exists for everyone, the record question doesn't arise).
 - Why: a role or scope in the token could be replayed after it was revoked; reading the user under RLS means a token pairing tenant A with a user of tenant B finds no user (401). Failing closed avoids "empty scope = everything".

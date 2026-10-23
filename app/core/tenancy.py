@@ -5,10 +5,17 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, and_, false, select, true
 from sqlalchemy.orm import Session
 
-from app.core.models import Membership, MembershipBrand, MembershipLocation, User
+from app.core.models import (
+    Customer,
+    Membership,
+    MembershipBrand,
+    MembershipLocation,
+    Transaction,
+    User,
+)
 
 Role = Literal["customer", "location_manager", "franchisee_owner", "hq_owner"]
 STAFF_ROLES: frozenset[str] = frozenset({"location_manager", "franchisee_owner", "hq_owner"})
@@ -43,6 +50,30 @@ class TenantContext:
         if self.role in LOCATION_SCOPED_ROLES:
             return location_id in self.location_ids
         return False
+
+    def visible_orders(self) -> ColumnElement[bool]:
+        """WHERE clause for the orders this caller may see (RLS already limits the tenant).
+
+        Staff: location scope, narrowed by brand scope when the membership has brands.
+        Customers: only orders of the customer record linked to their own user id; an order or
+        customer id they send never widens this (hard rule 8).
+        """
+        if self.role == "customer":
+            own = select(Customer.id).where(Customer.user_id == self.user_id)
+            return Transaction.customer_id.in_(own)
+        if self.role == "hq_owner":
+            clause: ColumnElement[bool] = true()
+        elif self.role in LOCATION_SCOPED_ROLES:
+            clause = Transaction.location_id.in_(self.location_ids or [_NOTHING])
+        else:
+            return false()
+        if self.brand_ids:
+            clause = and_(clause, Transaction.brand_id.in_(self.brand_ids))
+        return clause
+
+
+# IN () is invalid SQL; a uuid no row has keeps "empty scope sees nothing" explicit.
+_NOTHING = uuid.UUID(int=0)
 
 
 def load_context(
