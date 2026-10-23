@@ -11,6 +11,7 @@ from app.core.models import (
     LocationBrand,
     MembershipBrand,
     MembershipLocation,
+    Transaction,
 )
 
 pytestmark = pytest.mark.isolation
@@ -29,18 +30,30 @@ def test_tenant_sees_only_own_rows(app_engine, tenants, model):
     assert b.tenant_id not in tenant_ids
 
 
+def _stamp(model):
+    return getattr(model, "updated_at", None) or model.occurred_at
+
+
+def _attempt(engine, tenant_id, stmt) -> int:
+    """Run a write as the app role. Returns rows affected, or 0 if the role may not write the
+    table at all (engine and audit tables are insert-only or status-only for the app)."""
+    try:
+        with tenant_session(tenant_id, engine) as s:
+            return s.execute(stmt).rowcount
+    except DBAPIError as exc:
+        assert "permission denied" in str(exc), exc
+        return 0
+
+
 @pytest.mark.parametrize("model", TENANT_MODELS, ids=_by_name)
 def test_cannot_update_other_tenant_rows(app_engine, tenants, model):
     a, b = tenants
     with tenant_session(b.tenant_id, app_engine) as s:
-        before = sorted(s.scalars(select(model.updated_at)))
-    with tenant_session(a.tenant_id, app_engine) as s:
-        result = s.execute(
-            update(model).where(model.tenant_id == b.tenant_id).values(updated_at=func.now())
-        )
-    assert result.rowcount == 0
+        before = sorted(s.scalars(select(_stamp(model))))
+    stmt = update(model).where(model.tenant_id == b.tenant_id).values(tenant_id=model.tenant_id)
+    assert _attempt(app_engine, a.tenant_id, stmt) == 0
     with tenant_session(b.tenant_id, app_engine) as s:
-        assert sorted(s.scalars(select(model.updated_at))) == before
+        assert sorted(s.scalars(select(_stamp(model)))) == before
 
 
 @pytest.mark.parametrize("model", TENANT_MODELS, ids=_by_name)
@@ -48,8 +61,8 @@ def test_cannot_delete_other_tenant_rows(app_engine, tenants, model):
     a, b = tenants
     with tenant_session(b.tenant_id, app_engine) as s:
         before = s.scalar(select(func.count()).select_from(model))
-    with tenant_session(a.tenant_id, app_engine) as s:
-        s.execute(model.__table__.delete().where(model.tenant_id == b.tenant_id))
+    stmt = model.__table__.delete().where(model.tenant_id == b.tenant_id)
+    _attempt(app_engine, a.tenant_id, stmt)
     with tenant_session(b.tenant_id, app_engine) as s:
         assert s.scalar(select(func.count()).select_from(model)) == before >= 1
 
@@ -182,3 +195,22 @@ def test_every_table_with_updated_at_has_trigger(app_engine):
             .all()
         )
     assert missing == []
+
+
+def test_maintenance_role_cannot_bypass_rls(maint_engine):
+    with maint_engine.connect() as conn:
+        superuser, bypass = conn.execute(
+            text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        ).one()
+    assert (superuser, bypass) == (False, False)
+
+
+def test_unfiltered_maintenance_delete_stays_in_its_tenant(maint_engine, app_engine, tenants):
+    """The point of the maintenance role: a forgotten WHERE tenant_id fails closed."""
+    a, b = tenants
+    with tenant_session(b.tenant_id, app_engine) as s:
+        before = s.scalar(select(func.count()).select_from(Transaction))
+    with tenant_session(uuid.uuid4(), maint_engine) as s:  # some other (empty) tenant
+        assert s.execute(text("DELETE FROM transactions")).rowcount == 0
+    with tenant_session(b.tenant_id, app_engine) as s:
+        assert s.scalar(select(func.count()).select_from(Transaction)) == before >= 1

@@ -32,3 +32,8 @@ settings:
       - {min_minutes_late: 0, remedy: apology}
       - {min_minutes_late: 20, remedy: voucher}
       - {min_minutes_late: 45, remedy: refund_percent, percent: 50}
+  # Which connector serves each kind (app/connectors). Swapping in a real provider is a
+  # settings change for the tenant, not a code change.
+  payment_connector: {kind: value, default: mock_payment}
+  messaging_connector: {kind: value, default: mock_messaging}
+  orders_connector: {kind: value, default: mock_delivery_app}

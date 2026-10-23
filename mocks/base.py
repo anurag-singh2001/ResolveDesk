@@ -111,7 +111,7 @@ class ChaosByMerchant:
         return chaos, random.Random(f"{chaos.seed}:{merchant_id}:{key}:{attempt}")
 
 
-def _hit(rng: random.Random, rate: float) -> bool:
+def hit(rng: random.Random, rate: float) -> bool:
     # Always consume one draw, so each roll's outcome doesn't depend on earlier rates being 0.
     return rng.random() < rate
 
@@ -144,9 +144,9 @@ class IdempotentMock:
         if chaos.delay_ms:
             time.sleep(chaos.delay_ms / 1000)  # outside the lock: slow calls don't block others
         digest = payload_hash(request)
-        timeout, transient = _hit(rng, chaos.timeout_rate), _hit(rng, chaos.transient_error_rate)
-        accept_then_timeout = _hit(rng, chaos.accept_then_timeout_rate)
-        declined, processing = _hit(rng, chaos.error_rate), _hit(rng, chaos.processing_rate)
+        timeout, transient = hit(rng, chaos.timeout_rate), hit(rng, chaos.transient_error_rate)
+        accept_then_timeout = hit(rng, chaos.accept_then_timeout_rate)
+        declined, processing = hit(rng, chaos.error_rate), hit(rng, chaos.processing_rate)
         if timeout:
             raise ProviderTimeout("timed out before the request was accepted")
         if transient:

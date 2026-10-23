@@ -12,6 +12,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
     Text,
@@ -292,6 +293,9 @@ class Transaction(TenantOwned, Base):
         CheckConstraint(
             "status IN ('placed', 'completed', 'cancelled')", name="ck_transactions_status"
         ),
+        # Order lookups: a customer's orders, and a location's orders by time (migration 0006).
+        Index("ix_transactions_tenant_customer", "tenant_id", "customer_id"),
+        Index("ix_transactions_tenant_location_placed", "tenant_id", "location_id", "placed_at"),
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -422,6 +426,235 @@ class Consent(TenantOwned, Base):
     granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
 
+# --- Engine (PROJECT.md section 7 "Engine", "Money", "Trust") ---------------------------
+
+
+class Case(TenantOwned, Base):
+    __tablename__ = "cases"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_cases_tenant_id"),
+        _fk("customer_id", "customers"),
+        _fk("transaction_id", "transactions"),
+        CheckConstraint(
+            "status IN ('open', 'investigating', 'awaiting_info', 'awaiting_approval', "
+            "'executing', 'resolved', 'escalated', 'closed')",
+            name="ck_cases_status",
+        ),
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    transaction_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    category: Mapped[str | None] = mapped_column(String(64))
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class WorkflowRun(TenantOwned, Base):
+    __tablename__ = "workflow_runs"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_workflow_runs_tenant_id"),
+        UniqueConstraint("tenant_id", "id", "case_id", name="uq_workflow_runs_tenant_id_case"),
+        _fk("case_id", "cases", ondelete="CASCADE"),
+        CheckConstraint(
+            "status IN ('running', 'paused', 'completed', 'escalated', 'failed')",
+            name="ck_workflow_runs_status",
+        ),
+        CheckConstraint("step_count >= 0 AND llm_calls >= 0", name="ck_workflow_runs_counters"),
+    )
+
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    step_count: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    llm_calls: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class ActionProposal(TenantOwned, Base):
+    """Immutable (UPDATE blocked by trigger). payload_hash = sha256 of canonical JSON of
+    {action, case_id, params}; approvals reference (id, payload_hash) together."""
+
+    __tablename__ = "action_proposals"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_action_proposals_tenant_id"),
+        UniqueConstraint("tenant_id", "id", "payload_hash", name="uq_action_proposals_id_hash"),
+        _fk("case_id", "cases", ondelete="CASCADE"),
+        ForeignKeyConstraint(
+            ["tenant_id", "run_id", "case_id"],
+            ["workflow_runs.tenant_id", "workflow_runs.id", "workflow_runs.case_id"],
+            name="fk_action_proposals_run_case",
+        ),
+        CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_action_proposals_hash"),
+        CheckConstraint(
+            "(amount_param IS NULL AND amount_paise IS NULL) OR "
+            "(amount_param IS NOT NULL AND (params ->> amount_param)::bigint = amount_paise)",
+            name="ck_action_proposals_amount_matches_params",
+        ),
+        CheckConstraint(
+            "amount_paise IS NULL OR amount_paise > 0", name="ck_action_proposals_amount"
+        ),
+        CheckConstraint("risk IN ('low', 'medium', 'high')", name="ck_action_proposals_risk"),
+    )
+
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    action: Mapped[str] = mapped_column(String(64), nullable=False)
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    amount_paise: Mapped[int | None] = mapped_column(BigInteger)
+    # Which param amount_paise was copied from; a DB check keeps the two equal.
+    amount_param: Mapped[str | None] = mapped_column(String(64))
+    risk: Mapped[str] = mapped_column(String(8), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    citations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
+    validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class Approval(TenantOwned, Base):
+    """One decision per proposal, bound to the hash the approver saw (hard rule 6)."""
+
+    __tablename__ = "approvals"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_approvals_tenant_id"),
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_approvals_one_per_proposal"),
+        ForeignKeyConstraint(
+            ["tenant_id", "proposal_id", "payload_hash"],
+            [
+                "action_proposals.tenant_id",
+                "action_proposals.id",
+                "action_proposals.payload_hash",
+            ],
+            ondelete="CASCADE",
+        ),
+        _fk("decided_by", "users"),
+        CheckConstraint("decision IN ('approved', 'rejected')", name="ck_approvals_decision"),
+        CheckConstraint("mode IN ('human', 'auto')", name="ck_approvals_mode"),
+        CheckConstraint(
+            "(mode = 'human') = (decided_by IS NOT NULL)", name="ck_approvals_human_has_user"
+        ),
+        CheckConstraint("expires_at > decided_at", name="ck_approvals_expiry"),
+        CheckConstraint(
+            "expires_at <= decided_at + interval '7 days'", name="ck_approvals_expiry_cap"
+        ),
+        # Target for executions: (approval, its proposal, decision) must match together.
+        UniqueConstraint("tenant_id", "id", "proposal_id", "decision", name="uq_approvals_binding"),
+    )
+
+    proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    mode: Mapped[str] = mapped_column(String(8), nullable=False)
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    note: Mapped[str | None] = mapped_column(Text)
+
+
+EXECUTION_STATUSES = "('submitted', 'processing', 'succeeded', 'failed', 'unknown')"
+
+
+class Execution(TenantOwned, Base):
+    __tablename__ = "executions"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_executions_tenant_id"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_executions_key"),
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_executions_one_per_proposal"),
+        _fk("proposal_id", "action_proposals", ondelete="CASCADE"),
+        # Only an APPROVED approval OF THIS proposal can back an execution.
+        ForeignKeyConstraint(
+            ["tenant_id", "approval_id", "proposal_id", "approval_decision"],
+            ["approvals.tenant_id", "approvals.id", "approvals.proposal_id", "approvals.decision"],
+            ondelete="CASCADE",
+            name="fk_executions_approved_approval_of_proposal",
+        ),
+        CheckConstraint("approval_decision = 'approved'", name="ck_executions_only_approved"),
+        CheckConstraint(f"status IN {EXECUTION_STATUSES}", name="ck_executions_status"),
+    )
+
+    proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    approval_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    approval_decision: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="approved"
+    )
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    provider_reference: Mapped[str | None] = mapped_column(String(64))
+    error: Mapped[str | None] = mapped_column(Text)
+
+
+class Verification(TenantOwned, Base):
+    __tablename__ = "verifications"
+    __table_args__ = (
+        _fk("execution_id", "executions", ondelete="CASCADE"),
+        CheckConstraint(
+            "status IN ('verified', 'mismatch', 'unknown')", name="ck_verifications_status"
+        ),
+    )
+
+    execution_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    detail: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+
+
+class RefundOperation(TenantOwned, Base):
+    """The money ledger for refunds (PROJECT.md section 10). Reserved before the provider call,
+    so the refundable balance check can count in-flight refunds."""
+
+    __tablename__ = "refund_operations"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_refund_operations_key"),
+        # One reservation per proposal; a trigger checks amount + order match it (0009).
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_refund_operations_one_per_proposal"),
+        _fk("transaction_id", "transactions"),
+        _fk("proposal_id", "action_proposals"),
+        CheckConstraint("amount_paise > 0", name="ck_refund_operations_amount"),
+        CheckConstraint(
+            "status IN ('reserved', 'submitted', 'succeeded', 'failed', 'unknown', "
+            "'pending_reconciliation')",
+            name="ck_refund_operations_status",
+        ),
+    )
+
+    transaction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False, index=True
+    )
+    proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False)
+    provider_reference: Mapped[str | None] = mapped_column(String(64))
+
+
+class AuditEvent(Base):
+    """Append-only trail. The app role may only INSERT/SELECT (no updated_at by design)."""
+
+    __tablename__ = "audit_events"
+    append_only = True
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    actor_type: Mapped[str] = mapped_column(String(16), nullable=False)  # user | system | agent
+    actor_id: Mapped[str | None] = mapped_column(String(64))
+    event: Mapped[str] = mapped_column(String(64), nullable=False)
+    entity_type: Mapped[str] = mapped_column(String(32), nullable=False)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")  # redacted
+
+
+class DomainEvent(TenantOwned, Base):
+    """Outbox for the in-process event bus (subscribers: notifications, metrics)."""
+
+    __tablename__ = "domain_events"
+
+    event: Mapped[str] = mapped_column(String(64), nullable=False)  # e.g. refund.succeeded
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
 # Loaded from tenant folders (the loader syncs these and only these).
 CONFIG_MODELS = [
     Organization,
@@ -447,6 +680,20 @@ COMMERCE_MODELS = [
     TicketMessage,
     Consent,
 ]
+# Cases, proposals, approvals, executions and the refund ledger: they reference commerce rows,
+# so reseeding history (dev only) clears them first.
+ENGINE_MODELS = [
+    Case,
+    WorkflowRun,
+    ActionProposal,
+    Approval,
+    Execution,
+    Verification,
+    RefundOperation,
+    DomainEvent,
+]
+# Append-only; never deleted by reseed or the loader (no app-role DELETE privilege).
+APPEND_ONLY_MODELS = [AuditEvent]
 # Parents before children: cleanup code deletes in reverse order.
-TENANT_MODELS = CONFIG_MODELS + COMMERCE_MODELS
+TENANT_MODELS = CONFIG_MODELS + COMMERCE_MODELS + ENGINE_MODELS + APPEND_ONLY_MODELS
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]

@@ -56,6 +56,18 @@ def owner_engine(app_engine) -> Engine:
 
 
 @pytest.fixture(scope="session")
+def maint_engine(app_engine) -> Engine:
+    """Maintenance role on the test database: deletes engine rows (reseed, cleanup) but is
+    NOBYPASSRLS, so RLS confines it to the tenant set for each transaction."""
+    url = get_settings().test_maint_database_url
+    if not url:
+        pytest.skip("TEST_MAINT_DATABASE_URL not set")
+    engine = create_engine(url, **ENGINE_OPTIONS)
+    yield engine
+    engine.dispose()
+
+
+@pytest.fixture(scope="session")
 def seeded(app_engine, owner_engine) -> dict[str, TenantConfig]:
     """All tenant folders loaded into the test database, keyed by folder name."""
     configs = {}
@@ -69,10 +81,10 @@ def seeded(app_engine, owner_engine) -> dict[str, TenantConfig]:
 
 
 @pytest.fixture(scope="session")
-def seeded_history(app_engine, seeded) -> dict[str, TenantConfig]:
+def seeded_history(app_engine, maint_engine, seeded) -> dict[str, TenantConfig]:
     """seeded + a small generated order history per tenant."""
     for cfg in seeded.values():
-        load_history(app_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+        load_history(maint_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
     return seeded
 
 

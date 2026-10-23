@@ -23,5 +23,11 @@ ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
 ALTER DEFAULT PRIVILEGES FOR ROLE neondb_owner IN SCHEMA public
     GRANT USAGE, SELECT ON SEQUENCES TO resolvedesk_app;
 
+-- Maintenance role for dev reseeds / test cleanup: deletes engine rows, but RLS applies.
+-- (Table grants come from migration 0010.)
+CREATE ROLE resolvedesk_maint LOGIN PASSWORD 'REPLACE_WITH_ANOTHER_STRONG_PASSWORD' NOBYPASSRLS NOSUPERUSER NOCREATEROLE NOCREATEDB;
+GRANT CONNECT ON DATABASE neondb TO resolvedesk_maint;
+GRANT USAGE ON SCHEMA public TO resolvedesk_maint;
+
 -- Check: expect resolvedesk_app | f | f
 SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname = 'resolvedesk_app';

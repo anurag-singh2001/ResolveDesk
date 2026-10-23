@@ -7,7 +7,7 @@ import threading
 import time
 from typing import Any
 
-from mocks.base import Chaos, ChaosByMerchant, ProviderTimeout, ProviderUnavailable, _hit
+from mocks.base import Chaos, ChaosByMerchant, ProviderTimeout, ProviderUnavailable, hit
 
 
 class ProviderError(Exception):
@@ -38,11 +38,11 @@ class MockSource:
         chaos, rng = self.chaos.draw(merchant_id, ref)
         if chaos.delay_ms:
             time.sleep(chaos.delay_ms / 1000)
-        if _hit(rng, chaos.timeout_rate):
+        if hit(rng, chaos.timeout_rate):
             raise ProviderTimeout("source system timed out")
-        if _hit(rng, chaos.transient_error_rate):
+        if hit(rng, chaos.transient_error_rate):
             raise ProviderUnavailable("source system temporarily unavailable")
-        if _hit(rng, chaos.error_rate):
+        if hit(rng, chaos.error_rate):
             raise ProviderError("source system error")
         with self._lock:
             record = self._records.get((merchant_id, ref))

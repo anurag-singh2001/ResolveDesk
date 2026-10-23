@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     test_database_url: str | None = None
     migration_database_url: str | None = None
     test_migration_database_url: str | None = None
+    # Dev reseed / test cleanup: may delete engine rows, but RLS applies (NOBYPASSRLS).
+    maint_database_url: str | None = None
+    test_maint_database_url: str | None = None
 
     llm_provider: Provider = "gemini"
     llm_classifier_provider: Provider = "groq"

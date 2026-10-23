@@ -1,7 +1,7 @@
 """make seed TENANT=<slug|all> SEED=42: load tenant folders, then generate their history.
 
-Packs are written with MIGRATION_DATABASE_URL (owner); tenant rows with DATABASE_URL (app role,
-RLS on).
+Packs are written with MIGRATION_DATABASE_URL (owner); tenant config with DATABASE_URL (app
+role); generated history with MAINT_DATABASE_URL (may delete engine rows; RLS still applies).
 """
 
 import argparse
@@ -32,6 +32,11 @@ def main(argv: list[str]) -> int:
         print("MIGRATION_DATABASE_URL is not set")
         return 1
     owner_engine = create_engine(owner_url)
+    maint_url = get_settings().maint_database_url
+    if not maint_url and not args.no_history:
+        print("MAINT_DATABASE_URL is not set (needed to replace history)")
+        return 1
+    maint_engine = create_engine(maint_url) if maint_url else None
     engine = get_engine()
     for folder in folders:
         if not (folder / "tenant.yaml").is_file():
@@ -44,7 +49,7 @@ def main(argv: list[str]) -> int:
         tid = load_tenant_into_db(engine, cfg, pack)
         summary = ""
         if not args.no_history:
-            history = load_history(engine, cfg, pack, seed=args.seed, scale=args.scale)
+            history = load_history(maint_engine, cfg, pack, seed=args.seed, scale=args.scale)
             summary = (
                 f", {len(history.customers)} customers, {len(history.transactions)} orders,"
                 f" {len(history.tickets)} tickets, checksum {history.checksum()[:12]}"
