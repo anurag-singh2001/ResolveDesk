@@ -7,7 +7,7 @@ from app.api.deps import get_tenant_context
 from app.config import Settings
 from app.core.tenancy import TenantContext
 from app.main import create_app
-from mocks.registry import chaos_state, reset_mocks
+from mocks.registry import chaos_state, merchant_id_for, reset_mocks
 
 
 def _ctx(role):
@@ -17,27 +17,32 @@ def _ctx(role):
 @pytest.fixture
 def client_as():
     def make(role):
+        ctx = _ctx(role)  # one caller (one tenant) per client
         app = create_app()
-        app.dependency_overrides[get_tenant_context] = lambda: _ctx(role)
-        return TestClient(app)
+        app.dependency_overrides[get_tenant_context] = lambda: ctx
+        client = TestClient(app)
+        client.merchant = merchant_id_for(ctx.tenant_id)
+        return client
 
     yield make
     reset_mocks()
 
 
-def test_hq_owner_sets_chaos(client_as):
-    resp = client_as("hq_owner").post(
-        "/admin/chaos", json={"service": "payment", "timeout_rate": 0.3}
-    )
+def test_hq_owner_sets_chaos_for_their_own_merchant(client_as):
+    client = client_as("hq_owner")
+    resp = client.post("/admin/chaos", json={"service": "payment", "timeout_rate": 0.3})
     assert resp.status_code == 200
-    assert chaos_state()["payment"]["timeout_rate"] == 0.3
+    assert resp.json()["payment"]["timeout_rate"] == 0.3
+    assert chaos_state(client.merchant)["payment"]["timeout_rate"] == 0.3
+    assert chaos_state()["payment"]["timeout_rate"] == 0.0  # default for everyone else untouched
 
 
 @pytest.mark.parametrize("role", ["customer", "location_manager", "franchisee_owner"])
 def test_other_roles_cannot_set_chaos(client_as, role):
-    resp = client_as(role).post("/admin/chaos", json={"service": "payment", "timeout_rate": 1})
+    client = client_as(role)
+    resp = client.post("/admin/chaos", json={"service": "payment", "timeout_rate": 1})
     assert resp.status_code == 403
-    assert chaos_state()["payment"]["timeout_rate"] == 0.0
+    assert chaos_state(client.merchant)["payment"]["timeout_rate"] == 0.0
 
 
 @pytest.mark.parametrize("body", [{"service": "nope"}, {"service": "payment", "timeout_rate": 2}])
@@ -51,3 +56,22 @@ def test_admin_routes_do_not_exist_in_prod(monkeypatch):
     app = create_app()
     app.dependency_overrides[get_tenant_context] = lambda: _ctx("hq_owner")
     assert TestClient(app).get("/admin/chaos").status_code == 404
+
+
+def test_chaos_set_by_one_tenant_is_invisible_to_another():
+    a, b = _ctx("hq_owner"), _ctx("hq_owner")
+    app = create_app()
+    app.dependency_overrides[get_tenant_context] = lambda: a
+    TestClient(app).post("/admin/chaos", json={"service": "payment", "timeout_rate": 1.0})
+    app.dependency_overrides[get_tenant_context] = lambda: b
+    try:
+        assert TestClient(app).get("/admin/chaos").json()["payment"]["timeout_rate"] == 0.0
+        assert chaos_state(merchant_id_for(a.tenant_id))["payment"]["timeout_rate"] == 1.0
+    finally:
+        reset_mocks()
+
+
+def test_unknown_app_env_is_rejected():
+    """Only dev/test mount dev routes; any other name (e.g. staging) isn't a valid env at all."""
+    with pytest.raises(ValueError):
+        Settings(_env_file=None, app_env="staging")

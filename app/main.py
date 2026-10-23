@@ -14,7 +14,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_auth.router)
     app.include_router(routes_locations.router)
     app.include_router(routes_orders.router)
-    if get_settings().app_env != "prod":  # dev controls simply don't exist in prod
+    if get_settings().app_env in routes_admin.DEV_ENVS:  # allow-list
         app.include_router(routes_admin.router)
     return app
 
