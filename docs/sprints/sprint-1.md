@@ -35,7 +35,8 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - E0.6 done (6d76056).
 - E1.2 done, c8ca319: `make migrate` (0001+0002) ok; `make test-isolation` 42 passed (133s, run with URLs from scratchpad file); `make test` 4 passed; `make lint` clean.
 - Safety: pass 1 = 4 findings (membership scope arrays w/o tenant check; hand-kept RLS table list; weak update test; ORM-only updated_at), all fixed. Pass 2 = 4 low notes, 3 fixed, 1 deferred: pin search_path on set_updated_at() in next migration.
-- Process incident: test-runner reported 42 isolation errors; cause was CRLF in env lines loaded in bash (`channel_binding=require`), wrongly blamed on the driver. Not a code defect.
+- Process incident: test-runner reported 42 isolation errors; cause was CRLF in env lines loaded in bash (`channel_binding=require
+`), wrongly blamed on the driver. Not a code defect.
 - Next: E1.3, E1.4 (E1.4 needs safety review), E2.2 mocks, E2.3a.
 - Blocked: .env (human). Open human decisions: move E2.3b/E2.3c/E2.4 to Sprint 2; BA questions (aggregator framing, graduated late tiers, Rs150 voucher cap).
 - Scorecard notes so far: test-runner false failure (accuracy); safety-reviewer 4 findings pass 1, 0 high after fixes.
@@ -47,7 +48,16 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - New process: GitHub origin; branches main (deployed) <- test (integration) <- feature/<story>; --no-ff merges so `git revert -m 1` undoes a story; see DECISIONS.md. Human works remotely from phone; proceed without waiting unless blocked.
 - Human decision: remedy tiers, voucher auto-approve cap (default Rs150) and refund channel are per-tenant settings (DECISIONS.md). BA questions on these are closed.
 - Still open: Sprint-1 rescope (move E2.3b/E2.3c/E2.4 to Sprint 2). Planning defaults to the recommendation (move them).
-- Next: E1.4 auth + roles (needs safety review). Also pending: pin search_path on set_updated_at().
+- Next: E1.4 auth + roles (needs safety review). (Correction in third stand-up: the set_updated_at() search_path pin is NOT pending; it shipped in migration 0003, 374ccca.)
+
+### 2026-10-23 (third stand-up)
+- E1.4 done: 737baec, 7cf6113, 6552126, merged to test as 24bc2bb. E1 complete (E1.1-E1.4 all [x]).
+- Verified by scrum-master today: `git log` shows the merge; `make lint` clean; `make test` 97 passed in 104 s. Isolation not re-run (4-5 min); cited from main session: 64 passed after the final commit.
+- Safety: pass 1 = 7 findings (unsafe auth defaults, ambiguous membership, brand scope unenforced, login timing, two transactions per request, test gaps, no iss/aud + long TTL); all fixed except brand scope, deferred to E2.1 per DECISIONS.md and added as an explicit acceptance criterion on E2.1. Pass 2 confirmed; 3 minor follow-ups (APP_ENV defaults to prod, seed cleanup, one-transaction test) fixed.
+- Correction to previous stand-up: the set_updated_at search_path pin is not pending; it shipped in migration 0003 (374ccca).
+- Risk (new): Neon free tier drops connections mid-run (compute restarted 05:01 GMT). Mitigated with pool_recycle and a test-only seed retry on invalidated connections; may cause flaky CI/eval runs, keep watching.
+- Scorecard notes: safety-reviewer found 7 real issues on E1.4 pass 1 (high value); main session needed 2 rework commits on E1.4.
+- Next: E2.1 canonical tables + simulator. Still open: E0.3 .env (human), Sprint-1 rescope. No story at risk yet (sprint ends 2026-10-28).
 
 ## Review
 _to fill at sprint end_

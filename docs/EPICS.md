@@ -25,12 +25,12 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 
 ## E1 · Foundation — Sprint 0–1
 - [x] E1.1 Project skeleton: pyproject, Makefile, config, `/health`, ruff, tests layout — done when: `make test` passes + `make lint` clean [a2b9846]
-- [x] E1.2 Tenancy tables + RLS (organizations, brands, locations, users, memberships), app role, tenant session helper — done when: `make migrate && make test-isolation` passes (c8ca319, verified 2026-10-23: 42 isolation tests, lint clean, safety-reviewer 2 passes; follow-up: pin search_path on set_updated_at() in next migration)
+- [x] E1.2 Tenancy tables + RLS (organizations, brands, locations, users, memberships), app role, tenant session helper — done when: `make migrate && make test-isolation` passes (c8ca319, verified 2026-10-23: 42 isolation tests, lint clean, safety-reviewer 2 passes; follow-up: search_path pin on set_updated_at() shipped in migration 0003, 374ccca)
 - [x] E1.3 (done 2026-10-23, feature 374ccca, merged to test 99d3c96) Vertical packs, tenant folders (config + catalogue), tenant_settings/feature_flags, loader, settings resolver — done when: `make seed TENANT=all && make test` passes; no tenant slug in `app/`
-- [ ] E1.4 Demo auth (JWT), TenantContext, roles/scope, `POST /auth/login` — done when: `make test` + `make test-isolation` pass; safety-reviewer clean
+- [x] E1.4 (done 2026-10-23, commits 737baec, 7cf6113, 6552126, merged to test 24bc2bb) Demo auth (JWT), TenantContext, roles/scope, `POST /auth/login` — done when: `make test` + `make test-isolation` pass; safety-reviewer clean (verified: lint clean, 97 passed; isolation 64 passed after final commit; safety 2 passes clean; brand scope enforcement deferred to E2.1, see its acceptance criterion)
 
 ## E2 · Data & money core — Sprint 1
-- [ ] E2.1 Canonical tables + deterministic simulator history (SEED=42) — done when: same seed → same checksums; planted rates ±1%; seed < 60 s
+- [ ] E2.1 Canonical tables + deterministic simulator history (SEED=42) — done when: same seed → same checksums; planted rates ±1%; seed < 60 s. Acceptance criterion (deferred from E1.4 safety pass 1, DECISIONS.md): brand scope is enforced server-side on brand-scoped users for canonical tables, with a test for both tenants
 - [ ] E2.2 Mock payment/POS/delivery/messaging with failure injection + `/admin/chaos` — done when: contract tests pass incl. same key + different payload → 409
 - [ ] E2.3a Connector + action registries, engine tables, proposals with payload hash — done when: unit tests pass
 - [ ] E2.3b Deterministic eligibility + safe refund execution (section 10 steps 1–5) — done when: over-refund, expired approval, changed payload all blocked
