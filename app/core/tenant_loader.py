@@ -211,9 +211,13 @@ def load_tenant_into_db(engine: Engine, cfg: TenantConfig, pack: VerticalPack) -
             try:
                 s.execute(delete(model).where(model.id.not_in(loaded.get(model, set()))))
             except IntegrityError as exc:  # whole load rolls back; nothing half-applied
+                diag = getattr(exc.orig, "diag", None)
+                referenced_by = getattr(diag, "table_name", None) or "another table"
+                constraint = getattr(diag, "constraint_name", None) or "unknown constraint"
                 raise TenantLoadError(
-                    f"{cfg.slug}: can't remove {model.__tablename__} rows that orders or other "
-                    "history still reference. Keep them in the folder, or reseed history first."
+                    f"{cfg.slug}: can't remove {model.__tablename__} rows that {referenced_by} "
+                    f"still references ({constraint}); history still references them. Keep them "
+                    "in the folder, or reseed history first."
                 ) from exc
     return tid
 
