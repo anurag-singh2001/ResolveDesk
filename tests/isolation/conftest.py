@@ -261,10 +261,10 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
     s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
 
 
-def _cleanup(engine: Engine, t: SeededTenant, owner_engine: Engine) -> None:
-    # The app role may not delete engine or audit rows (by design): clean up as the owner.
-    # The owner bypasses RLS on Neon, so filter on tenant_id explicitly.
-    with tenant_session(t.tenant_id, owner_engine) as s:
+def _cleanup(engine: Engine, t: SeededTenant, maint_engine: Engine) -> None:
+    # The app role may not delete engine or audit rows (by design): clean up as the
+    # maintenance role. RLS confines it to this tenant; the filter is a second layer.
+    with tenant_session(t.tenant_id, maint_engine) as s:
         for model in reversed(TENANT_MODELS):
             s.execute(delete(model).where(model.tenant_id == t.tenant_id))
 
@@ -281,7 +281,7 @@ def _with_reconnect(fn, engine, attempts: int = 3):
 
 
 @pytest.fixture(scope="module")
-def tenants(app_engine, owner_engine) -> tuple[SeededTenant, SeededTenant]:
+def tenants(app_engine, maint_engine) -> tuple[SeededTenant, SeededTenant]:
     """Two freshly generated tenants (never a real tenant slug), shared per test module.
 
     Sharing is safe because the RLS tests only read, or attempt writes that must be rejected
@@ -291,8 +291,8 @@ def tenants(app_engine, owner_engine) -> tuple[SeededTenant, SeededTenant]:
     try:
         b = _with_reconnect(_seed, app_engine)
     except Exception:
-        _cleanup(app_engine, a, owner_engine)
+        _cleanup(app_engine, a, maint_engine)
         raise
     yield a, b
-    _cleanup(app_engine, a, owner_engine)
-    _cleanup(app_engine, b, owner_engine)
+    _cleanup(app_engine, a, maint_engine)
+    _cleanup(app_engine, b, maint_engine)

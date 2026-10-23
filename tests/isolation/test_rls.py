@@ -11,6 +11,7 @@ from app.core.models import (
     LocationBrand,
     MembershipBrand,
     MembershipLocation,
+    Transaction,
 )
 
 pytestmark = pytest.mark.isolation
@@ -194,3 +195,22 @@ def test_every_table_with_updated_at_has_trigger(app_engine):
             .all()
         )
     assert missing == []
+
+
+def test_maintenance_role_cannot_bypass_rls(maint_engine):
+    with maint_engine.connect() as conn:
+        superuser, bypass = conn.execute(
+            text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
+        ).one()
+    assert (superuser, bypass) == (False, False)
+
+
+def test_unfiltered_maintenance_delete_stays_in_its_tenant(maint_engine, app_engine, tenants):
+    """The point of the maintenance role: a forgotten WHERE tenant_id fails closed."""
+    a, b = tenants
+    with tenant_session(b.tenant_id, app_engine) as s:
+        before = s.scalar(select(func.count()).select_from(Transaction))
+    with tenant_session(uuid.uuid4(), maint_engine) as s:  # some other (empty) tenant
+        assert s.execute(text("DELETE FROM transactions")).rowcount == 0
+    with tenant_session(b.tenant_id, app_engine) as s:
+        assert s.scalar(select(func.count()).select_from(Transaction)) == before >= 1

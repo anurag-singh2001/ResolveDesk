@@ -68,12 +68,12 @@ def test_order_money_adds_up(app_engine, seeded_history, tenant):
 
 
 @pytest.fixture
-def restore(app_engine, owner_engine, seeded_history, tenant):
+def restore(app_engine, maint_engine, seeded_history, tenant):
     yield seeded_history[tenant.name]
     cfg = seeded_history[tenant.name]
     pack = load_pack(cfg.vertical_pack)
     load_tenant_into_db(app_engine, cfg, pack)
-    load_history(owner_engine, cfg, pack, scale=HISTORY_SCALE)
+    load_history(maint_engine, cfg, pack, scale=HISTORY_SCALE)
 
 
 def test_removing_a_login_user_unlinks_their_customer(app_engine, restore):
@@ -121,8 +121,8 @@ def test_removing_a_location_with_orders_fails_cleanly(app_engine, restore):
         assert s.scalar(select(func.count()).select_from(Transaction)) == before
 
 
-def test_reseeding_one_tenant_never_touches_another(app_engine, owner_engine, restore, tenant):
-    """The owner role bypasses RLS on Neon, so the reseed must filter on tenant_id itself."""
+def test_reseeding_one_tenant_never_touches_another(app_engine, maint_engine, restore, tenant):
+    """Reseeding one tenant (maintenance role) must leave every other tenant untouched."""
     cfg = restore
     others = [p for p in tenant_dirs() if p.name != tenant.name]
     assert others, "needs at least two tenants"
@@ -136,13 +136,12 @@ def test_reseeding_one_tenant_never_touches_another(app_engine, owner_engine, re
 
     before = {p.name: counts(load_tenant(p).slug) for p in others}
     assert all(c["transactions"] > 0 for c in before.values())
-    load_history(owner_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+    load_history(maint_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
     assert {p.name: counts(load_tenant(p).slug) for p in others} == before
 
 
-def test_refs_are_per_tenant_even_when_slugs_collide(app_engine, owner_engine, restore, tenant):
-    """load_refs runs as the owner (no RLS on Neon): a same-slug brand/location/user in
-    another tenant must never be picked up."""
+def test_refs_are_per_tenant_even_when_slugs_collide(app_engine, maint_engine, restore, tenant):
+    """A same-slug brand/location/user in another tenant must never be picked up."""
     cfg = restore
     tid = tenant_id_for(cfg.slug)
     intruder = uuid.uuid4()
@@ -166,7 +165,7 @@ def test_refs_are_per_tenant_even_when_slugs_collide(app_engine, owner_engine, r
             ]
         )
     try:
-        with tenant_session(tid, owner_engine) as s:
+        with tenant_session(tid, maint_engine) as s:
             refs = load_refs(s, tid)
         with tenant_session(tid, app_engine) as s:  # RLS-bound truth for this tenant
             assert refs.brand_ids[brand] == s.scalar(select(Brand.id).where(Brand.slug == brand))
@@ -175,6 +174,6 @@ def test_refs_are_per_tenant_even_when_slugs_collide(app_engine, owner_engine, r
             )
             assert refs.user_ids[user] == s.scalar(select(User.id).where(User.email == user))
     finally:
-        with tenant_session(intruder, owner_engine) as s:
+        with tenant_session(intruder, maint_engine) as s:
             for model in (User, Location, Brand, Organization):
                 s.execute(delete(model).where(model.tenant_id == intruder))

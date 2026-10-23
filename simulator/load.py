@@ -14,8 +14,8 @@ BATCH = 1000
 
 
 def load_refs(session, tenant_id) -> Refs:
-    """Ids by slug/email for ONE tenant. Filtered explicitly: callers may hold a session that
-    RLS doesn't constrain (the owner on Neon), and slugs repeat across tenants."""
+    """Ids by slug/email for ONE tenant. Filtered explicitly as well as by RLS: slugs repeat
+    across tenants, and a session that RLS doesn't constrain must still get the right ids."""
 
     def by(key, model):
         rows = session.execute(select(key, model.id).where(model.tenant_id == tenant_id))
@@ -34,9 +34,10 @@ def load_history(
 ) -> History:
     """Regenerate and replace this tenant's history. The tenant config must already be loaded.
 
-    `engine` must be the OWNER engine: the app role may not delete engine rows (cases,
-    proposals, approvals...), by design. On Neon the owner has BYPASSRLS, so RLS does NOT
-    limit it: every statement here filters on tenant_id explicitly.
+    `engine` must be the MAINTENANCE engine (resolvedesk_maint): the app role may not delete
+    engine rows (cases, proposals, approvals...), by design, and the owner bypasses RLS on
+    Neon. The maintenance role is NOBYPASSRLS, so RLS limits every statement to this tenant;
+    the explicit tenant_id filters below are a second layer.
 
     Admin/seed path (like the tenant loader): the tenant comes from the folder, not a request.
     """
@@ -44,8 +45,6 @@ def load_history(
         # Reseeding replaces every commerce row: never against production data.
         raise RuntimeError("refusing to (re)generate history when APP_ENV=prod")
     tenant_id = tenant_id_for(cfg.slug)
-    # tenant_session still sets app.tenant_id, but for the owner that protects nothing: the
-    # tenant filters below do.
     with tenant_session(tenant_id, engine) as session:
         history = generate(cfg, pack, load_refs(session, tenant_id), seed=seed, scale=scale)
         # Engine rows (cases, proposals, refunds) reference commerce rows: clear them first,

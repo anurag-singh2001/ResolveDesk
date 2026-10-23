@@ -20,10 +20,10 @@ def _db_fingerprint(engine, slug) -> dict[str, tuple[int, str]]:
     return out
 
 
-def test_reload_with_same_seed_is_identical(app_engine, owner_engine, seeded_history, tenant):
+def test_reload_with_same_seed_is_identical(app_engine, maint_engine, seeded_history, tenant):
     cfg = seeded_history[tenant.name]
     first = _db_fingerprint(app_engine, cfg.slug)
-    history = load_history(owner_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+    history = load_history(maint_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
     assert _db_fingerprint(app_engine, cfg.slug) == first
     assert first["transactions"][0] == len(history.transactions) > 0
 

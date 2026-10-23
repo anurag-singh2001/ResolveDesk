@@ -33,7 +33,7 @@ def _ctx(tenant_id, user_id):
 
 
 @pytest.fixture
-def case(app_engine, owner_engine, seeded_history, tenant):
+def case(app_engine, maint_engine, seeded_history, tenant):
     """A case on one of the tenant's orders; removed (with its engine rows) afterwards."""
     cfg = seeded_history[tenant.name]
     tid = tenant_id_for(cfg.slug)
@@ -63,9 +63,9 @@ def case(app_engine, owner_engine, seeded_history, tenant):
             "user_id": user_id,
         }
     yield info
-    # The app role can't delete engine rows (by design); cleanup runs as the owner, which
-    # bypasses RLS on Neon, so every delete filters on tenant_id.
-    with tenant_session(tid, owner_engine) as s:
+    # The app role can't delete engine rows (by design); cleanup runs as the
+    # maintenance role (RLS applies), and every delete also filters on tenant_id.
+    with tenant_session(tid, maint_engine) as s:
         s.execute(
             delete(RefundOperation).where(
                 RefundOperation.tenant_id == tid,
@@ -238,7 +238,7 @@ def test_action_outside_the_tenants_pack_is_refused(app_engine, case):
 
 
 def test_proposal_for_another_tenants_case_is_unknown(
-    app_engine, owner_engine, seeded_history, case, tenant
+    app_engine, maint_engine, seeded_history, case, tenant
 ):
     other = next(slug for slug in seeded_history if slug != tenant.name)
     other_tid = tenant_id_for(seeded_history[other].slug)
@@ -268,7 +268,7 @@ def test_proposal_for_another_tenants_case_is_unknown(
                 reason="x",
             )
     finally:
-        with tenant_session(other_tid, owner_engine) as s:
+        with tenant_session(other_tid, maint_engine) as s:
             s.execute(delete(Case).where(Case.tenant_id == other_tid, Case.id == foreign_id))
 
 
