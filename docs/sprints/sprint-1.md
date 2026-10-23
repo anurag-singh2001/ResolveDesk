@@ -69,6 +69,16 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Scorecard notes: main session caught 1 design bug itself before ship (loader prune would have wiped history) and fixed 2 small test bugs; 1 safety-driven rework commit (39bc7d0).
 - Next: E2.2 mocks, then E2.3a (per rescope plan). No story at risk (sprint ends 2026-10-28).
 
+### 2026-10-24 (fifth stand-up)
+- E2.2 done: d1e4920, 319ab3a, merged to test as 84c5395. Ticked [x] in EPICS.md. Done-when met: contract tests incl. same key + different payload -> 409.
+- Evidence (main session report; scrum-master checked git log only, DB suites not re-run): `make test` 188 passed (1 skip); `make test-isolation` 111 passed; `make lint` clean; unit suite stable over 3 consecutive runs (concurrency/timing tests).
+- Safety pass 1 = findings: chaos shared across tenants, too-loose dev-route gate, order-dependent seeded RNG, live-object reads, no transient-error model, test gaps. All fixed in 319ab3a. Re-review pending (not yet confirmed).
+- E2.1 re-review pass 2: clean; its note closed by 650c75f (TenantLoadError names table + constraint).
+- Design rule for E2.3b: a decline is final per key; a new attempt needs a new approval and an attempt-scoped idempotency key.
+- Scorecard notes: 1 safety-driven rework commit (319ab3a) on E2.2; safety-reviewer pass 1 found 6 issue groups.
+- Next: E2.3a (M). Fits: 4 days left (ends 2026-10-28), depends only on E1.2. Not at risk.
+- Rescope reconfirmed: E2.3b, E2.3c, E2.4 -> Sprint 2 (one safe-execution slice, E2.4 written from real code). Human has still not answered; default stands.
+
 ## Review
 _to fill at sprint end_
 
