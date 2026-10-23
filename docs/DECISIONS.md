@@ -8,6 +8,11 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-23 · Mocks: in-process fakes with one idempotency core
+- Decision: `mocks/` holds in-process fakes (payment, messaging, POS, delivery app) shared through a process-wide registry. Payment and messaging share `IdempotentMock`: one stored operation per (merchant, idempotency key); same key + same canonical-JSON payload hash → the stored operation (never re-applied, even after a decline); same key + other payload → `IdempotencyConflict` (HTTP 409); `get_by_key` for reconciliation is never subject to chaos. Seeded chaos: timeout before accept (nothing applied), accept-then-timeout (applied, caller can't tell), decline, processing-then-settle, delay. `/admin/chaos` (hq_owner) is only mounted when `APP_ENV` is not prod.
+- Why: fast, deterministic contract and chaos tests with no extra processes (the dev machine has little headroom); keys scoped per merchant mirror real providers, so two tenants can never collide.
+- Alternative rejected: standalone FastAPI mock services (extra processes and ports for the same contract); random unseeded chaos (flaky tests).
+
 ## 2026-10-23 · Simulator: config-driven, fixed calendar, replace-on-reseed
 - Decision: volumes, planted problems (late / missing_item / wrong_item / repeat_drop with location, hour and weekday filters) and messy-data rates live in each tenant's `simulation:` block; the generic simulator reads them plus the vertical pack (`fulfilment_kinds`). The window ends on a configured `end_date`, not today. Ids are uuid5 of the tenant + row number; reseeding deletes and reinserts the tenant's commerce rows in one transaction. The loader now prunes only config tables (`CONFIG_MODELS`).
 - Why: no tenant names in code (hard rule 2); same seed → byte-identical data on any day; delete+insert is simpler and faster than upserting ~80k rows. Measured: full seed of both tenants 47 s on Neon.
