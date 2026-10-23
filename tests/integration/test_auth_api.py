@@ -1,8 +1,11 @@
 import uuid
 
 import pytest
-from sqlalchemy import select, update
+from fastapi import Depends
+from fastapi.testclient import TestClient
+from sqlalchemy import select, text, update
 
+from app.api.deps import get_db_engine, get_tenant_context, tenant_db
 from app.config import get_settings
 from app.core.auth import issue_token
 from app.core.db import tenant_session
@@ -10,6 +13,7 @@ from app.core.models import Membership, User
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_loader import load_tenant_into_db
 from app.core.verticals import load_pack
+from app.main import create_app
 from tests.helpers import login
 
 
@@ -77,6 +81,27 @@ def test_customer_cannot_use_staff_routes(api, seeded, tenant):
     headers = login(api, cfg.slug, customer.email)
     assert api.get("/locations", headers=headers).status_code == 403
     assert api.get(f"/locations/{uuid.uuid4()}", headers=headers).status_code == 403
+
+
+def test_context_and_route_data_share_one_transaction(app_engine, seeded, tenant):
+    """The access decision and the data a route reads must come from the same transaction."""
+
+    application = create_app()
+    application.dependency_overrides[get_db_engine] = lambda: app_engine
+
+    @application.get("/_probe")
+    def probe(ctx=Depends(get_tenant_context), db=Depends(tenant_db)):
+        return {
+            "same_session": db.info.get("ctx") is ctx,
+            "txid": db.execute(text("SELECT txid_current()")).scalar(),
+            "txid_again": db.execute(text("SELECT txid_current()")).scalar(),
+        }
+
+    client = TestClient(application)
+    cfg = seeded[tenant.name]
+    body = client.get("/_probe", headers=login(client, cfg.slug, cfg.users[0].email)).json()
+    assert body["same_session"] is True
+    assert body["txid"] == body["txid_again"]
 
 
 @pytest.fixture

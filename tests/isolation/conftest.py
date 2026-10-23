@@ -110,7 +110,12 @@ def _with_reconnect(fn, engine, attempts: int = 3):
 @pytest.fixture
 def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
     """Two freshly generated tenants (never a real tenant slug)."""
-    a, b = _with_reconnect(_seed, app_engine), _with_reconnect(_seed, app_engine)
+    a = _with_reconnect(_seed, app_engine)
+    try:
+        b = _with_reconnect(_seed, app_engine)
+    except Exception:
+        _cleanup(app_engine, a)
+        raise
     yield a, b
     _cleanup(app_engine, a)
     _cleanup(app_engine, b)

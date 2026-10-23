@@ -25,7 +25,8 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     llm_cache: bool = False
 
-    app_env: Literal["dev", "test", "prod"] = "dev"
+    # Fail safe: an unset APP_ENV is treated as prod (dev/test must opt in explicitly).
+    app_env: Literal["dev", "test", "prod"] = "prod"
 
     # HS256 needs >= 32 bytes of key (RFC 7518 3.2); shorter secrets fail at startup.
     jwt_secret: str = Field(default=DEV_JWT_SECRET, min_length=32)
