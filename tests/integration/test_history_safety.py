@@ -1,14 +1,19 @@
 """Reseed and loader safety around generated history, and money consistency in the DB."""
 
+import uuid
+
 import pytest
-from sqlalchemy import func, select, text
+from sqlalchemy import delete, func, select, text
 
 from app.core.db import tenant_session
 from app.core.models import (
     COMMERCE_MODELS,
     ENGINE_MODELS,
+    Brand,
     Customer,
     LineItem,
+    Location,
+    Organization,
     Payment,
     Transaction,
     User,
@@ -17,7 +22,7 @@ from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from app.core.tenant_loader import TenantLoadError, load_tenant_into_db
 from app.core.verticals import load_pack
-from simulator.load import load_history
+from simulator.load import load_history, load_refs
 from tests.helpers import HISTORY_SCALE
 
 COMMERCE_TABLES = {m.__tablename__ for m in COMMERCE_MODELS}
@@ -133,3 +138,43 @@ def test_reseeding_one_tenant_never_touches_another(app_engine, owner_engine, re
     assert all(c["transactions"] > 0 for c in before.values())
     load_history(owner_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
     assert {p.name: counts(load_tenant(p).slug) for p in others} == before
+
+
+def test_refs_are_per_tenant_even_when_slugs_collide(app_engine, owner_engine, restore, tenant):
+    """load_refs runs as the owner (no RLS on Neon): a same-slug brand/location/user in
+    another tenant must never be picked up."""
+    cfg = restore
+    tid = tenant_id_for(cfg.slug)
+    intruder = uuid.uuid4()
+    brand, location, user = cfg.brands[0].slug, cfg.locations[0].slug, cfg.users[0].email
+    with tenant_session(intruder, app_engine) as s:
+        s.add(
+            Organization(
+                id=intruder,
+                tenant_id=intruder,
+                slug=f"x-{intruder.hex[:8]}",
+                name="x",
+                vertical_pack=cfg.vertical_pack,
+            )
+        )
+        s.flush()
+        s.add_all(
+            [
+                Brand(tenant_id=intruder, slug=brand, name="clone"),
+                Location(tenant_id=intruder, slug=location, name="clone"),
+                User(tenant_id=intruder, email=user, display_name="clone"),
+            ]
+        )
+    try:
+        with tenant_session(tid, owner_engine) as s:
+            refs = load_refs(s, tid)
+        with tenant_session(tid, app_engine) as s:  # RLS-bound truth for this tenant
+            assert refs.brand_ids[brand] == s.scalar(select(Brand.id).where(Brand.slug == brand))
+            assert refs.location_ids[location] == s.scalar(
+                select(Location.id).where(Location.slug == location)
+            )
+            assert refs.user_ids[user] == s.scalar(select(User.id).where(User.email == user))
+    finally:
+        with tenant_session(intruder, owner_engine) as s:
+            for model in (User, Location, Brand, Organization):
+                s.execute(delete(model).where(model.tenant_id == intruder))

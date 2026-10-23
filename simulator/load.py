@@ -14,11 +14,18 @@ BATCH = 1000
 
 
 def load_refs(session, tenant_id) -> Refs:
+    """Ids by slug/email for ONE tenant. Filtered explicitly: callers may hold a session that
+    RLS doesn't constrain (the owner on Neon), and slugs repeat across tenants."""
+
+    def by(key, model):
+        rows = session.execute(select(key, model.id).where(model.tenant_id == tenant_id))
+        return {k: v for k, v in rows}
+
     return Refs(
         tenant_id=tenant_id,
-        brand_ids=dict(session.execute(select(Brand.slug, Brand.id)).all()),
-        location_ids=dict(session.execute(select(Location.slug, Location.id)).all()),
-        user_ids=dict(session.execute(select(User.email, User.id)).all()),
+        brand_ids=by(Brand.slug, Brand),
+        location_ids=by(Location.slug, Location),
+        user_ids=by(User.email, User),
     )
 
 
@@ -37,10 +44,12 @@ def load_history(
         # Reseeding replaces every commerce row: never against production data.
         raise RuntimeError("refusing to (re)generate history when APP_ENV=prod")
     tenant_id = tenant_id_for(cfg.slug)
+    # tenant_session still sets app.tenant_id, but for the owner that protects nothing: the
+    # tenant filters below do.
     with tenant_session(tenant_id, engine) as session:
         history = generate(cfg, pack, load_refs(session, tenant_id), seed=seed, scale=scale)
-        # Engine rows (cases, proposals, refunds) reference commerce rows: clear them first.
-        # Children first; RLS keeps it to this tenant. Audit events are append-only and stay.
+        # Engine rows (cases, proposals, refunds) reference commerce rows: clear them first,
+        # children first. Audit events are append-only and stay.
         for model in [*reversed(ENGINE_MODELS), *reversed(COMMERCE_MODELS)]:
             session.execute(delete(model).where(model.tenant_id == tenant_id))
         for model, rows in history.tables():
