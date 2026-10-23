@@ -193,9 +193,13 @@ def _with_reconnect(fn, engine, attempts: int = 3):
                 raise
 
 
-@pytest.fixture
+@pytest.fixture(scope="module")
 def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
-    """Two freshly generated tenants (never a real tenant slug)."""
+    """Two freshly generated tenants (never a real tenant slug), shared per test module.
+
+    Sharing is safe because the RLS tests only read, or attempt writes that must be rejected
+    (a write that wrongly succeeded fails its own test). Seeding per test cost ~70 Neon round
+    trips each and made the suite ~12 minutes."""
     a = _with_reconnect(_seed, app_engine)
     try:
         b = _with_reconnect(_seed, app_engine)
