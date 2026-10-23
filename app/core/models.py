@@ -115,8 +115,8 @@ class User(TenantOwned, Base):
 
 
 class Membership(TenantOwned, Base):
-    """A user's role. Scope rows live in membership_brands / membership_locations;
-    no scope rows means the whole org (checked in code, 1d)."""
+    """A user's role. Scope rows live in membership_brands / membership_locations.
+    Only hq_owner sees the whole org; scoped roles with no rows see nothing (tenancy.py)."""
 
     __tablename__ = "memberships"
     __table_args__ = (

@@ -8,6 +8,11 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-23 · Demo auth: thin token, scope from the DB, fail closed
+- Decision: `POST /auth/login {tenant, email, password}` with one demo password for seeded users (`DEMO_AUTH` can switch it off). The HS256 JWT holds only `tid` + `sub` + `exp` (secret must be ≥ 32 bytes). Every request re-reads role and location/brand scope from the DB inside the token's tenant session. Only `hq_owner` sees the whole org; scoped roles with no scope rows see nothing. Out-of-scope and other-tenant records both return 404; a customer on a staff route gets 403 (the route exists for everyone, the record question doesn't arise).
+- Why: a role or scope in the token could be replayed after it was revoked; reading the user under RLS means a token pairing tenant A with a user of tenant B finds no user (401). Failing closed avoids "empty scope = everything".
+- Alternative rejected: role/scope claims in the JWT (stale after changes); 403 for out-of-scope records (confirms they exist).
+
 ## 2026-10-23 · Git branches: feature → test → main
 - Decision: GitHub `origin`; `main` = deployed/stable, `test` = integration, `feature/<story-id>-<name>` cut from `test`. A story merges into `test` only after `make lint`, `make test`, `make test-isolation` (and safety-reviewer where required) pass; `test` is promoted to `main` at sprint review. Merges use `--no-ff` so one `git revert -m 1 <merge>` undoes a whole story.
 - Why: the human reviews remotely; every story is isolated and revertible, and `main` only ever holds verified work.

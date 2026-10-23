@@ -1,6 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["gemini", "groq", "ollama"]
@@ -23,7 +24,12 @@ class Settings(BaseSettings):
     ollama_base_url: str = "http://localhost:11434"
     llm_cache: bool = False
 
-    jwt_secret: str = "dev-only-change-me"
+    # HS256 needs >= 32 bytes of key (RFC 7518 3.2); shorter secrets fail at startup.
+    jwt_secret: str = Field(default="dev-only-change-me-dev-only-change-me", min_length=32)
+    jwt_ttl_minutes: int = 480
+    # Demo login: every seeded user signs in with this password. Off outside demos.
+    demo_auth: bool = True
+    demo_password: str = "demo"
 
 
 @lru_cache
