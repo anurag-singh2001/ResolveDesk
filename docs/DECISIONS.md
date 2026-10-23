@@ -8,6 +8,16 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-23 · Test database instead of a Neon test branch
+- Decision: tests use a second database `resolvedesk_test` on the same Neon branch; the app role is cluster-wide so it works in both. Bootstrap (role, vector, `lg` schema, grants) runs in both databases.
+- Why: creating a branch needs the Neon CLI/console login; a database needs only the owner URL. Same isolation for tests.
+- Alternative rejected: Neon `test` branch (extra setup step; can revisit for CI resets).
+
+## 2026-10-23 · Tenancy schema: forced RLS + composite foreign keys
+- Decision: RLS is ENABLED and FORCED on every tenant table with policy `tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK). Child tables reference parents by `(tenant_id, id)`. `organizations.tenant_id = id` (check constraint). Brand/location many-to-many via `location_brands`.
+- Why: FORCE makes the owner role obey RLS too; unset tenant → NULL → no rows. Composite FKs stop a row in tenant A pointing at a row in tenant B even though FK checks bypass RLS.
+- Alternative rejected: single-column FKs (cross-tenant links possible), RLS without FORCE (owner bypasses).
+
 ## 2026-10-23 · Sprints with scrum-master and business-analyst agents
 - Decision: 5 sprints (0–4) tracked in docs/EPICS.md + docs/sprints/; a `scrum-master` agent runs meetups, ticks stories only after verifying done-when, and keeps an evidence-based agent/model scorecard; a `business-analyst` agent writes sourced research into docs/research/.
 - Why: visible progress against deadlines and a record of which agent/model performed well; research keeps policies, data and scenarios realistic.

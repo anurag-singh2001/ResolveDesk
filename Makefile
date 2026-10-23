@@ -13,7 +13,7 @@ down:
 	@echo Database is hosted on Neon; nothing to stop.
 
 migrate:
-	@echo not implemented yet
+	uv run alembic upgrade head
 
 seed:
 	@echo not implemented yet
@@ -25,7 +25,7 @@ test-tenant:
 	uv run pytest -q -m "not chaos and not live" -k "$(T)"
 
 test-isolation:
-	@echo not implemented yet
+	uv run pytest -q -m isolation
 
 test-chaos:
 	@echo not implemented yet

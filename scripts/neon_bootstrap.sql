@@ -1,5 +1,6 @@
--- One-time Neon bootstrap. Run in the Neon SQL editor on the `main` branch, as neondb_owner,
--- BEFORE creating the `test` branch (child branches copy roles and grants from the parent).
+-- One-time Neon bootstrap, as neondb_owner. Run it in `neondb`, then
+-- `CREATE DATABASE resolvedesk_test;` and run everything except CREATE ROLE again in that database
+-- (replace neondb in the GRANT CONNECT line). Roles are cluster-wide; extensions and grants are per database.
 --
 -- Why the role is created here and not in the Neon console: console-created roles join
 -- neon_superuser, which has BYPASSRLS. The app role must be subject to RLS (hard rule 1).
