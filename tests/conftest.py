@@ -69,10 +69,10 @@ def seeded(app_engine, owner_engine) -> dict[str, TenantConfig]:
 
 
 @pytest.fixture(scope="session")
-def seeded_history(app_engine, seeded) -> dict[str, TenantConfig]:
+def seeded_history(app_engine, owner_engine, seeded) -> dict[str, TenantConfig]:
     """seeded + a small generated order history per tenant."""
     for cfg in seeded.values():
-        load_history(app_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+        load_history(owner_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
     return seeded
 
 

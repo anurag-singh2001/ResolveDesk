@@ -27,6 +27,10 @@ def load_history(
 ) -> History:
     """Regenerate and replace this tenant's history. The tenant config must already be loaded.
 
+    `engine` must be the OWNER engine: the app role may not delete engine rows (cases,
+    proposals, approvals...), by design. On Neon the owner has BYPASSRLS, so RLS does NOT
+    limit it: every statement here filters on tenant_id explicitly.
+
     Admin/seed path (like the tenant loader): the tenant comes from the folder, not a request.
     """
     if get_settings().app_env == "prod":
@@ -38,7 +42,7 @@ def load_history(
         # Engine rows (cases, proposals, refunds) reference commerce rows: clear them first.
         # Children first; RLS keeps it to this tenant. Audit events are append-only and stay.
         for model in [*reversed(ENGINE_MODELS), *reversed(COMMERCE_MODELS)]:
-            session.execute(delete(model))
+            session.execute(delete(model).where(model.tenant_id == tenant_id))
         for model, rows in history.tables():
             for i in range(0, len(rows), BATCH):
                 session.execute(insert(model), rows[i : i + BATCH])

@@ -14,6 +14,7 @@ from app.core.models import (
     User,
 )
 from app.core.tenancy import tenant_id_for
+from app.core.tenant_config import load_tenant, tenant_dirs
 from app.core.tenant_loader import TenantLoadError, load_tenant_into_db
 from app.core.verticals import load_pack
 from simulator.load import load_history
@@ -62,12 +63,12 @@ def test_order_money_adds_up(app_engine, seeded_history, tenant):
 
 
 @pytest.fixture
-def restore(app_engine, seeded_history, tenant):
+def restore(app_engine, owner_engine, seeded_history, tenant):
     yield seeded_history[tenant.name]
     cfg = seeded_history[tenant.name]
     pack = load_pack(cfg.vertical_pack)
     load_tenant_into_db(app_engine, cfg, pack)
-    load_history(app_engine, cfg, pack, scale=HISTORY_SCALE)
+    load_history(owner_engine, cfg, pack, scale=HISTORY_SCALE)
 
 
 def test_removing_a_login_user_unlinks_their_customer(app_engine, restore):
@@ -113,3 +114,22 @@ def test_removing_a_location_with_orders_fails_cleanly(app_engine, restore):
         load_tenant_into_db(app_engine, trimmed, load_pack(cfg.vertical_pack))
     with tenant_session(tid, app_engine) as s:  # rolled back: nothing half-applied
         assert s.scalar(select(func.count()).select_from(Transaction)) == before
+
+
+def test_reseeding_one_tenant_never_touches_another(app_engine, owner_engine, restore, tenant):
+    """The owner role bypasses RLS on Neon, so the reseed must filter on tenant_id itself."""
+    cfg = restore
+    others = [p for p in tenant_dirs() if p.name != tenant.name]
+    assert others, "needs at least two tenants"
+
+    def counts(slug):
+        with tenant_session(tenant_id_for(slug), app_engine) as s:
+            return {
+                m.__tablename__: s.scalar(select(func.count()).select_from(m))
+                for m in COMMERCE_MODELS
+            }
+
+    before = {p.name: counts(load_tenant(p).slug) for p in others}
+    assert all(c["transactions"] > 0 for c in before.values())
+    load_history(owner_engine, cfg, load_pack(cfg.vertical_pack), scale=HISTORY_SCALE)
+    assert {p.name: counts(load_tenant(p).slug) for p in others} == before

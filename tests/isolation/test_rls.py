@@ -33,8 +33,15 @@ def _stamp(model):
     return getattr(model, "updated_at", None) or model.occurred_at
 
 
-def _append_only(model) -> bool:
-    return getattr(model, "append_only", False)
+def _attempt(engine, tenant_id, stmt) -> int:
+    """Run a write as the app role. Returns rows affected, or 0 if the role may not write the
+    table at all (engine and audit tables are insert-only or status-only for the app)."""
+    try:
+        with tenant_session(tenant_id, engine) as s:
+            return s.execute(stmt).rowcount
+    except DBAPIError as exc:
+        assert "permission denied" in str(exc), exc
+        return 0
 
 
 @pytest.mark.parametrize("model", TENANT_MODELS, ids=_by_name)
@@ -43,15 +50,7 @@ def test_cannot_update_other_tenant_rows(app_engine, tenants, model):
     with tenant_session(b.tenant_id, app_engine) as s:
         before = sorted(s.scalars(select(_stamp(model))))
     stmt = update(model).where(model.tenant_id == b.tenant_id).values(tenant_id=model.tenant_id)
-    if _append_only(model):  # no UPDATE privilege at all, for any tenant
-        with (
-            pytest.raises(DBAPIError, match="permission denied"),
-            tenant_session(a.tenant_id, app_engine) as s,
-        ):
-            s.execute(stmt)
-    else:
-        with tenant_session(a.tenant_id, app_engine) as s:
-            assert s.execute(stmt).rowcount == 0
+    assert _attempt(app_engine, a.tenant_id, stmt) == 0
     with tenant_session(b.tenant_id, app_engine) as s:
         assert sorted(s.scalars(select(_stamp(model)))) == before
 
@@ -62,15 +61,7 @@ def test_cannot_delete_other_tenant_rows(app_engine, tenants, model):
     with tenant_session(b.tenant_id, app_engine) as s:
         before = s.scalar(select(func.count()).select_from(model))
     stmt = model.__table__.delete().where(model.tenant_id == b.tenant_id)
-    if _append_only(model):
-        with (
-            pytest.raises(DBAPIError, match="permission denied"),
-            tenant_session(a.tenant_id, app_engine) as s,
-        ):
-            s.execute(stmt)
-    else:
-        with tenant_session(a.tenant_id, app_engine) as s:
-            s.execute(stmt)
+    _attempt(app_engine, a.tenant_id, stmt)
     with tenant_session(b.tenant_id, app_engine) as s:
         assert s.scalar(select(func.count()).select_from(model)) == before >= 1
 

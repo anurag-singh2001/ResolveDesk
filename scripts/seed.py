@@ -44,7 +44,7 @@ def main(argv: list[str]) -> int:
         tid = load_tenant_into_db(engine, cfg, pack)
         summary = ""
         if not args.no_history:
-            history = load_history(engine, cfg, pack, seed=args.seed, scale=args.scale)
+            history = load_history(owner_engine, cfg, pack, seed=args.seed, scale=args.scale)
             summary = (
                 f", {len(history.customers)} customers, {len(history.transactions)} orders,"
                 f" {len(history.tickets)} tickets, checksum {history.checksum()[:12]}"

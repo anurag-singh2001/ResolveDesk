@@ -454,6 +454,7 @@ class WorkflowRun(TenantOwned, Base):
     __tablename__ = "workflow_runs"
     __table_args__ = (
         UniqueConstraint("tenant_id", "id", name="uq_workflow_runs_tenant_id"),
+        UniqueConstraint("tenant_id", "id", "case_id", name="uq_workflow_runs_tenant_id_case"),
         _fk("case_id", "cases", ondelete="CASCADE"),
         CheckConstraint(
             "status IN ('running', 'paused', 'completed', 'escalated', 'failed')",
@@ -478,8 +479,17 @@ class ActionProposal(TenantOwned, Base):
         UniqueConstraint("tenant_id", "id", name="uq_action_proposals_tenant_id"),
         UniqueConstraint("tenant_id", "id", "payload_hash", name="uq_action_proposals_id_hash"),
         _fk("case_id", "cases", ondelete="CASCADE"),
-        _fk("run_id", "workflow_runs"),
+        ForeignKeyConstraint(
+            ["tenant_id", "run_id", "case_id"],
+            ["workflow_runs.tenant_id", "workflow_runs.id", "workflow_runs.case_id"],
+            name="fk_action_proposals_run_case",
+        ),
         CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_action_proposals_hash"),
+        CheckConstraint(
+            "(amount_param IS NULL AND amount_paise IS NULL) OR "
+            "(amount_param IS NOT NULL AND (params ->> amount_param)::bigint = amount_paise)",
+            name="ck_action_proposals_amount_matches_params",
+        ),
         CheckConstraint(
             "amount_paise IS NULL OR amount_paise > 0", name="ck_action_proposals_amount"
         ),
@@ -492,6 +502,8 @@ class ActionProposal(TenantOwned, Base):
     params: Mapped[dict] = mapped_column(JSONB, nullable=False)
     payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
     amount_paise: Mapped[int | None] = mapped_column(BigInteger)
+    # Which param amount_paise was copied from; a DB check keeps the two equal.
+    amount_param: Mapped[str | None] = mapped_column(String(64))
     risk: Mapped[str] = mapped_column(String(8), nullable=False)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
@@ -521,6 +533,11 @@ class Approval(TenantOwned, Base):
             "(mode = 'human') = (decided_by IS NOT NULL)", name="ck_approvals_human_has_user"
         ),
         CheckConstraint("expires_at > decided_at", name="ck_approvals_expiry"),
+        CheckConstraint(
+            "expires_at <= decided_at + interval '7 days'", name="ck_approvals_expiry_cap"
+        ),
+        # Target for executions: (approval, its proposal, decision) must match together.
+        UniqueConstraint("tenant_id", "id", "proposal_id", "decision", name="uq_approvals_binding"),
     )
 
     proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -541,13 +558,24 @@ class Execution(TenantOwned, Base):
     __table_args__ = (
         UniqueConstraint("tenant_id", "id", name="uq_executions_tenant_id"),
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_executions_key"),
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_executions_one_per_proposal"),
         _fk("proposal_id", "action_proposals", ondelete="CASCADE"),
-        _fk("approval_id", "approvals", ondelete="CASCADE"),
+        # Only an APPROVED approval OF THIS proposal can back an execution.
+        ForeignKeyConstraint(
+            ["tenant_id", "approval_id", "proposal_id", "approval_decision"],
+            ["approvals.tenant_id", "approvals.id", "approvals.proposal_id", "approvals.decision"],
+            ondelete="CASCADE",
+            name="fk_executions_approved_approval_of_proposal",
+        ),
+        CheckConstraint("approval_decision = 'approved'", name="ck_executions_only_approved"),
         CheckConstraint(f"status IN {EXECUTION_STATUSES}", name="ck_executions_status"),
     )
 
     proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     approval_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    approval_decision: Mapped[str] = mapped_column(
+        String(16), nullable=False, server_default="approved"
+    )
     idempotency_key: Mapped[str] = mapped_column(String(128), nullable=False)
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(64))
@@ -575,6 +603,8 @@ class RefundOperation(TenantOwned, Base):
     __tablename__ = "refund_operations"
     __table_args__ = (
         UniqueConstraint("tenant_id", "idempotency_key", name="uq_refund_operations_key"),
+        # One reservation per proposal; a trigger checks amount + order match it (0009).
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_refund_operations_one_per_proposal"),
         _fk("transaction_id", "transactions"),
         _fk("proposal_id", "action_proposals"),
         CheckConstraint("amount_paise > 0", name="ck_refund_operations_amount"),

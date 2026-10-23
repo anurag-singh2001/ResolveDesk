@@ -8,6 +8,13 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-24 · Engine least privilege, and the Neon owner bypasses RLS
+- Finding: Neon's `neondb_owner` has `rolbypassrls = true` (via `neon_superuser`). `FORCE ROW LEVEL SECURITY` does not constrain it. Moving the dev reseed to the owner role made one tenant's reseed delete every tenant's history in the test database (caught by tests before any merge; the main database was last reseeded as the app role).
+- Decision: every statement run as the owner (reseed, test cleanup) filters on `tenant_id` explicitly, and a test proves reseeding tenant A leaves tenant B unchanged. Runtime code never uses the owner.
+- Decision (migration 0009, after the E2.3a safety review): the app role can't delete engine rows; proposals, approvals and verifications are insert+read only; executions and refund_operations may only change status columns; audit_events append-only, and the migration fails if the app role is missing. Executions must reference an approved approval of the same proposal (composite FK including `decision`), one per proposal; refund reservations must match their proposal's amount and order (trigger), one per proposal; `amount_paise` must equal the param it came from (check); approval expiry capped at 7 days; a proposal's run must belong to its case; `create_proposal` refuses order/customer/case ids that don't belong to the case.
+- Why: these are exactly the invariants the executor (E2.3b) relies on; making them structural means a bug or a race can't violate them.
+- Alternative considered: a separate NOBYPASSRLS maintenance role for reseeds (RLS would protect the reseed too). Deferred: needs another role and URL in `.env`; explicit filters plus the cross-tenant test cover the dev-only path.
+
 ## 2026-10-24 · Proposals, approvals and the refund ledger are enforced by the database
 - Decision: `action_proposals` are immutable (UPDATE rejected by trigger) and unique on `(tenant_id, id, payload_hash)`; `approvals` reference that triple (so an approval can only exist for the exact hash) and are unique per proposal (two managers can't both decide); a human approval needs `decided_by`, an auto one must not have it, and `expires_at > decided_at`. `executions` and `refund_operations` have unique idempotency keys per tenant; refund amounts are `bigint > 0`. `audit_events` is append-only for the app role (no UPDATE/DELETE/TRUNCATE). The payload hash is sha256 of canonical JSON of `{action, case_id, params}`, floats refused; params are validated in JSON mode against the action's strict `Input` (`extra="forbid"`, ints stay ints).
 - Connectors are chosen per tenant by settings (`payment_connector`, `messaging_connector`, `orders_connector`), always addressed with `merchant_id_for(ctx.tenant_id)`; they translate provider exceptions into outcomes (`unknown` after a timeout, `unavailable` for transient errors) and never decide retries.
@@ -67,7 +74,7 @@ Format:
 
 ## 2026-10-23 · Tenancy schema: forced RLS + composite foreign keys
 - Decision: RLS is ENABLED and FORCED on every tenant table with policy `tenant_id = nullif(current_setting('app.tenant_id', true), '')::uuid` (USING + WITH CHECK). Child tables reference parents by `(tenant_id, id)`. `organizations.tenant_id = id` (check constraint). Brand/location many-to-many via `location_brands`.
-- Why: FORCE makes the owner role obey RLS too; unset tenant → NULL → no rows. Composite FKs stop a row in tenant A pointing at a row in tenant B even though FK checks bypass RLS.
+- Why: FORCE makes the owner role obey RLS too (correction 2026-10-24: not for a role with BYPASSRLS, which Neon's owner has; see the entry of that date); unset tenant → NULL → no rows. Composite FKs stop a row in tenant A pointing at a row in tenant B even though FK checks bypass RLS.
 - Alternative rejected: single-column FKs (cross-tenant links possible), RLS without FORCE (owner bypasses).
 
 ## 2026-10-23 · Sprints with scrum-master and business-analyst agents

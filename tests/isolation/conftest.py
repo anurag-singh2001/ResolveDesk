@@ -10,7 +10,6 @@ from sqlalchemy.exc import OperationalError
 
 from app.core.db import tenant_session
 from app.core.models import (
-    APPEND_ONLY_MODELS,
     TENANT_MODELS,
     ActionProposal,
     Approval,
@@ -213,9 +212,10 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
             case_id=case_id,
             run_id=run_id,
             action="refund",
-            params={},
+            params={"transaction_id": str(order_id), "amount_paise": 100, "reason": "test"},
             payload_hash=digest,
             amount_paise=100,
+            amount_param="amount_paise",
             risk="high",
             reason="test",
         )
@@ -262,14 +262,11 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
 
 
 def _cleanup(engine: Engine, t: SeededTenant, owner_engine: Engine) -> None:
-    with tenant_session(t.tenant_id, engine) as s:
-        for model in reversed(TENANT_MODELS):
-            if model not in APPEND_ONLY_MODELS:
-                s.execute(delete(model))
-    # The app role can't delete audit rows (append-only); test cleanup uses the owner.
+    # The app role may not delete engine or audit rows (by design): clean up as the owner.
+    # The owner bypasses RLS on Neon, so filter on tenant_id explicitly.
     with tenant_session(t.tenant_id, owner_engine) as s:
-        for model in APPEND_ONLY_MODELS:
-            s.execute(delete(model))
+        for model in reversed(TENANT_MODELS):
+            s.execute(delete(model).where(model.tenant_id == t.tenant_id))
 
 
 def _with_reconnect(fn, engine, attempts: int = 3):

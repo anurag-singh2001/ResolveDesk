@@ -9,7 +9,9 @@ TENANT_PREDICATE = "tenant_id = nullif(current_setting('app.tenant_id', true), '
 
 def enable_rls(table: str) -> None:
     op.execute(f"ALTER TABLE {table} ENABLE ROW LEVEL SECURITY")
-    # FORCE: the table owner (used by migrations) is subject to the policy too.
+    # FORCE: the table owner is subject to the policy too, unless the role has BYPASSRLS.
+    # On Neon the owner (neondb_owner) DOES have BYPASSRLS: owner-run code must filter on
+    # tenant_id itself. The app role is NOBYPASSRLS, so for it RLS always applies.
     op.execute(f"ALTER TABLE {table} FORCE ROW LEVEL SECURITY")
     op.execute(
         f"CREATE POLICY tenant_isolation ON {table} "
