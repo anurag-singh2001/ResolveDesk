@@ -30,7 +30,15 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Everything in the critical chain if E0.3 is not done by 2026-10-24.
 
 ## Stand-ups
-_none yet_
+### 2026-10-23
+- E0.3 [~]: Neon project, app role (bypassrls=False), test DB `resolvedesk_test` (database not branch, see DECISIONS.md) verified. Blocked on human: fill .env, rotate owner password (leaked in chat), then `make db-check` from .env.
+- E0.6 done (6d76056).
+- E1.2 done, c8ca319: `make migrate` (0001+0002) ok; `make test-isolation` 42 passed (133s, run with URLs from scratchpad file); `make test` 4 passed; `make lint` clean.
+- Safety: pass 1 = 4 findings (membership scope arrays w/o tenant check; hand-kept RLS table list; weak update test; ORM-only updated_at), all fixed. Pass 2 = 4 low notes, 3 fixed, 1 deferred: pin search_path on set_updated_at() in next migration.
+- Process incident: test-runner reported 42 isolation errors; cause was CRLF in env lines loaded in bash (`channel_binding=require`), wrongly blamed on the driver. Not a code defect.
+- Next: E1.3, E1.4 (E1.4 needs safety review), E2.2 mocks, E2.3a.
+- Blocked: .env (human). Open human decisions: move E2.3b/E2.3c/E2.4 to Sprint 2; BA questions (aggregator framing, graduated late tiers, Rs150 voucher cap).
+- Scorecard notes so far: test-runner false failure (accuracy); safety-reviewer 4 findings pass 1, 0 high after fixes.
 
 ## Review
 _to fill at sprint end_
