@@ -89,6 +89,14 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Blocked on human: create .env (now incl. MAINT URLs); rotate `neondb_owner` password.
 - Scorecard notes: safety-reviewer high value on E2.3a (9 findings over 2 passes, incl. a real cross-tenant data-loss path); 3 safety-driven rework commits (754996a, 3e3b24f, c0c7c66).
 
+### 2026-10-24 (seventh stand-up)
+- E2.3b done: b2431eb, d03d2b6, 42e72bb, 2cfec15, merged to test as b6f469e (human said merge). Ticked [x] in EPICS.md. Done-when met: over-refund, expired approval, changed payload all blocked.
+- Evidence (main session report; scrum-master checked git log only, DB suites not re-run): `make lint` clean; `make test` 353 passed (6 skips); executor tests 43 passed (3 skips); `make test-isolation` 149 passed (run before the final tweak, which only touched quarantine auditing).
+- Safety, 3 passes. Pass 1 = 10 findings (stale status downgrade, resume after expiry, blind resend, scope-check ordering leak, hash not checked at decision, weak redaction, etc.), all fixed. Pass 2 = real double-refund hole (releasing a reservation on 'no record yet' while an earlier request may still land); replaced by quarantine (ledger pending_reconciliation keeps the balance held, late success still recorded) plus forward-only status writes. Pass 3 clean.
+- New backlog story E4.4 (operator release of quarantined refunds) added to EPICS.md.
+- Scorecard notes: safety-reviewer caught 2 money-critical bugs on E2.3b (high value); 2 safety-driven rework commits (d03d2b6, 42e72bb).
+- Next: E2.3c (case + approval API, uvicorn so the human can browse /docs). Sprint 1 ends 2026-10-28, 4 days left: pulled forward from Sprint 2 if the human agrees; needs safety review. Not at risk.
+
 ## Review
 _to fill at sprint end_
 
