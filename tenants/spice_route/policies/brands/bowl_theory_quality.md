@@ -5,6 +5,8 @@ topic: food_quality
 version: 1
 effective_from: 2026-01-01
 scope: brand:bowl_theory
+# Replaces these org food_quality sections only (section numbers are stable ids per topic).
+overrides: ["1.1"]
 ---
 # Bowl Theory food quality (v1)
 

@@ -89,3 +89,24 @@ def test_escalation_amounts_in_refund_policies_match_settings(tenant):
             assert int(rupees.replace(",", "")) * 100 == limit, (f.meta.id, rupees, limit)
             checked += 1
     assert checked, "each tenant's refund policy states its escalation limit"
+
+
+def test_scoped_policies_only_reuse_org_section_numbers_they_declare(tenant):
+    """Section numbers are stable ids within a topic: a scoped policy may replace an org
+    clause only by listing it in `overrides`, so nothing (e.g. an allergen rule) is hidden by
+    an accidental numbering clash, and stale declarations are caught too."""
+    files = policy_files(tenant)
+    for scoped in (f for f in files if f.meta.scope != "org"):
+        org_numbers = {
+            s.number
+            for f in files
+            if f.meta.scope == "org" and f.meta.topic == scoped.meta.topic
+            for s in f.sections
+        }
+        own = {s.number for s in scoped.sections}
+        assert own & org_numbers == set(scoped.meta.overrides), scoped.meta.id
+
+
+def test_duplicate_section_numbers_are_rejected():
+    with pytest.raises(ValueError, match="appears twice"):
+        split_sections("doc_v1", "## 1. A\nx\n## 1. B\ny\n")

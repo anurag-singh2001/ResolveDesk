@@ -39,6 +39,9 @@ class PolicyMeta(BaseModel):
     effective_from: date
     effective_to: date | None = None
     scope: str = "org"
+    # Scoped policies list the org section numbers they replace; reusing any other org number
+    # is an error (tests/unit/test_policy_files.py), so a clause is never hidden by accident.
+    overrides: list[str] = []
 
     @model_validator(mode="after")
     def _check(self) -> "PolicyMeta":

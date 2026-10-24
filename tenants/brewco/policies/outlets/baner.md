@@ -5,6 +5,8 @@ topic: refunds
 version: 1
 effective_from: 2026-01-01
 scope: location:baner
+# Replaces these org refunds sections only (section numbers are stable ids per topic).
+overrides: ["1.1", "2.1"]
 ---
 # Baner outlet refunds (v1)
 
