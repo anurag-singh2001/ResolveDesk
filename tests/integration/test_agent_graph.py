@@ -2,6 +2,7 @@
 
 import re
 import uuid
+from types import SimpleNamespace
 from datetime import UTC, datetime
 
 import pytest
@@ -137,7 +138,8 @@ def case(app_engine, maint_engine, policies_loaded, tenant):
         s.execute(delete(Ticket).where(Ticket.tenant_id == tid, Ticket.case_id == case_id))
         s.execute(
             delete(RefundOperation).where(
-                RefundOperation.tenant_id == tid, RefundOperation.transaction_id == order.id
+                RefundOperation.tenant_id == tid,
+                RefundOperation.transaction_id == info["order_id"],
             )
         )
         s.execute(delete(Case).where(Case.tenant_id == tid, Case.id == case_id))
@@ -178,9 +180,12 @@ def _classify(category="missing_items", needs=()):
 def _case(app_engine, case):
     with tenant_session(case["tid"], app_engine) as s:
         c = s.get(Case, case["case_id"])
-        return c.status, s.scalars(
-            select(ActionProposal).where(ActionProposal.case_id == c.id)
-        ).all()
+        rows = s.scalars(select(ActionProposal).where(ActionProposal.case_id == c.id)).all()
+        return c.status, [
+            SimpleNamespace(action=p.action, amount_paise=p.amount_paise, citations=p.citations,
+                            run_id=p.run_id)
+            for p in rows
+        ]  # fmt: skip
 
 
 def test_happy_path_ends_in_a_cited_validated_proposal(app_engine, case):
