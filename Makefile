@@ -3,7 +3,7 @@ TENANT ?= all
 SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate seed api test test-tenant test-isolation test-chaos eval lint ui
+.PHONY: up down db-check migrate seed api test test-tenant test-isolation test-chaos eval lint ui llm-smoke
 
 db-check:
 	uv run python -m scripts.db_check
@@ -42,3 +42,6 @@ lint:
 
 ui:
 	@echo not implemented yet
+
+llm-smoke:
+	uv run python -m scripts.llm_smoke
