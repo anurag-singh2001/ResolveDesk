@@ -33,6 +33,7 @@ from app.core.settings_resolver import tenant_pack
 from app.engine.approvals import auto_decide
 from app.engine.eligibility import order_facts
 from app.engine.proposals import ProposalError, create_proposal
+from app.engine.resolver import Remedy, decide_remedy
 from app.llm.providers import LLMError
 from app.rag.retrieve import search_policies
 
@@ -189,12 +190,21 @@ def build_graph(deps: Deps):
         with tenant_session(tid, deps.engine) as s:
             actions = enabled_actions(tenant_pack(s).actions)
             _, facts = order_facts(s, uuid.UUID(order_id))
+            ceiling = decide_remedy(s, s.get(Case, uuid.UUID(state["case_id"])))
+        if ceiling.action is None:  # business rules allow nothing automatic: a person decides
+            return {"outcome": "escalated", "step_count": step,
+                    "reason": f"business rules: {ceiling.reason}"}  # fmt: skip
+        # The model may only propose this action, at or below this amount (the tenant's
+        # configured rule); it can still choose less, or escalate.
+        actions = {ceiling.action: actions[ceiling.action]}
+        rule = {"action": ceiling.action, "params": ceiling.params, "reason": ceiling.reason}
+        evidence = {**state["evidence"], "business_rule_ceiling": rule}
         schemas = {name: cls.Input.model_json_schema() for name, cls in actions.items()}
         allowed_refs = {c["section_ref"] for c in state["citations"]}
         errors: list[str] = []
         for _attempt in range(2):  # the draft, plus one repair if code rejects it
             draft: ResolutionDraft = deps.resolver.invoke_structured(
-                resolution_messages(state["message"], state["category"], state["evidence"],
+                resolution_messages(state["message"], state["category"], evidence,
                                     state["citations"], schemas, errors or None),
                 ResolutionDraft,
             )  # fmt: skip
@@ -203,7 +213,7 @@ def build_graph(deps: Deps):
             if draft.action == "none":  # a person confirms "no compensation", not the model
                 return {"outcome": "escalated", "step_count": step,
                         "reason": f"agent suggests no compensation: {draft.reason}"}  # fmt: skip
-            errors = _check_draft(draft, actions, facts, allowed_refs, order_id)
+            errors = _check_draft(draft, actions, facts, allowed_refs, order_id, ceiling)
             if not errors:
                 return {"reason": draft.reason, "step_count": step, "draft": draft.model_dump()}
         return {"outcome": "escalated", "reason": "proposal rejected by code: "
@@ -274,11 +284,17 @@ def build_graph(deps: Deps):
 
 
 def _check_draft(
-    draft: ResolutionDraft, actions: dict, facts: Facts, allowed: set[str], order_id: str
+    draft: ResolutionDraft,
+    actions: dict,
+    facts: Facts,
+    allowed: set[str],
+    order_id: str,
+    ceiling: Remedy,
 ) -> list[str]:
-    """Code's checks on a draft before anything is stored: known action, strict params, the
-    case's own order, deterministic eligibility, and at least one citation, all of them from
-    what retrieval returned. Errors go back to the model once, so they never echo its ids."""
+    """Code's checks on a draft before anything is stored: the action and amount the tenant's
+    business rule allows (never more), strict params, the case's own order, eligibility, and
+    at least one citation from what retrieval returned. Errors go back to the model once, so
+    they never echo its ids. Policy text can't raise the ceiling: it is untrusted (rule 9)."""
     if draft.action not in actions:
         return [f"action {draft.action!r} is not available"]
     action = get_action(draft.action)()
@@ -287,6 +303,9 @@ def _check_draft(
     except Exception as exc:  # pydantic ValidationError or bad JSON types
         return [f"params invalid: {str(exc)[:200]}"]
     errors = []
+    field = action.amount_field
+    if field is not None and draft.params.get(field, 0) > ceiling.params.get(field, 0):
+        errors.append(f"{field} is above what the business rules allow for this case")
     if str(draft.params.get("transaction_id", order_id)) != order_id:
         errors.append("transaction_id must be the order in the evidence")
     errors += list(action.validate(None, inp, facts).errors)

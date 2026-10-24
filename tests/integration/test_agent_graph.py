@@ -330,3 +330,44 @@ def test_a_crashed_run_only_blocks_the_case_until_its_ttl(app_engine, case, age_
     clf = FakeLLM({"Classification": [_classify()]})
     res = FakeLLM({"ResolutionDraft": [_refund(case)]})
     assert _run(app_engine, case, clf, res)["outcome"] == outcome
+
+
+def _ceiling(app_engine, case):
+    with tenant_session(case["tid"], app_engine) as s:
+        c = s.get(Case, case["case_id"])
+        c.category = "missing_items"
+        s.flush()
+        return graph.decide_remedy(s, c)
+
+
+def test_proposals_never_exceed_the_business_rule(app_engine, case):
+    """Policy text or an injected message can't buy more than the tenant's configured rule."""
+    ceiling = _ceiling(app_engine, case)
+    over = ceiling.params["amount_paise"] + 1
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case, amount=over)] * 2})
+    out = _run(app_engine, case, clf, res)
+    assert out["outcome"] == "escalated" and "business rules allow" in out["reason"]
+    assert _case(app_engine, case)[1] == []
+
+
+def test_only_the_rules_action_can_be_proposed(app_engine, case):
+    other = ResolutionDraft(
+        action="free_item_voucher",
+        params={"transaction_id": str(case["order_id"]), "value_paise": 100, "reason": "x"},
+        reason="voucher instead",
+        citations=["any"],
+    )
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [other, other]})
+    assert _run(app_engine, case, clf, res)["outcome"] == "escalated"
+    assert _case(app_engine, case)[1] == []
+
+
+def test_no_automatic_remedy_escalates_without_asking_the_model(app_engine, case, monkeypatch):
+    monkeypatch.setattr(graph, "decide_remedy", lambda s, c: graph.Remedy(None, {}, "no rule",
+                                                                          "escalate"))  # fmt: skip
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": []})
+    out = _run(app_engine, case, clf, res)
+    assert out["outcome"] == "escalated" and res.calls == []
