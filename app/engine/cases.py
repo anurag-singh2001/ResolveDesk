@@ -46,8 +46,11 @@ def open_case(
         raise CaseNotFound("only customers open cases")
     if category not in tenant_pack(session).issue_categories:
         raise InvalidCategory(f"unknown category {category!r}")
+    # Lock the order row: two simultaneous reports can't both open a case for it.
     order = session.scalar(
-        select(Transaction).where(Transaction.id == transaction_id, ctx.visible_orders())
+        select(Transaction)
+        .where(Transaction.id == transaction_id, ctx.visible_orders())
+        .with_for_update()
     )
     if order is None:
         raise CaseNotFound("order not found")
@@ -60,6 +63,17 @@ def open_case(
         )
     )
     if existing is not None:  # a retry or a second report: same case, no new proposal
+        ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == existing.id))
+        if ticket_id is not None:  # keep what the customer said, on the same thread
+            session.add(
+                TicketMessage(
+                    tenant_id=ctx.tenant_id,
+                    ticket_id=ticket_id,
+                    author="customer",
+                    body=message,
+                    sent_at=now,
+                )
+            )
         return existing, None
 
     case = Case(

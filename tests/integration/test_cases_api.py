@@ -13,6 +13,7 @@ from app.core.models import (
     LineItem,
     RefundOperation,
     Ticket,
+    TicketMessage,
     Transaction,
     User,
 )
@@ -247,7 +248,7 @@ def test_missing_items_refund_never_exceeds_the_percent_cap(api, app_engine, flo
                 )
 
 
-def test_reopening_the_same_order_returns_the_open_case(api, flow):
+def test_reopening_the_same_order_returns_the_open_case(api, app_engine, flow):
     f = flow
     first, again = _open(api, f), _open(api, f)
     assert again["id"] == first["id"]
@@ -255,6 +256,13 @@ def test_reopening_the_same_order_returns_the_open_case(api, flow):
         p for p in api.get("/approvals", headers=f["hq"]).json() if p["case_id"] == first["id"]
     ]
     assert len(pending) == 1  # no second proposal
+    with tenant_session(f["tid"], app_engine) as s:
+        thread = s.scalars(
+            select(TicketMessage.id)
+            .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+            .where(Ticket.case_id == uuid.UUID(first["id"]))
+        ).all()
+    assert len(thread) == 2  # the second report is kept on the same thread
 
 
 def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engine, flow):
