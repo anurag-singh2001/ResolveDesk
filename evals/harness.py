@@ -60,6 +60,7 @@ class Result:
     llm: dict = field(default_factory=dict)
     seconds: float = 0.0
     error: str = ""
+    case_id: str = ""
 
 
 def existing_case_orders(engine: Engine, slug: str) -> set[uuid.UUID]:
@@ -207,6 +208,7 @@ def run_scenarios(
             ceiling = ceiling_for(s, sc.expect.category, order_id)
             case_id = open_case(s, tid, order, sc.message)
         res = Result(sc, pipeline, str(order_id) if order_id else None, ceiling)
+        res.case_id = str(case_id)
         started = time.perf_counter()
         try:  # no DB transaction is open here: the pipeline opens its own
             out = run(engine, tid, case_id, sc.message, pipeline)
