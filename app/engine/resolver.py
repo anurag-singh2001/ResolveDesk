@@ -90,7 +90,7 @@ def propose_for_case(
         return remedy, None
     proposal = create_proposal(
         session,
-        ctx,
+        ctx.tenant_id,
         case_id=case.id,
         action=remedy.action,
         params=remedy.params,

@@ -33,7 +33,7 @@ def open_case(
     ctx: TenantContext,
     *,
     transaction_id: uuid.UUID,
-    category: str,
+    category: str | None,
     message: str,
     now: datetime,
 ) -> tuple[Case, uuid.UUID | None]:
@@ -44,7 +44,7 @@ def open_case(
     """
     if ctx.role != "customer":
         raise CaseNotFound("only customers open cases")
-    if category not in tenant_pack(session).issue_categories:
+    if category is not None and category not in tenant_pack(session).issue_categories:
         raise InvalidCategory(f"unknown category {category!r}")
     # Lock the order row: two simultaneous reports can't both open a case for it.
     order = session.scalar(
@@ -121,6 +121,8 @@ def open_case(
         payload={"category": category, "message": message},
     )
 
+    if category is None:  # free text: the agent pipeline classifies and proposes (graph)
+        return case, None
     remedy, proposal_id = propose_for_case(session, ctx, case)
     if proposal_id is None:
         case.status = "escalated" if remedy.outcome == "escalate" else "resolved"

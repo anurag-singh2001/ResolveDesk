@@ -89,7 +89,7 @@ def _proposal(app_engine, case, **overrides):
     with tenant_session(case["tid"], app_engine) as s:
         p = create_proposal(
             s,
-            _ctx(case["tid"], case["user_id"]),
+            case["tid"],
             case_id=case["case_id"],
             action="refund",
             params=_params(case, **overrides),
@@ -209,7 +209,7 @@ def test_proposal_run_must_belong_to_the_case(app_engine, case):
     with pytest.raises(IntegrityError), tenant_session(case["tid"], app_engine) as s:
         create_proposal(
             s,
-            _ctx(case["tid"], case["user_id"]),
+            case["tid"],
             case_id=case["case_id"],
             run_id=run_id,
             action="refund",
@@ -229,7 +229,7 @@ def test_action_outside_the_tenants_pack_is_refused(app_engine, case):
     ):
         create_proposal(
             s,
-            _ctx(case["tid"], case["user_id"]),
+            case["tid"],
             case_id=case["case_id"],
             action=missing[0],
             params={},

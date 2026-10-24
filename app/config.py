@@ -46,6 +46,11 @@ class Settings(BaseSettings):
     # Logical calls: each invoke and each structured-output repair, cache hits included;
     # rate-limit retries and fallbacks are not counted here.
     llm_max_calls_per_run: int = Field(default=8, ge=1)
+    # How a new case is worked: deterministic (customer picks a category, code proposes)
+    # or agents (free text -> LangGraph: classify, investigate, policy, resolve).
+    engine_mode: Literal["deterministic", "agents"] = "deterministic"
+    # Classifier guesses below this confidence ask the customer instead of proceeding.
+    agent_min_confidence: float = Field(default=0.6, ge=0, le=1)
     # Actual provider requests: every request sent, retries and fallbacks included
     # (cache hits send none). Bounds the worst case of retry * fallback per logical call.
     llm_max_provider_requests_per_run: int = Field(default=24, ge=1)

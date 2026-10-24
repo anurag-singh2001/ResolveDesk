@@ -8,8 +8,10 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_db_engine, get_tenant_context, not_found, require_staff, tenant_db
 from app.api.routes_approvals import run_refund
+from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
 from app.core.tenancy import TenantContext
+from app.engine.agent_runner import run_agents
 from app.engine.case_status import case_status
 from app.engine.cases import CaseNotFound, InvalidCategory, open_case
 
@@ -18,7 +20,8 @@ router = APIRouter(tags=["cases"])
 
 class CaseIn(BaseModel):
     transaction_id: uuid.UUID
-    category: str
+    # Required in deterministic mode; optional in agents mode (the classifier decides).
+    category: str | None = None
     message: str = Field(min_length=1, max_length=2000)
 
 
@@ -82,6 +85,9 @@ def create_case(
 ) -> CaseOut:
     if ctx.role != "customer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "customers open cases")
+    agents = get_settings().engine_mode == "agents"
+    if body.category is None and not agents:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "category is required")
     try:
         case, proposal_id = open_case(
             db,
@@ -96,6 +102,8 @@ def create_case(
     except InvalidCategory as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     db.flush()
+    if body.category is None and case.status == "investigating":
+        background.add_task(run_agents, engine, ctx.tenant_id, case.id, body.message)
     if proposal_id is not None:  # an auto-approved refund must actually run
         proposal = db.get(ActionProposal, proposal_id)
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))

@@ -19,7 +19,6 @@ import app.actions  # noqa: F401  (registers the built-in actions)
 from app.actions.base import enabled_actions
 from app.core.models import ActionProposal, Case, Transaction
 from app.core.settings_resolver import tenant_pack
-from app.core.tenancy import TenantContext
 
 
 class ProposalError(ValueError):
@@ -63,7 +62,7 @@ def parse_params(action_cls, params: dict[str, Any]) -> dict[str, Any]:
 
 def create_proposal(
     session: Session,
-    ctx: TenantContext,
+    tenant_id: uuid.UUID,
     *,
     case_id: uuid.UUID,
     action: str,
@@ -82,7 +81,7 @@ def create_proposal(
     amount = normalised.get(action_cls.amount_field) if action_cls.amount_field else None
     proposal = ActionProposal(
         id=uuid.uuid4(),
-        tenant_id=ctx.tenant_id,
+        tenant_id=tenant_id,
         case_id=case_id,
         run_id=run_id,
         action=action,

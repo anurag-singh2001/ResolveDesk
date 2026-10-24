@@ -92,7 +92,7 @@ def propose(app_engine, w, amount):
     with tenant_session(w["tid"], app_engine) as s:
         p = create_proposal(
             s,
-            w["hq"],
+            w["hq"].tenant_id,
             case_id=w["case_id"],
             action="refund",
             reason="policy",
