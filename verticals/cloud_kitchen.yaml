@@ -25,7 +25,11 @@ settings:
   refund_max_percent: {kind: limit, default: 50}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}
+  # Rs 150: the largest voucher approved without a person (decision 2026-10-26); lower only.
   voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  # Fair use: at this many refunds/vouchers approved for the customer in 30 days, nothing
+  # more is auto-approved (a person decides; never an automatic denial). Lower only.
+  fair_use_max_grants_30d: {kind: limit, default: 3}
   approval_expiry_minutes: {kind: limit, default: 240}
   refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
   late_delivery_tiers:
@@ -34,6 +38,9 @@ settings:
       - {min_minutes_late: 0, remedy: apology}
       - {min_minutes_late: 20, remedy: voucher}
       - {min_minutes_late: 45, remedy: refund_percent, percent: 50}
+  # Delay causes on the delivery record (fulfilment attributes.delay_cause) that earn no
+  # lateness remedy: the customer caused the delay.
+  late_delivery_excluded_causes: {kind: value, default: [customer_address_error, customer_unreachable]}
   # Which connector serves each kind (app/connectors). Swapping in a real provider is a
   # settings change for the tenant, not a code change.
   payment_connector: {kind: value, default: mock_payment}

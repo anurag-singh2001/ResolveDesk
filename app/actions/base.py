@@ -64,6 +64,9 @@ class Action(ABC):
     amount_field: ClassVar[str | None] = None
     # Whether an approval rule may approve it without a human (refunds: never).
     auto_approvable: ClassVar[bool] = False
+    # Whether an approved proposal of this action counts as compensation granted to the
+    # customer for the fair-use check (app/engine/eligibility.py, fair_use).
+    counts_as_grant: ClassVar[bool] = False
 
     @abstractmethod
     def validate(self, ctx: TenantContext, inp: ActionInput, facts: "Facts") -> ValidationResult:

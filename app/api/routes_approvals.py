@@ -53,8 +53,9 @@ def pending_approvals(
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
+    now = datetime.now(UTC)
     for proposal, case, order in db.execute(query).all():
-        _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal)
+        _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         out.append(
             PendingOut(
                 proposal_id=proposal.id,
