@@ -286,3 +286,15 @@ def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engin
         )
     stage = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()["stage"]
     assert stage == "escalated"
+
+
+def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    mine = api.get("/cases", headers=f["customer"]).json()
+    assert opened["id"] in {c["id"] for c in mine}
+    assert opened["id"] in {c["id"] for c in api.get("/cases", headers=f["hq"]).json()}
+    others = [u for u in f["cfg"].users if u.role == "customer" and u.email != f["customer_email"]]
+    for other in others:
+        theirs = api.get("/cases", headers=login(api, f["cfg"].slug, other.email)).json()
+        assert opened["id"] not in {c["id"] for c in theirs}

@@ -217,7 +217,8 @@ def load_tenant_into_db(engine: Engine, cfg: TenantConfig, pack: VerticalPack) -
                 raise TenantLoadError(
                     f"{cfg.slug}: can't remove {model.__tablename__} rows that {referenced_by} "
                     f"still references ({constraint}); history still references them. Keep them "
-                    "in the folder, or reseed history first."
+                    "in the folder, or reseed history first (and update policy files scoped to "
+                    "a removed brand or location)."
                 ) from exc
     return tid
 

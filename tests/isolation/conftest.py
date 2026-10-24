@@ -2,7 +2,7 @@
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import Engine, delete
@@ -31,6 +31,8 @@ from app.core.models import (
     MembershipLocation,
     Organization,
     Payment,
+    PolicyChunk,
+    PolicyDocument,
     RefundOperation,
     TenantSetting,
     Ticket,
@@ -106,8 +108,37 @@ def _seed(engine: Engine) -> SeededTenant:
             )
         )
         s.flush()
+        _seed_policy(s, t)
         _seed_commerce(s, t)
     return t
+
+
+def _seed_policy(s, t: SeededTenant) -> None:
+    doc_id = uuid.uuid4()
+    s.add(
+        PolicyDocument(
+            id=doc_id,
+            tenant_id=t.tenant_id,
+            doc_key="p_v1",
+            title="Policy",
+            topic="test",
+            version=1,
+            effective_from=date(2026, 1, 1),
+            source_uri="policies/p.md",
+            content_hash="0" * 64,
+        )
+    )
+    s.flush()
+    s.add(
+        PolicyChunk(
+            tenant_id=t.tenant_id,
+            document_id=doc_id,
+            section_ref="p_v1#1",
+            heading="One",
+            content="text",
+            embedding=[0.0] * 383 + [1.0],
+        )
+    )
 
 
 def _seed_commerce(s, t: SeededTenant) -> None:

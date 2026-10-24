@@ -27,3 +27,4 @@ Thumbs.db
 
 # Claude Code local overrides
 .claude/settings.local.json
+.claude/worktrees/

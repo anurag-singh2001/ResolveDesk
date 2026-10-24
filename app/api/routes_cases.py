@@ -1,7 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, or_, select
 from sqlalchemy.orm import Session
@@ -24,6 +24,7 @@ class CaseIn(BaseModel):
 
 class CaseOut(BaseModel):
     id: uuid.UUID
+    transaction_id: uuid.UUID | None
     category: str | None
     stage: str
     message: str
@@ -36,6 +37,7 @@ def _out(db: Session, case: Case) -> CaseOut:
     st = case_status(db, case)
     return CaseOut(
         id=case.id,
+        transaction_id=case.transaction_id,
         category=case.category,
         stage=st.stage,
         message=st.message,
@@ -100,6 +102,23 @@ def create_case(
         if proposal.action == "refund" and approved is not None:
             background.add_task(run_refund, engine, ctx, proposal_id)
     return _out(db, case)
+
+
+@router.get("/cases")
+def list_cases(
+    limit: int = Query(50, ge=1, le=200),
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> list[CaseOut]:
+    """Customers: their own cases. hq_owner: all. Scoped staff: cases on orders in scope."""
+    query = select(Case).order_by(Case.opened_at.desc(), Case.id).limit(limit)
+    if ctx.role == "customer":
+        own = select(Customer.id).where(Customer.user_id == ctx.user_id)
+        query = query.where(Case.customer_id.in_(own))
+    elif ctx.role != "hq_owner":
+        visible = select(Transaction.id).where(ctx.visible_orders())
+        query = query.where(Case.transaction_id.in_(visible))
+    return [_out(db, case) for case in db.scalars(query)]
 
 
 @router.get("/cases/{case_id}")
