@@ -97,6 +97,15 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Scorecard notes: safety-reviewer caught 2 money-critical bugs on E2.3b (high value); 2 safety-driven rework commits (d03d2b6, 42e72bb).
 - Next: E2.3c (case + approval API, uvicorn so the human can browse /docs). Sprint 1 ends 2026-10-28, 4 days left: pulled forward from Sprint 2 if the human agrees; needs safety review. Not at risk.
 
+### 2026-10-24 (eighth stand-up)
+- E2.3c done: c370de4, d4be4c3, merged to test as 7735de5. Ticked [x] in EPICS.md. Done-when met (end-to-end refund for both tenants, safety clean). PROJECT.md section 19 Day 2 done-when ("a refund resolves via API with no LLM, for both tenants") is met: Day 2 complete.
+- Evidence (main session report; scrum-master checked git log only, DB suites not re-run): case API tests 22/22 (refund resolves over HTTP with no LLM; timeout shows processing, then confirmed after reconcile; rejection honest; 409 on second decision; ownership 404s); `make test` 374 passed (1 Neon connection drop, passed on rerun); `make test-isolation` 149 passed.
+- Safety pass 1 = 7 findings, all fixed. Pass 2 clean + 2 minor (lock order row on open, keep repeat messages on the thread), fixed in d4be4c3.
+- New backlog story E4.5 (sweeper for approved-but-never-executed refunds) in EPICS.md.
+- Human can browser-test via `make api` + /docs once .env exists.
+- Next: E2.4 skills (S), pulled forward from Sprint 2, the last open Sprint 1 story. Not at risk (ends 2026-10-28).
+- Scorecard notes: 1 safety-driven rework commit (d4be4c3) on E2.3c; safety-reviewer found 7 issues pass 1; Neon connection drop is a flake, not a code failure.
+
 ## Review
 _to fill at sprint end_
 
