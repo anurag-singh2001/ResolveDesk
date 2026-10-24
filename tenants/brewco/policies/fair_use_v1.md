@@ -10,7 +10,7 @@ scope: org
 
 ## 1. Repeat claims
 ### 1.1 Frequent claims go to a person
-When a guest has opened three or more cases in the last 30 days, a manager reviews the new case before any compensation is offered. Nothing is refused automatically: frequent problems can be our fault.
+When a guest has been granted three or more refunds or vouchers in the last 30 days, a manager reviews the new case before any compensation is given; nothing is approved automatically. Nothing is refused automatically either: frequent problems can be our fault.
 
 ## 2. Evidence
 ### 2.1 Records decide

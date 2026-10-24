@@ -10,7 +10,7 @@ scope: org
 
 ## 1. Cold, stale or badly made
 ### 1.1 Remedy
-Offer a voucher for the item on the guest's next visit, up to the tenant's voucher limit. When the guest is still at the outlet, offer a remake first.
+Remake or voucher first: when the guest is still at the outlet, offer a remake. Otherwise offer a voucher for the item on the guest's next visit, up to the tenant's voucher limit.
 
 ### 1.2 No cash refunds for taste
 A quality complaint is settled with a remake or a voucher, not a refund, unless a manager decides otherwise.
