@@ -9,7 +9,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 | --- | --- | --- |
 | 0 | 2026-10-23 → 2026-10-24 | Tools, process, research, project skeleton |
 | 1 | 2026-10-26 → 2026-10-28 (starting early 2026-10-23) | Foundation (tenancy, RLS, settings, auth) + data & money core |
-| 2 | 2026-10-29 → 2026-10-31 | AI pipeline + safe execution |
+| 2 | 2026-10-24 → 2026-10-31 (starts early, Sprint 1 finished 2026-10-24) | AI pipeline + safe execution |
 | 3 | 2026-11-02 → 2026-11-04 | UI + evals |
 | 4 | 2026-11-05 → 2026-11-06 | Ship (+ growth stretch) |
 
@@ -35,7 +35,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [x] E2.3a (done 2026-10-24, commits 7abf3b1, 754996a, 3e3b24f, c0c7c66, merged to test 8fde736; migrations 0009 + 0010) Connector + action registries, engine tables, proposals with payload hash — done when: unit tests pass (verified from main session report: make test 297 passed (2 skips), isolation 149 passed, lint clean; safety 2 passes, 8 findings pass 1 + 1 owner-path miss pass 2, all fixed)
 - [x] E2.3b (done 2026-10-24, commits b2431eb, d03d2b6, 42e72bb, 2cfec15, merged to test b6f469e; pulled forward from Sprint 2) Deterministic eligibility + safe refund execution (section 10 steps 1–5) — done when: over-refund, expired approval, changed payload all blocked (met; verified from main session report: make lint clean, make test 353 passed 6 skipped, executor tests 43 passed 3 skips, isolation 149 passed before the final quarantine-audit tweak; safety 3 passes: 10 findings pass 1, double-refund hole pass 2 fixed by quarantine + forward-only status writes, pass 3 clean)
 - [x] E2.3c (done 2026-10-24, commits c370de4, d4be4c3, merged to test 7735de5; pulled forward from Sprint 2; safety pass 2 clean) `POST /cases` (no LLM), `GET /approvals`, `POST /approvals/{id}/decision` — done when: end-to-end refund for both tenants; safety-reviewer clean
-- [ ] E2.4 (pulled forward into Sprint 1, next) Skills `add-action` and `add-connector` written from real code — done when: files exist under `.claude/skills/`
+- [x] E2.4 (done 2026-10-24, commit 4d37ff8, merged to test aa03f84; pulled forward from Sprint 2; verified: both files exist, 58 + 54 lines, lint clean) Skills `add-action` and `add-connector` written from real code — done when: files exist under `.claude/skills/`
 
 ## E3 · AI pipeline — Sprint 2
 - [ ] E3.1 LLM provider factory (gemini/groq/ollama, 429 backoff + fallback, repair, cache, counters) — done when: fake-model tests pass; `make llm-smoke` returns JSON

@@ -106,11 +106,54 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Next: E2.4 skills (S), pulled forward from Sprint 2, the last open Sprint 1 story. Not at risk (ends 2026-10-28).
 - Scorecard notes: 1 safety-driven rework commit (d4be4c3) on E2.3c; safety-reviewer found 7 issues pass 1; Neon connection drop is a flake, not a code failure.
 
-## Review
-_to fill at sprint end_
+### 2026-10-24 (ninth stand-up)
+- E2.4 done: 4d37ff8, merged to test as aa03f84. Skills add-action (58 lines) and add-connector (54 lines) exist under `.claude/skills/`; docs only. Ticked [x] in EPICS.md. All Sprint 1 stories merged, 4 days before the 2026-10-28 end.
+
+## Review (2026-10-24, scrum-master)
+Verified today by scrum-master: `git log` shows merge aa03f84 and commit 4d37ff8 (2 files, 112 insertions); `wc -l` confirms both skill files; `make lint` clean (95 files formatted). DB suites not re-run by me; cited from main session: `make test` 374 passed + 1 Neon connection drop that passed on rerun; `make test-isolation` 149 passed.
+
+| Story | Result | Evidence |
+| --- | --- | --- |
+| E0.6 | [x] | 6d76056 |
+| E1.2 | [x] | c8ca319, 42 isolation tests |
+| E1.3 | [x] | 374ccca / 99d3c96 |
+| E1.4 | [x] | 737baec.. / 24bc2bb |
+| E2.1 | [x] | d7e891c.. / 0156464, seed 47 s |
+| E2.2 | [x] | d1e4920, 319ab3a / 84c5395 |
+| E2.3a | [x] | 7abf3b1.. / 8fde736 |
+| E2.3b | [x] | b2431eb.. / b6f469e (pulled from Sprint 2) |
+| E2.3c | [x] | c370de4, d4be4c3 / 7735de5 (pulled from Sprint 2) |
+| E2.4 | [x] | 4d37ff8 / aa03f84 (pulled from Sprint 2) |
+| E0.3 | [~] | Neon + roles + test DB done; human has not created `.env`, owner password not rotated, `make db-check` from `.env` not passed |
+
+Outcome: 10 of 11 planned stories done (the original rescope proposed moving E2.3b/c and E2.4; they were all pulled back and finished). Only E0.3 stays [~], and only on human actions. PROJECT.md section 19 Day 2 done-when ("a refund resolves via API with no LLM, for both tenants") is met.
+
+Not yet promoted: `main` has none of this. It waits for the human's review of test -> main (PR link in `docs/review/sprint-1.md`, updated today to cover E2.3b, E2.3c, E2.4).
 
 ## Retro
-_to fill at sprint end_
+Went well
+- Safety review earned its place: it caught a cross-tenant data-loss path (E2.3a), a real double-refund hole (E2.3b pass 2) and 7 auth issues (E1.4). Every high finding was fixed before merge.
+- Pulling E2.3b/c and E2.4 forward kept the safe-execution slice together, and E2.4 was written from real code.
+- Sharing seeded tenants per module cut the isolation suite from ~12 to ~3.5 min.
+
+What hurt
+- Neon owner `neondb_owner` has BYPASSRLS, so FORCE RLS does not bind it. An owner-run reseed wiped another tenant's history in the test DB (caught by tests, never merged). Cost a migration (0010 `resolvedesk_maint`, NOBYPASSRLS) and explicit tenant filters.
+- Neon free tier drops connections mid-run; seen again in the last `make test` (1 drop, passed on rerun). Flaky signal for CI and evals.
+- Slow suites: `make test` and isolation together take about 18 min on Neon, which slowed every review loop and one run was killed for low machine memory.
+- The human still has no `.env` (E0.3), so no `make db-check`, no live LLM, no browser test of the API. DB work runs on URLs from a scratchpad file.
+- test-runner misreported a CRLF env-loading problem as a driver failure (42 false errors).
+- Rework: most stories needed 1-3 safety-driven fix commits (cheap compared with the bugs found).
+
+Action for Sprint 2: before starting, the human creates `.env` (Neon URLs + GEMINI/GROQ keys) so E3.1/E3.3 are not blocked; start with work that needs no keys (E3.2). Keep running safety review before every commit that touches money, approvals or RLS, and make test-runner strip CR from env values.
 
 ## Scorecard
-_to fill at sprint end_
+Evidence: git log (33 non-merge commits, 40 since the spec commit, all by the human's git user with the Claude co-author trailer) and the stand-ups above. First-try test pass rate is not recorded per story: "no data" except where noted.
+
+| Agent (model) | Tasks done | First-try test pass | Rework commits | Safety findings raised / missed | Eval delta | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| main session (Opus 5.5 per git trailer) | 10 stories + E0.6 support | no data (1 Neon flake on last full run, passed on rerun) | about 12 safety-driven fix commits: E1.2 1, E1.4 2, E2.1 1, E2.2 1, E2.3a 3, E2.3b 2, E2.3c 1, plus 650c75f | n/a | n/a (no evals yet) | Caught the loader-prune bug itself before shipping (E2.1). One Neon incident traced to owner BYPASSRLS. |
+| safety-reviewer (sonnet) | 2-3 passes on each of E1.2, E1.3, E1.4, E2.1, E2.2, E2.3a, E2.3b, E2.3c (about 17 passes) | n/a | n/a | Raised pass 1: E1.2 4, E1.3 5, E1.4 7, E2.1 5, E2.2 6 groups, E2.3a 8, E2.3b 10, E2.3c 7 = 52, plus later-pass findings (E2.3a 1, E2.3b 1 money-critical). Missed: 1 owner-path miss in E2.3a (found by its own pass 2); the owner BYPASSRLS behaviour was found by tests, not by review | n/a | High value. No finding left open at merge except brand scope on E1.4, deferred by design and closed in E2.1. |
+| test-runner (haiku) | used once (E1.2) | 0 of 1: reported 42 isolation errors | 0 | n/a | n/a | Misreported a CRLF env-loading problem as a driver failure. Treat its failures as needing a check of the raw log. |
+| scrum-master (sonnet) | planning, 9 stand-ups, reviews, ticks | n/a | 1 correction (search_path stand-up note) | n/a | n/a | Re-ran lint and `make test` only for E1.4; later stories cited the main session for DB suites. |
+| business-analyst (sonnet) | E0.6 market research | n/a | 0 | n/a | n/a | Open questions closed by human decisions on 2026-10-23. |
+| eval-runner (haiku) | none | no data | no data | no data | no data | Not used; evals start in Sprint 3. |
