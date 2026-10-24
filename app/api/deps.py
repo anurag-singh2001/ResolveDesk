@@ -27,7 +27,12 @@ def _request_session(
 ) -> Iterator[Session]:
     """One tenant-scoped transaction per request. The caller's role/scope is read in the same
     transaction the route then uses, so the access decision and the data can't disagree.
-    FastAPI caches this per request: get_tenant_context and tenant_db share it."""
+    FastAPI caches this per request: get_tenant_context and tenant_db share it.
+
+    scope="function" (where it's used): the transaction commits as soon as the endpoint
+    returns, before the response is sent and before background tasks run. So a decision is
+    committed before its refund starts, and no request transaction is ever open while a
+    background task talks to a provider (hard rule 5)."""
     if creds is None:
         raise _UNAUTHORIZED
     try:
@@ -42,11 +47,13 @@ def _request_session(
         yield session
 
 
-def get_tenant_context(session: Session = Depends(_request_session)) -> TenantContext:
+def get_tenant_context(
+    session: Session = Depends(_request_session, scope="function"),
+) -> TenantContext:
     return session.info["ctx"]
 
 
-def tenant_db(session: Session = Depends(_request_session)) -> Session:
+def tenant_db(session: Session = Depends(_request_session, scope="function")) -> Session:
     """The request's session, scoped (RLS) to the caller's tenant."""
     return session
 

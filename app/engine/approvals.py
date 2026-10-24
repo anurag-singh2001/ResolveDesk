@@ -88,7 +88,7 @@ def proposal_location(session: Session, proposal: ActionProposal) -> uuid.UUID |
     return order.location_id
 
 
-def _evaluate(session, ctx, proposal):
+def evaluate_proposal(session, ctx, proposal):
     action = get_action(proposal.action)()
     order_id = _order_id(session, proposal)
     if order_id is not None:
@@ -126,7 +126,7 @@ def decide(
         raise NotFound("proposal not found")
     if not proposal_hash_is_intact(proposal):
         raise NotEligible(["proposal no longer matches its payload hash"])
-    action, inp, facts, result = _evaluate(session, ctx, proposal)
+    action, inp, facts, result = evaluate_proposal(session, ctx, proposal)
     if decision == "approved":
         if not result.ok:
             raise NotEligible(result.errors)  # eligibility is re-checked at decision time
@@ -180,7 +180,7 @@ def auto_decide(
     system = TenantContext(
         tenant_id, uuid.UUID(int=0), uuid.UUID(int=0), "hq_owner", frozenset(), frozenset()
     )
-    action, inp, facts, result = _evaluate(session, system, proposal)
+    action, inp, facts, result = evaluate_proposal(session, system, proposal)
     if not result.ok or not action.can_auto_approve(inp, facts):
         return None
     approval = Approval(

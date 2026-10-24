@@ -13,6 +13,8 @@ issue_categories:
   - food_quality
   - payment_issue
 actions: [refund, free_item_voucher, send_status_update]
+# Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
+remedies: {late_delivery: late_tiers, missing_items: refund_missing, wrong_item: voucher, food_quality: voucher}
 metrics: [late_rate, missing_item_rate, repeat_rate, ticket_rate]
 features:
   growth: false

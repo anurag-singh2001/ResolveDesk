@@ -13,6 +13,8 @@ issue_categories:
   - payment_issue
   - loyalty
 actions: [refund, free_item_voucher, loyalty_credit, send_status_update]
+# Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
+remedies: {wrong_order: voucher, missing_items: refund_missing, quality: voucher}
 metrics: [wrong_order_rate, repeat_rate, ticket_rate, avg_ticket_paise]
 features:
   growth: false
