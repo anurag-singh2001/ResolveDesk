@@ -31,6 +31,7 @@ from app.core.db import tenant_session
 from app.core.models import Case, Ticket, TicketMessage, WorkflowRun
 from app.core.settings_resolver import tenant_pack
 from app.engine.approvals import auto_decide
+from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
@@ -80,6 +81,7 @@ class CaseState(TypedDict, total=False):
     draft: dict
     proposal_id: str | None
     outcome: str  # proposed | awaiting_info | escalated | skipped
+    auto_approved: bool  # approved by the tenant's rule: execute it after the run
     reason: str
     step_count: int
 
@@ -232,6 +234,14 @@ def build_graph(deps: Deps):
         ]
         try:
             with tenant_session(tid, deps.engine) as s:
+                # The sweeper may have escalated a run that outlived its TTL: then a person
+                # owns the case and this (late) run must not add a proposal to it.
+                case = s.scalar(
+                    select(Case).where(Case.id == uuid.UUID(state["case_id"])).with_for_update()
+                )
+                if case.status != "investigating":
+                    return {"outcome": "skipped", "reason": f"case is {case.status}",
+                            "step_count": step}  # fmt: skip
                 proposal = create_proposal(
                     s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
                     params=draft.params, reason=draft.reason, citations=citations,
@@ -239,13 +249,13 @@ def build_graph(deps: Deps):
                 )  # fmt: skip
                 # Same as the deterministic path: auto-approval only where settings allow.
                 approval = auto_decide(s, tid, proposal.id, now)
-                case = s.get(Case, uuid.UUID(state["case_id"]))
                 case.status = "executing" if approval is not None else "awaiting_approval"
                 proposal_id = str(proposal.id)
         except ProposalError as exc:
             return {"outcome": "escalated", "reason": f"proposal refused: {exc}",
                     "step_count": step}  # fmt: skip
-        return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
+        return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step,
+                "auto_approved": approval is not None}  # fmt: skip
 
     def ask(state: CaseState) -> CaseState:
         question = QUESTIONS[state.get("need") or NEED_DETAILS]
@@ -388,6 +398,14 @@ def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str,
                 run.error = (final.get("reason") or "")[:500]
     except Exception:
         log.exception("could not record the result of run %s", run_id)
+    if final.get("auto_approved"):
+        # The propose step has committed; execute now, outside any transaction (rule 5).
+        # A crash here is picked up by the sweeper with the same stable key.
+        try:
+            action = ResolutionDraft.model_validate(final["draft"]).action
+            run_approved(deps.engine, tenant_id, uuid.UUID(final["proposal_id"]), action)
+        except Exception:
+            log.exception("could not execute proposal %s", final.get("proposal_id"))
     return {**final, "run_id": str(run_id), "llm": snapshot}
 
 
