@@ -5,7 +5,7 @@ import sys
 from pydantic import BaseModel, Field, ValidationError
 
 from app.config import get_settings
-from app.llm.providers import LLMClient, MissingAPIKey
+from app.llm.providers import LLMClient, LLMError, MissingAPIKey
 
 CATEGORIES = ["late_delivery", "missing_items", "wrong_item", "quality", "refund_status", "other"]
 MESSAGE = "My order came 50 minutes late and one of the two drinks was missing."
@@ -15,6 +15,13 @@ class SmokeClassification(BaseModel):
     category: str
     confidence: float = Field(ge=0, le=1)
     needs_info: list[str]
+
+
+def describe_failure(exc: BaseException) -> str:
+    """The class name; the message only for our own LLMError types. SDK and network errors
+    can echo request details (URLs with keys, headers, prompt text), so their text is dropped."""
+    name = exc.__class__.__name__
+    return f"{name}: {exc}" if isinstance(exc, LLMError) else name
 
 
 def main() -> int:
@@ -36,8 +43,8 @@ def main() -> int:
     except MissingAPIKey as exc:
         print(f"{exc}. Set GROQ_API_KEY/GEMINI_API_KEY in .env (see env.example).")
         return 2
-    except Exception as exc:  # a smoke check reports (settings, network, LLMError), no traceback
-        print(f"LLM smoke failed: {exc.__class__.__name__}: {exc}")
+    except Exception as exc:  # a smoke check reports, no traceback
+        print(f"LLM smoke failed: {describe_failure(exc)}")
         return 1
     target = client.targets[0]
     print(f"provider={target.provider} model={target.model}")

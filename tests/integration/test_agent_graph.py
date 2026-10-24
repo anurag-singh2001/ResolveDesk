@@ -2,8 +2,8 @@
 
 import re
 import uuid
-from types import SimpleNamespace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, func, select, update

@@ -1,8 +1,9 @@
 """ResolveDesk demo UI (thin first cut of PROJECT.md section 13).
 
 Talks only to the HTTP API. The tenant YAML files are read for one thing: the dev login
-picker (which demo users exist). Everything shown about orders, cases and approvals is
-what the API returned; the UI decides nothing.
+picker (which demo users exist). Who is logged in (name, role) comes from `GET /me`, and
+everything shown about orders, categories, cases and approvals is what the API returned;
+the UI decides nothing.
 """
 
 import sys
@@ -13,12 +14,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st
 
+from app.config import get_settings
 from app.core.money import format_inr
 from app.core.tenant_config import TenantConfig, load_tenant, tenant_dirs
-from app.core.verticals import load_pack
 from ui.api_client import ApiClient, ApiError, NotFound, Unauthorized
 
-DEMO_PASSWORD = "demo"
+SESSION_ENDED = "Your session has ended. Please log in again."
 STAFF_ROLES = {"location_manager", "franchisee_owner", "hq_owner"}
 HAPPY_PATH = ["received", "investigating", "awaiting_approval", "processing", "confirmed"]
 LABELS = {
@@ -46,13 +47,15 @@ def tenants() -> dict[str, TenantConfig]:
     return {d.name: load_tenant(d) for d in tenant_dirs()}
 
 
-@st.cache_data
-def categories(pack_slug: str) -> list[str]:
-    return list(load_pack(pack_slug).issue_categories)
-
-
 def client() -> ApiClient:
     return ApiClient(token=st.session_state.get("token"))
+
+
+def end_session() -> None:
+    """401 (expired or revoked token): forget everything and go back to the login screen."""
+    st.session_state.clear()
+    st.session_state["notice"] = SESSION_ENDED
+    st.rerun()
 
 
 def call(fn, *args, **kwargs):
@@ -60,9 +63,7 @@ def call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except Unauthorized:
-        st.session_state.clear()
-        st.error("Your session has ended. Please log in again.")
-        st.stop()
+        end_session()
     except ApiError as exc:
         st.error(f"{exc.status_code}: {exc.detail}")
     except Exception as exc:  # API down, timeout: say so plainly
@@ -75,6 +76,8 @@ def call(fn, *args, **kwargs):
 
 def login_view() -> None:
     st.title("ResolveDesk demo")
+    if notice := st.session_state.pop("notice", None):
+        st.warning(notice)
     all_tenants = tenants()
     slug = st.selectbox("Business", list(all_tenants), format_func=lambda s: all_tenants[s].name)
     users = all_tenants[slug].users
@@ -82,11 +85,20 @@ def login_view() -> None:
         "Demo user", users, format_func=lambda u: f"{u.name} ({label(u.role)}) - {u.email}"
     )
     if st.button("Log in", type="primary") and user is not None:
+        # The picker only chooses whom to log in as; who we are comes from the API.
         api = ApiClient()
-        if call(api.login, slug, user.email, DEMO_PASSWORD) is None:
+        if call(api.login, slug, user.email, get_settings().demo_password) is None:
+            return
+        me = call(api.me)
+        if me is None:
             return
         st.session_state.update(
-            token=api.token, tenant=slug, role=user.role, name=user.name, my_cases=[]
+            token=api.token,
+            tenant=slug,
+            user_id=str(me["user_id"]),
+            role=me["role"],
+            name=me["name"],
+            my_cases=[],
         )
         st.rerun()
 
@@ -132,6 +144,8 @@ def load_cases(api: ApiClient) -> list[dict]:
     """GET /cases if the API has it; otherwise the cases opened in this browser session."""
     try:
         return api.list_cases()
+    except Unauthorized:
+        end_session()
     except NotFound:
         pass
     except ApiError as exc:
@@ -144,7 +158,6 @@ def load_cases(api: ApiClient) -> list[dict]:
 
 def customer_view() -> None:
     api = client()
-    cfg = tenants()[st.session_state["tenant"]]
     st.header("Report a problem")
     orders = call(api.list_orders, 20) or []
     if not orders:
@@ -171,10 +184,12 @@ def customer_view() -> None:
                     for i in detail["items"]
                 ]
             )
+        # Fetched once per login (cleared on logout); a failed fetch is retried next rerun.
+        cats = st.session_state.get("categories") or call(api.categories) or []
+        if cats:
+            st.session_state["categories"] = cats
         with st.form("report", clear_on_submit=True):
-            category = st.selectbox(
-                "What went wrong?", categories(cfg.vertical_pack), format_func=label
-            )
+            category = st.selectbox("What went wrong?", cats, format_func=label)
             message = st.text_area("Tell us more", max_chars=2000)
             if st.form_submit_button("Report a problem", type="primary"):
                 if not message.strip():
@@ -281,6 +296,8 @@ def staff_view() -> None:
     st.header("Cases")
     try:
         cases = api.list_cases()
+    except Unauthorized:
+        end_session()
     except ApiError:
         cases = None
         st.caption("Case list isn't available from the API yet; look a case up by id.")

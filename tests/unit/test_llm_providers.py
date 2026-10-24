@@ -134,13 +134,45 @@ def test_other_errors_do_not_retry_or_fall_back(settings):
     assert primary.calls == 1 and sleeps == [] and c.budget.fallbacks == 0
 
 
+class FakeResponse:
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+
+
+class HttpError(Exception):
+    def __init__(self, msg: str = "", *, status: int | None = None, code: int | None = None):
+        super().__init__(msg)
+        self.response = FakeResponse(status) if status is not None else None
+        self.code = code
+
+
 @pytest.mark.parametrize(
     "exc",
-    [FakeRateLimit(), Exception("Error code: 429"), Exception("Rate limit reached for model")],
+    [
+        FakeRateLimit(),  # status_code attribute
+        HttpError("boom", status=429),  # response.status_code
+        HttpError("boom", code=429),  # google-style `code`
+        Exception("Rate limit reached for model"),
+        Exception("429 RESOURCE_EXHAUSTED: quota"),
+        Exception("Too Many Requests"),
+    ],
 )
-def test_rate_limit_detection_is_generic(exc):
+def test_rate_limit_detection_true_positives(exc):
     assert is_rate_limit(exc)
-    assert not is_rate_limit(Exception("invalid api request"))
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        Exception("invalid api request"),
+        Exception("connection refused: localhost:4291"),  # a port containing 429
+        Exception("bad request, request_id=req_4290a1"),  # a request id containing 429
+        Exception("Error code: 429"),  # a bare number is not enough without a status
+        HttpError("rate limit text, but HTTP 500", status=500),  # a status code decides first
+    ],
+)
+def test_rate_limit_detection_ignores_bare_429_text(exc):
+    assert not is_rate_limit(exc)
 
 
 def test_repair_succeeds_on_second_try(settings):
@@ -210,7 +242,40 @@ def test_budget_exceeded_raises(settings):
 
 
 def test_budget_default_comes_from_settings(settings):
-    assert RunBudget.from_settings(settings).max_calls == settings.llm_max_calls_per_run
+    budget = RunBudget.from_settings(settings)
+    assert budget.max_calls == settings.llm_max_calls_per_run
+    assert budget.max_provider_requests == settings.llm_max_provider_requests_per_run
+    assert Settings(_env_file=None, app_env="test").llm_max_provider_requests_per_run == 24
+
+
+def test_provider_requests_count_retries_and_fallbacks(settings):
+    primary = ScriptedModel(errors=[FakeRateLimit()] * 3)
+    c, _ = client(settings, primary, fallback=replies(VALID))
+
+    c.invoke(MSGS)
+
+    # one logical call; 3 requests to the primary (try + 2 retries) + 1 to the fallback
+    assert (c.budget.calls, c.budget.provider_requests) == (1, 4)
+
+
+def test_cache_hit_sends_no_provider_request(settings, tmp_path):
+    cache = ResponseCache(tmp_path)
+    client(settings, replies(VALID), cache=cache)[0].invoke(MSGS)
+    second, _ = client(settings, replies(), cache=cache)
+    second.invoke(MSGS)
+    assert (second.budget.calls, second.budget.provider_requests) == (1, 0)
+
+
+def test_provider_request_cap_stops_a_retry_storm(settings):
+    budget = RunBudget(max_calls=8, max_provider_requests=2)
+    primary = ScriptedModel(errors=[FakeRateLimit()] * 3)
+    fallback = ScriptedModel()
+    c, _ = client(settings, primary, fallback=fallback, budget=budget)
+
+    with pytest.raises(BudgetExceeded, match="provider requests"):
+        c.invoke(MSGS)
+    assert primary.calls == 2 and fallback.calls == 0  # the third request was never sent
+    assert budget.snapshot()["provider_requests"] == 2 and budget.calls == 1
 
 
 @pytest.mark.parametrize(
