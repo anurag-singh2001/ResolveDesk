@@ -17,6 +17,7 @@ from app.core.money import format_inr
 STAGES = (
     "received",
     "investigating",
+    "awaiting_info",
     "awaiting_approval",
     "processing",
     "confirmed",
@@ -45,6 +46,10 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
     if proposal is None:
         if case.status == "escalated":
             return CaseStatus("escalated", "A member of our team will look into this.")
+        if case.status == "awaiting_info":
+            return CaseStatus(
+                "awaiting_info", "We need a little more information. Please see our question."
+            )
         if case.status == "resolved":
             return CaseStatus("closed", "Sorry about this. We have noted it with the team.")
         return CaseStatus("investigating", "We are looking into your order.")

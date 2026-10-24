@@ -16,6 +16,9 @@ from app.engine.resolver import propose_for_case
 OPEN_STATUSES = ("open", "investigating", "awaiting_info", "awaiting_approval", "executing")
 
 
+UNCLASSIFIED = "unknown"  # ticket category until the agent pipeline classifies the case
+
+
 class CaseError(Exception):
     code = "case_error"
 
@@ -94,7 +97,7 @@ def open_case(
         customer_id=customer.id,
         transaction_id=order.id,
         case_id=case.id,
-        category=category,
+        category=category or UNCLASSIFIED,  # the classifier sets it (agents mode)
         status="open",
         channel="app",
         opened_at=now,

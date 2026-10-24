@@ -45,6 +45,11 @@ class RateLimited(LLMError):
     """Every provider tried was still rate limited after its retries."""
 
 
+class ProviderFailed(LLMError):
+    """Every provider failed with a non-rate-limit error (server error, retired model...).
+    Only the exception class names are kept: SDK messages can echo request details."""
+
+
 class BudgetExceeded(LLMError):
     """The run hit its LLM call limit: the engine stops and escalates."""
 
@@ -266,14 +271,25 @@ class LLMClient:
     ) -> AIMessage:
         msgs = convert_to_messages(messages)
         self.budget.charge_call()
+        failures: list[str] = []
         for i, target in enumerate(self.targets):
             if i:
                 self.budget.bump("fallbacks")
-                log.warning("LLM rate limited; falling back to %s", target.provider)
-            reply = self._invoke_target(target, msgs, schema)
+                log.warning("LLM %s failed; falling back to %s", self.targets[i - 1].provider,
+                            target.provider)  # fmt: skip
+            try:
+                reply = self._invoke_target(target, msgs, schema)
+            except LLMError:
+                raise  # our own (e.g. the budget): never retried on another provider
+            except Exception as e:  # server error, retired model, network: try the next one
+                failures.append(f"{target.provider}:{type(e).__name__}")
+                continue
             if reply is not None:
                 return reply
-        raise RateLimited("all LLM providers are rate limited")
+            failures.append(f"{target.provider}:rate_limited")
+        if all(f.endswith(":rate_limited") for f in failures):
+            raise RateLimited("all LLM providers are rate limited")
+        raise ProviderFailed(", ".join(failures))
 
     def _invoke_target(
         self, target: Target, msgs: list[BaseMessage], schema: str | None

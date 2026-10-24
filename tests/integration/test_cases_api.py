@@ -298,3 +298,46 @@ def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):
     for other in others:
         theirs = api.get("/cases", headers=login(api, f["cfg"].slug, other.email)).json()
         assert opened["id"] not in {c["id"] for c in theirs}
+
+
+@pytest.fixture
+def agents_mode(monkeypatch):
+    import app.api.routes_cases as routes
+
+    runs = []
+    agents = routes.get_settings().model_copy(update={"engine_mode": "agents"})
+    monkeypatch.setattr(routes, "get_settings", lambda: agents)
+    monkeypatch.setattr(routes, "run_agents", lambda *a: runs.append(a))
+    return runs
+
+
+def test_free_text_case_is_queued_for_the_agents(api, app_engine, flow, agents_mode):
+    f = flow
+    resp = api.post(
+        "/cases",
+        headers=f["customer"],
+        json={"transaction_id": str(f["order_id"]), "message": "Something was missing."},
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert (body["stage"], body["category"], body["proposal_id"]) == ("investigating", None, None)
+    assert len(agents_mode) == 1  # exactly one run scheduled
+    with tenant_session(f["tid"], app_engine) as s:
+        ticket = s.scalar(select(Ticket.category).where(Ticket.case_id == uuid.UUID(body["id"])))
+    assert ticket == "unknown"
+    again = api.post(
+        "/cases",
+        headers=f["customer"],
+        json={"transaction_id": str(f["order_id"]), "message": "Hello? Still missing."},
+    )
+    assert again.json()["id"] == body["id"]  # same open case
+
+
+def test_category_is_required_outside_agents_mode(api, flow):
+    f = flow
+    resp = api.post(
+        "/cases",
+        headers=f["customer"],
+        json={"transaction_id": str(f["order_id"]), "message": "Something was missing."},
+    )
+    assert resp.status_code == 422

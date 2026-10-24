@@ -118,6 +118,12 @@ def build_graph(deps: Deps):
         if unsure:  # the classifier's own wording stays internal (audit), never shown
             return {"category": None, "need": NEED_DETAILS, "step_count": step,
                     "reason": f"classifier unsure: {result.model_dump_json()[:300]}"}  # fmt: skip
+        with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+            case_id = uuid.UUID(state["case_id"])
+            s.get(Case, case_id).category = result.category  # validated above
+            s.execute(
+                update(Ticket).where(Ticket.case_id == case_id).values(category=result.category)
+            )
         return {"category": result.category, "need": None, "step_count": step}
 
     def investigate(state: CaseState) -> CaseState:
