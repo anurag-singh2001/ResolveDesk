@@ -42,6 +42,24 @@ from app.engine.approvals import Usability, check_usable
 from app.engine.eligibility import CAPTURED_STATUSES, order_facts
 
 TERMINAL = ("succeeded", "failed")
+# Writes only move forward: a slower worker's stale answer can't overwrite a newer state.
+# new execution status -> statuses it may replace
+EXEC_FORWARD = {
+    "submitted": (),
+    "unknown": ("submitted",),
+    "processing": ("submitted", "unknown"),
+    "succeeded": ("submitted", "unknown", "processing"),
+    "failed": ("submitted", "unknown", "processing"),
+}
+LEDGER_FORWARD = {
+    "reserved": (),
+    "submitted": ("reserved",),
+    "unknown": ("reserved", "submitted"),
+    "pending_reconciliation": ("reserved", "submitted", "unknown"),
+    # A late provider success must be recorded even after quarantine: the money moved.
+    "succeeded": ("reserved", "submitted", "unknown", "pending_reconciliation"),
+    "failed": ("reserved", "submitted", "unknown", "pending_reconciliation"),
+}
 # provider outcome -> (execution status, ledger status)
 STATUS_MAP = {
     "succeeded": ("succeeded", "succeeded"),
@@ -100,11 +118,12 @@ def execute_refund(
             return _current(engine, ctx, proposal_id)  # can't tell yet: reconcile later
         if found is not None:
             return _persist(engine, ctx, proposal_id, job.key, found)
-        # The provider has no record, so nothing is in flight: this send is the first one
-        # that can move money, and the approval must still be usable for it.
+        # No record YET. An earlier request may still be in flight, so this is not proof that
+        # nothing will land. Sending again (same key) is safe, but only on a usable approval;
+        # otherwise quarantine: keep the balance held, send nothing, wait for the provider.
         usable = _still_usable(engine, ctx, proposal_id, now)
         if not usable.ok:
-            _release(engine, ctx, proposal_id, usable.reason)
+            _quarantine(engine, ctx, proposal_id, usable.reason)
             raise ExecutionRefused(usable.reason)
     outcome = _send(connector, ctx, job, unavailable_retries)
     return _persist(engine, ctx, proposal_id, job.key, outcome)
@@ -166,28 +185,39 @@ def _still_usable(engine, ctx, proposal_id, now) -> Usability:
         return check_usable(approval, proposal, now)
 
 
-def _release(engine, ctx, proposal_id, reason: str) -> None:
-    """Nothing was ever applied and the approval is no longer usable: fail the execution and
-    free the reserved balance (failed rows don't hold money)."""
+def _quarantine(engine, ctx, proposal_id, reason: str) -> None:
+    """The approval is no longer usable but the provider might still apply an earlier
+    request. Never free the money on that uncertainty: mark the ledger
+    pending_reconciliation (it still holds the balance), keep the execution unknown, and let
+    later reconciles record whatever the provider reports. Releasing it is a deliberate
+    operator action after a quarantine window (not automated in v1)."""
     with tenant_session(ctx.tenant_id, engine) as s:
         s.execute(
             update(Execution)
+            .where(
+                Execution.proposal_id == proposal_id, Execution.status.in_(EXEC_FORWARD["unknown"])
+            )
+            .values(status="unknown")
+        )
+        s.execute(
+            update(Execution)
             .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
-            .values(status="failed", error=f"released: {reason}")
+            .values(error=f"quarantined: {reason}")
         )
         s.execute(
             update(RefundOperation)
             .where(
-                RefundOperation.proposal_id == proposal_id, RefundOperation.status.notin_(TERMINAL)
+                RefundOperation.proposal_id == proposal_id,
+                RefundOperation.status.in_(LEDGER_FORWARD["pending_reconciliation"]),
             )
-            .values(status="failed")
+            .values(status="pending_reconciliation")
         )
         audit.record(
             s,
             ctx.tenant_id,
             actor_type="system",
             actor_id=None,
-            event="refund.released",
+            event="refund.quarantined",
             entity_type="proposal",
             entity_id=proposal_id,
             payload={"reason": reason},
@@ -276,20 +306,25 @@ def _payment_reference(session, order_id) -> str:
 
 
 def _persist(engine, ctx, proposal_id, key, outcome: RefundOutcome) -> RefundResult:
-    """Record the provider's answer. Never downgrades a finished execution (a slower worker's
-    stale answer is ignored) and never erases a known provider reference."""
+    """Record the provider's answer. Only moves forward (a slower worker's stale answer is
+    ignored), never erases a known provider reference, and records a late success even for a
+    quarantined refund."""
     exec_status, ledger_status = STATUS_MAP[outcome.status]
     ref = {"provider_reference": outcome.provider_reference} if outcome.provider_reference else {}
     with tenant_session(ctx.tenant_id, engine) as s:
         changed = s.execute(
             update(Execution)
-            .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
+            .where(
+                Execution.proposal_id == proposal_id,
+                Execution.status.in_(EXEC_FORWARD[exec_status]),
+            )
             .values(status=exec_status, error=outcome.failure_reason, **ref)
         ).rowcount
         s.execute(
             update(RefundOperation)
             .where(
-                RefundOperation.proposal_id == proposal_id, RefundOperation.status.notin_(TERMINAL)
+                RefundOperation.proposal_id == proposal_id,
+                RefundOperation.status.in_(LEDGER_FORWARD[ledger_status]),
             )
             .values(status=ledger_status, **ref)
         )

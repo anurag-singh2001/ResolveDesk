@@ -19,6 +19,7 @@ from app.core.models import (
     Case,
     DomainEvent,
     Execution,
+    Payment,
     RefundOperation,
     Transaction,
     User,
@@ -407,22 +408,63 @@ def test_a_stale_outcome_never_downgrades_a_finished_refund(app_engine, world):
         )
 
 
-def test_resume_after_expiry_releases_a_never_sent_reservation(app_engine, world):
+def test_resume_after_expiry_quarantines_instead_of_freeing_money(app_engine, world):
+    """'No record yet' isn't proof nothing will land: keep the balance held, send nothing."""
     w = world
     pid = propose(app_engine, w, small(w))
-    decided = NOW - timedelta(hours=1)
-    approve(app_engine, w, pid, now=decided)  # still valid now; expires within a few hours
-    get_mock("payment").set_chaos(Chaos(transient_error_rate=1.0), merchant_id_for(w["tid"]))
-    assert execute_refund(app_engine, w["hq"], pid, unavailable_retries=0).status == "submitted"
+    approve(app_engine, w, pid, now=NOW - timedelta(hours=1))
+    get_mock("payment").set_chaos(Chaos(timeout_rate=1.0), merchant_id_for(w["tid"]))
+    assert execute_refund(app_engine, w["hq"], pid).status == "unknown"
     get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
-    later = NOW + timedelta(days=3)  # approval long expired, provider never got the refund
+    later = NOW + timedelta(days=3)  # approval long expired, provider has no record
     with pytest.raises(ExecutionRefused, match="expired"):
         execute_refund(app_engine, w["hq"], pid, now=later)
     assert provider_ops(w) == []
-    assert [r.status for r in ledger(app_engine, w)] == ["failed"]  # balance released
+    assert [r.status for r in ledger(app_engine, w)] == ["pending_reconciliation"]
     with tenant_session(w["tid"], app_engine) as s:
         _, facts = order_facts(s, w["order_id"])
-    assert facts.refundable_paise == w["total"]
+    assert facts.refundable_paise == w["total"] - small(w)  # still held: no double refund
+
+
+def test_a_late_landing_after_quarantine_is_recorded_once(app_engine, world):
+    """The in-flight request lands after we quarantined: record it, never refund twice."""
+    from mocks.payment import RefundRequest
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid, now=NOW - timedelta(hours=1))
+    get_mock("payment").set_chaos(Chaos(timeout_rate=1.0), merchant_id_for(w["tid"]))
+    execute_refund(app_engine, w["hq"], pid)
+    get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
+    with pytest.raises(ExecutionRefused):
+        execute_refund(app_engine, w["hq"], pid, now=NOW + timedelta(days=3))
+    with tenant_session(w["tid"], app_engine) as s:  # the original request finally lands
+        payment_ref = s.scalar(
+            select(Payment.provider_reference).where(Payment.transaction_id == w["order_id"])
+        )
+    get_mock("payment").refund(
+        merchant_id_for(w["tid"]),
+        refund_key(pid),
+        RefundRequest(payment_reference=payment_ref, amount_paise=small(w)),
+    )
+    assert reconcile_refund(app_engine, w["hq"], pid).status == "succeeded"
+    assert [r.status for r in ledger(app_engine, w)] == ["succeeded"]
+    assert len(provider_ops(w)) == 1
+
+
+def test_stale_non_terminal_answers_never_move_backwards(app_engine, world):
+    from app.connectors.base import RefundOutcome
+    from app.engine.executor import _persist
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    get_mock("payment").set_chaos(
+        Chaos(processing_rate=1.0, settle_after_polls=50), merchant_id_for(w["tid"])
+    )
+    assert execute_refund(app_engine, w["hq"], pid).status == "processing"
+    stale = _persist(app_engine, w["hq"], pid, refund_key(pid), RefundOutcome("unknown"))
+    assert stale.status == "processing"
 
 
 def test_resume_after_expiry_still_records_money_already_sent(app_engine, world):
