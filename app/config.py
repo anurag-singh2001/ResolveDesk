@@ -32,10 +32,10 @@ class Settings(BaseSettings):
     llm_cache: bool = False
     llm_cache_dir: str = ".llm_cache"
     # Model per role and provider (PROJECT.md section 4: model names live in config only).
-    llm_main_model_gemini: str = "gemini-2.5-flash"
-    llm_classifier_model_gemini: str = "gemini-2.5-flash-lite"
-    llm_main_model_groq: str = "llama-3.3-70b-versatile"
-    llm_classifier_model_groq: str = "llama-3.1-8b-instant"
+    llm_main_model_gemini: str = "gemini-3.8-flash"
+    llm_classifier_model_gemini: str = "gemini-3.5-flash-lite"
+    llm_main_model_groq: str = "openai/gpt-oss-120b"
+    llm_classifier_model_groq: str = "openai/gpt-oss-20b"
     llm_ollama_model: str = "qwen2.5:3b"
     llm_temperature: float = 0.0
     # Rate-limit backoff: retries per provider, delay = base * 2**attempt, capped.

@@ -14,6 +14,7 @@ from app.llm.providers import (
     BudgetExceeded,
     LLMClient,
     MissingAPIKey,
+    ProviderFailed,
     RateLimited,
     ResponseCache,
     RunBudget,
@@ -125,13 +126,33 @@ def test_all_providers_rate_limited_raises(settings):
         c.invoke(MSGS)
 
 
-def test_other_errors_do_not_retry_or_fall_back(settings):
+def test_other_errors_skip_retries_and_fall_back(settings):
     primary = ScriptedModel(errors=[ValueError("bad request")])
     c, sleeps = client(settings, primary, fallback=replies(VALID))
 
-    with pytest.raises(ValueError):
+    assert c.invoke(MSGS).content == VALID
+    assert primary.calls == 1 and sleeps == [] and c.budget.fallbacks == 1
+
+
+def test_all_providers_failing_raises_without_their_messages(settings):
+    primary = ScriptedModel(errors=[ValueError("key=sk-secret in url")])
+    fallback = ScriptedModel(errors=[RuntimeError("upstream 503 key=sk-secret")])
+    c, _ = client(settings, primary, fallback=fallback)
+
+    with pytest.raises(ProviderFailed) as exc:
         c.invoke(MSGS)
-    assert primary.calls == 1 and sleeps == [] and c.budget.fallbacks == 0
+    assert "sk-secret" not in str(exc.value) and "ValueError" in str(exc.value)
+
+
+def test_budget_errors_never_fall_back(settings):
+    settings = settings.model_copy(update={"llm_max_provider_requests_per_run": 1})
+    primary = ScriptedModel(errors=[FakeRateLimit("rate limit")])
+    fallback = ScriptedModel()
+    c, _ = client(settings, primary, fallback=fallback)
+
+    with pytest.raises(BudgetExceeded):
+        c.invoke(MSGS)
+    assert fallback.calls == 0
 
 
 class FakeResponse:
