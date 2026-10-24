@@ -16,11 +16,11 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, TypedDict
 
 from langgraph.graph import END, StateGraph
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, func, select, update
 
 from app.actions.base import Facts, enabled_actions, get_action
 from app.agents import tools
@@ -39,6 +39,8 @@ from app.rag.retrieve import search_policies
 log = logging.getLogger(__name__)
 
 MAX_STEPS = 12
+# A 'running' run older than this died with its process (restart, OOM); it is taken over.
+RUN_TTL = timedelta(minutes=10)
 POLICY_K = 6
 
 # What we may need from the customer -> the question code sends (no model-written text).
@@ -307,18 +309,20 @@ def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str 
 
 
 def _claim(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID) -> uuid.UUID | None:
-    """Start a run unless the case isn't waiting for one or another run holds it. The case row
-    lock makes two concurrent claims (e.g. a resubmitted report) serialize: one wins."""
+    """Start a run unless the case isn't waiting for one or a live run holds it. The case row
+    lock makes two concurrent claims (e.g. a resubmitted report) serialize: one wins. A run
+    still 'running' after RUN_TTL is marked failed, so a crash can't block the case forever."""
     with tenant_session(tenant_id, engine) as s:
         case = s.scalar(select(Case).where(Case.id == case_id).with_for_update())
         if case is None or case.status != "investigating":
             return None
-        busy = s.scalar(
-            select(WorkflowRun.id).where(
-                WorkflowRun.case_id == case_id, WorkflowRun.status == "running"
-            )
+        running = (WorkflowRun.case_id == case_id) & (WorkflowRun.status == "running")
+        s.execute(
+            update(WorkflowRun)
+            .where(running, WorkflowRun.created_at < func.now() - RUN_TTL)
+            .values(status="failed", error="abandoned: no result within the run TTL")
         )
-        if busy is not None:
+        if s.scalar(select(WorkflowRun.id).where(running)) is not None:
             return None
         run_id = uuid.uuid4()
         s.add(WorkflowRun(id=run_id, tenant_id=tenant_id, case_id=case_id, status="running"))
@@ -346,15 +350,18 @@ def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str,
         except Exception:
             log.exception("could not escalate case %s", case_id)
     snapshot = budget.snapshot()
-    with tenant_session(tenant_id, deps.engine) as s:
-        run = s.get(WorkflowRun, run_id)
-        run.status = {"proposed": "completed", "awaiting_info": "paused"}.get(
-            final.get("outcome"), "escalated"
-        )
-        run.step_count = final.get("step_count", 0)
-        run.llm_calls = snapshot.get("calls", 0)
-        if final.get("outcome") == "escalated":
-            run.error = (final.get("reason") or "")[:500]
+    try:  # the case is already terminal here; a failure only leaves the run row stale (TTL)
+        with tenant_session(tenant_id, deps.engine) as s:
+            run = s.get(WorkflowRun, run_id)
+            run.status = {"proposed": "completed", "awaiting_info": "paused"}.get(
+                final.get("outcome"), "escalated"
+            )
+            run.step_count = final.get("step_count", 0)
+            run.llm_calls = snapshot.get("calls", 0)
+            if final.get("outcome") == "escalated":
+                run.error = (final.get("reason") or "")[:500]
+    except Exception:
+        log.exception("could not record the result of run %s", run_id)
     return {**final, "run_id": str(run_id), "llm": snapshot}
 
 

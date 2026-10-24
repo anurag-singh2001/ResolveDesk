@@ -2,7 +2,7 @@
 
 import re
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -320,3 +320,13 @@ def test_llm_budget_exceeded_escalates(app_engine, case):
             )
             == 1
         )
+
+
+@pytest.mark.parametrize("age_minutes, outcome", [(1, "skipped"), (60, "proposed")])
+def test_a_crashed_run_only_blocks_the_case_until_its_ttl(app_engine, case, age_minutes, outcome):
+    with tenant_session(case["tid"], app_engine) as s:
+        s.add(WorkflowRun(tenant_id=case["tid"], case_id=case["case_id"], status="running",
+                          created_at=NOW - timedelta(minutes=age_minutes)))  # fmt: skip
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case)]})
+    assert _run(app_engine, case, clf, res)["outcome"] == outcome
