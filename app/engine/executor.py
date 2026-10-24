@@ -204,14 +204,16 @@ def _quarantine(engine, ctx, proposal_id, reason: str) -> None:
             .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
             .values(error=f"quarantined: {reason}")
         )
-        s.execute(
+        changed = s.execute(
             update(RefundOperation)
             .where(
                 RefundOperation.proposal_id == proposal_id,
                 RefundOperation.status.in_(LEDGER_FORWARD["pending_reconciliation"]),
             )
             .values(status="pending_reconciliation")
-        )
+        ).rowcount
+        if not changed:  # already quarantined (or finished): nothing new to audit
+            return
         audit.record(
             s,
             ctx.tenant_id,
