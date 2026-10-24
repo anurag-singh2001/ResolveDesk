@@ -520,3 +520,37 @@ def test_out_of_scope_and_missing_proposals_look_the_same(app_engine, world):
             approve(app_engine, w, target, ctx=ctx)
         errors.append((type(exc.value), str(exc.value)))
     assert errors[0] == errors[1]
+
+
+def test_an_approved_refund_refused_at_execution_is_recorded_not_lost(app_engine, world):
+    """E4.3 chaos finding: two approved refunds that together exceed the order. The loser was
+    refused with only a log line: no execution, no audit, and the customer was told "being
+    processed" until the approval expired. It must end in a recorded, final state."""
+    from app.engine.case_status import case_status
+
+    w = world
+    used, remaining = [], w["total"]
+    while remaining > 0:  # approved refunds that use the whole order
+        amount = min(w["cap"], remaining)
+        used.append(propose(app_engine, w, amount))
+        approve(app_engine, w, used[-1])
+        remaining -= amount
+    late = propose(app_engine, w, 1)
+    approve(app_engine, w, late)  # approvable: nothing reserved yet
+    for pid in used:
+        assert execute_refund(app_engine, w["hq"], pid).status == "succeeded"
+    with pytest.raises(ExecutionRefused, match="not_eligible"):
+        execute_refund(app_engine, w["hq"], late)
+    with tenant_session(w["tid"], app_engine) as s:
+        execution = s.scalar(select(Execution).where(Execution.proposal_id == late))
+        assert execution is not None and execution.status == "failed"
+        assert execution.error.startswith("refused: not_eligible")
+        assert execution.idempotency_key == refund_key(late)
+        events = set(s.scalars(select(AuditEvent.event).where(AuditEvent.entity_id == late)))
+        assert "refund.refused" in events
+        assert case_status(s, s.get(Case, w["case_id"])).stage == "escalated"
+    assert late not in {r.proposal_id for r in ledger(app_engine, w)}  # nothing held for it
+    assert len(provider_ops(w)) == len(used)  # never sent
+    # Re-running it is a no-op that reports the recorded outcome.
+    assert execute_refund(app_engine, w["hq"], late).status == "failed"
+    assert len(provider_ops(w)) == len(used)

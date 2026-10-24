@@ -35,7 +35,7 @@ test-isolation:
 	uv run pytest -q -m isolation
 
 test-chaos:
-	@echo not implemented yet
+	uv run pytest -q -m chaos
 
 eval:
 	@echo not implemented yet
