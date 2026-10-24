@@ -1,8 +1,9 @@
 """LLM provider factory, rate-limit fallback, structured output and dev cache (PROJECT.md 4, 8).
 
 Providers and model names come from settings only. `LLMClient` is the one way agents call a
-model: it counts every call against the run's `RunBudget`, backs off on rate limits and then
-switches to the fallback provider, and validates structured replies with one repair attempt.
+model: it counts every call and every provider request against the run's `RunBudget`, backs
+off on rate limits and then switches to the fallback provider, and validates structured
+replies with one repair attempt.
 """
 
 import hashlib
@@ -75,7 +76,7 @@ def get_chat_model(
 
         return ChatGoogleGenerativeAI(
             model=name,
-            google_api_key=s.gemini_api_key,
+            google_api_key=s.gemini_api_key.get_secret_value(),
             temperature=s.llm_temperature,
             max_retries=0,
         )
@@ -85,7 +86,10 @@ def get_chat_model(
         from langchain_groq import ChatGroq
 
         return ChatGroq(
-            model=name, api_key=s.groq_api_key, temperature=s.llm_temperature, max_retries=0
+            model=name,
+            api_key=s.groq_api_key.get_secret_value(),
+            temperature=s.llm_temperature,
+            max_retries=0,
         )
     if provider == "ollama":
         from langchain_ollama import ChatOllama
@@ -94,23 +98,50 @@ def get_chat_model(
     raise ValueError(f"unknown LLM provider {provider!r}")
 
 
+_RATE_LIMIT_TEXT = ("rate limit", "ratelimit", "resource_exhausted", "too many requests")
+
+
 def is_rate_limit(exc: BaseException) -> bool:
-    """Generic 429 detection: provider SDKs use different exception types for the same thing."""
+    """Generic 429 detection: provider SDKs use different exception types for the same thing.
+
+    An HTTP status attribute decides when there is one (`status_code`, `response.status_code`,
+    `code`). Only without one is the text matched, by phrase: a bare "429" in a message may be
+    a port or a request id, so it is not treated as a rate limit.
+    """
     response = getattr(exc, "response", None)
-    for status in (getattr(exc, "status_code", None), getattr(response, "status_code", None)):
-        if status == 429:
-            return True
+    statuses = [
+        s
+        for s in (
+            getattr(exc, "status_code", None),
+            getattr(response, "status_code", None),
+            getattr(exc, "code", None),
+        )
+        if isinstance(s, int) and not isinstance(s, bool)
+    ]
+    if statuses:
+        return 429 in statuses
     text = f"{type(exc).__name__} {exc}".lower()
-    return any(t in text for t in ("429", "rate limit", "ratelimit", "resource_exhausted"))
+    return any(t in text for t in _RATE_LIMIT_TEXT)
 
 
 @dataclass
 class RunBudget:
-    """Per-run LLM counters. `calls` counts logical calls (incl. repairs and cache hits) so a run
-    routes the same with or without the dev cache; tokens count real provider calls only."""
+    """Per-run LLM counters and the two run limits; either one raises `BudgetExceeded`.
+
+    - `calls` / `max_calls` (`llm_max_calls_per_run`): logical calls. One per `invoke`, so a
+      structured-output repair counts as a call and so does a cache hit (a run routes the same
+      with or without the dev cache). Rate-limit retries and fallbacks do not count here.
+    - `provider_requests` / `max_provider_requests` (`llm_max_provider_requests_per_run`):
+      every request actually sent to a provider, retries and fallbacks included; cache hits
+      send none. Bounds the cost of retry x fallback storms that `max_calls` does not see.
+
+    Tokens count real provider replies only.
+    """
 
     max_calls: int
+    max_provider_requests: int = 24
     calls: int = 0
+    provider_requests: int = 0
     retries: int = 0
     fallbacks: int = 0
     repairs: int = 0
@@ -122,13 +153,27 @@ class RunBudget:
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> "RunBudget":
-        return cls(max_calls=(settings or get_settings()).llm_max_calls_per_run)
+        s = settings or get_settings()
+        return cls(
+            max_calls=s.llm_max_calls_per_run,
+            max_provider_requests=s.llm_max_provider_requests_per_run,
+        )
 
     def charge_call(self) -> None:
+        """One logical call (an `invoke`, incl. repairs and cache hits)."""
         with self._lock:
             if self.calls >= self.max_calls:
                 raise BudgetExceeded(f"run used its {self.max_calls} LLM calls")
             self.calls += 1
+
+    def charge_provider_request(self) -> None:
+        """One request about to be sent to a provider (first try, retry or fallback)."""
+        with self._lock:
+            if self.provider_requests >= self.max_provider_requests:
+                raise BudgetExceeded(
+                    f"run used its {self.max_provider_requests} LLM provider requests"
+                )
+            self.provider_requests += 1
 
     def bump(self, counter: str, n: int = 1) -> None:
         with self._lock:
@@ -239,6 +284,7 @@ class LLMClient:
             self.budget.bump("cache_hits")
             return AIMessage(content=hit["content"])
         for attempt in range(self.s.llm_retry_attempts + 1):
+            self.budget.charge_provider_request()
             try:
                 reply = target.chat.invoke(msgs)
             except Exception as e:

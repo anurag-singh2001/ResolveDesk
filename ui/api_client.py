@@ -86,6 +86,11 @@ class ApiClient:
     def me(self) -> dict:
         return self._request("GET", "/me")
 
+    # tenant metadata
+    def categories(self) -> list[str]:
+        """The caller's tenant issue categories (from its vertical pack, via the API)."""
+        return self._request("GET", "/meta/categories")["categories"]
+
     # orders
     def list_orders(self, limit: int = 20) -> list[dict]:
         return self._request("GET", "/orders", params={"limit": limit})

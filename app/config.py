@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["gemini", "groq", "ollama"]
@@ -9,7 +9,8 @@ DEV_JWT_SECRET = "dev-only-change-me-dev-only-change-me"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    # hide_input_in_errors: a ValidationError never echoes the values (API keys, DB URLs).
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore", hide_input_in_errors=True)
 
     # DB URLs are optional so the app and unit tests start without a database.
     database_url: str | None = None
@@ -23,9 +24,11 @@ class Settings(BaseSettings):
     llm_provider: Provider = "gemini"
     llm_classifier_provider: Provider = "groq"
     llm_fallback_provider: Provider = "groq"
-    gemini_api_key: str | None = None
-    groq_api_key: str | None = None
+    # SecretStr: str()/repr() print "**********"; unwrap only where the key is handed to the SDK.
+    gemini_api_key: SecretStr | None = None
+    groq_api_key: SecretStr | None = None
     ollama_base_url: str = "http://localhost:11434"
+    # Dev only: the cache stores full prompts and replies, customer text included (refused in prod).
     llm_cache: bool = False
     llm_cache_dir: str = ".llm_cache"
     # Model per role and provider (PROJECT.md section 4: model names live in config only).
@@ -39,8 +42,13 @@ class Settings(BaseSettings):
     llm_retry_attempts: int = Field(default=3, ge=0)
     llm_retry_base_seconds: float = Field(default=1.0, ge=0)
     llm_retry_max_seconds: float = Field(default=20.0, ge=0)
-    # Engine limit (PROJECT.md section 8): more LLM calls in one run -> stop and escalate.
+    # Engine limits (PROJECT.md section 8); past either one the run stops and escalates.
+    # Logical calls: each invoke and each structured-output repair, cache hits included;
+    # rate-limit retries and fallbacks are not counted here.
     llm_max_calls_per_run: int = Field(default=8, ge=1)
+    # Actual provider requests: every request sent, retries and fallbacks included
+    # (cache hits send none). Bounds the worst case of retry * fallback per logical call.
+    llm_max_provider_requests_per_run: int = Field(default=24, ge=1)
 
     # Fail safe: an unset APP_ENV is treated as prod (dev/test must opt in explicitly).
     app_env: Literal["dev", "test", "prod"] = "prod"
@@ -58,6 +66,8 @@ class Settings(BaseSettings):
     def _no_dev_shortcuts_in_prod(self) -> "Settings":
         if self.app_env == "prod" and (self.demo_auth or self.jwt_secret == DEV_JWT_SECRET):
             raise ValueError("prod requires DEMO_AUTH=false and a real JWT_SECRET")
+        if self.app_env == "prod" and self.llm_cache:
+            raise ValueError("prod requires LLM_CACHE=false (the cache stores customer text)")
         return self
 
 

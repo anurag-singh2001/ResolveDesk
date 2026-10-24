@@ -68,6 +68,14 @@ def test_endpoints_send_bearer_and_expected_path(call, method, path, params):
     assert req.headers["authorization"] == "Bearer tok"
 
 
+def test_categories_come_from_the_meta_endpoint():
+    api, seen = recording_client(lambda r: httpx.Response(200, json={"categories": ["a", "b"]}))
+    assert api.categories() == ["a", "b"]
+    (req,) = seen
+    assert (req.method, req.url.path) == ("GET", "/meta/categories")
+    assert req.headers["authorization"] == "Bearer tok"
+
+
 def test_create_case_body():
     api, seen = recording_client(lambda r: httpx.Response(201, json=CASE))
     assert api.create_case("t1", "late", "cold food") == CASE

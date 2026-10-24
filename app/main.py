@@ -6,6 +6,7 @@ from app.api import (
     routes_auth,
     routes_cases,
     routes_locations,
+    routes_meta,
     routes_orders,
 )
 from app.config import get_settings
@@ -20,6 +21,7 @@ def create_app() -> FastAPI:
 
     app.include_router(routes_auth.router)
     app.include_router(routes_locations.router)
+    app.include_router(routes_meta.router)
     app.include_router(routes_orders.router)
     app.include_router(routes_cases.router)
     app.include_router(routes_approvals.router)
