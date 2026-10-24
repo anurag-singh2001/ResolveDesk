@@ -16,12 +16,15 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.actions.base import Facts, get_action
-from app.core import audit
+from app.core import audit, events
 from app.core.models import ActionProposal, Approval, Case, Transaction
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import order_facts
 from app.engine.proposals import proposal_hash_is_intact
+
+# A decision moves the case on only from these (an escalated or closed case stays put).
+DECIDABLE_CASE_STATUSES = ("awaiting_approval", "executing")
 
 
 class ApprovalError(Exception):
@@ -155,6 +158,12 @@ def decide(
         entity_id=proposal.id,
         payload={"checks": result.checks, "note": note},
     )
+    case = session.get(Case, proposal.case_id)
+    if case is not None and case.status in DECIDABLE_CASE_STATUSES:
+        # Rejected: the case is closed (stage "declined"). Approved: execution comes next.
+        case.status = "closed" if decision == "rejected" else "executing"
+    events.emit(session, ctx.tenant_id, f"case.{decision}", proposal.case_id,
+                {"proposal_id": str(proposal.id), "mode": "human"})  # fmt: skip
     return approval
 
 

@@ -12,8 +12,9 @@ from app.api.deps import get_db_engine, not_found, require_staff, tenant_db
 from app.core.models import ActionProposal, Approval, Case, Transaction
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
+from app.engine import lifecycle
+from app.engine.agent_runner import after_decision
 from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
-from app.engine.executor import ExecutionRefused, execute_refund, reconcile_refund
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
@@ -87,12 +88,20 @@ class DecisionOut(BaseModel):
 
 
 def run_refund(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
-    """Runs after the response, once the request's transaction has committed: the provider
-    is never called while a DB transaction is open (hard rule 5)."""
+    """Execute, then verify. Runs after the response, once the request's transaction has
+    committed: the provider is never called while a DB transaction is open (hard rule 5).
+    Refusals and escalations are recorded in the DB/audit; nothing to raise to anyone."""
     try:
-        execute_refund(engine, ctx, proposal_id)
-    except ExecutionRefused as exc:  # recorded in the DB/audit; nothing to raise to anyone
-        log.info("refund %s not executed: %s", proposal_id, exc.reason)
+        lifecycle.execute_and_verify(engine, ctx.tenant_id, proposal_id)
+    except Exception:
+        log.exception("refund %s: execute/verify failed", proposal_id)
+
+
+def _after_decision(engine, ctx: TenantContext, case_id, proposal_id, approved: bool) -> None:
+    try:
+        after_decision(engine, ctx.tenant_id, case_id, proposal_id, approved)
+    except Exception:
+        log.exception("case %s: continuing after the decision failed", case_id)
 
 
 @router.post("/approvals/{proposal_id}/decision")
@@ -116,9 +125,10 @@ def post_decision(
     except NotEligible as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
     proposal = db.get(ActionProposal, proposal_id)
-    queued = body.decision == "approved" and proposal.action == "refund"
-    if queued:
-        background.add_task(run_refund, engine, ctx, proposal_id)
+    approved = body.decision == "approved"
+    queued = approved and proposal.action == "refund"
+    # Resume the case's paused workflow (or run the code path): after this request commits.
+    background.add_task(_after_decision, engine, ctx, proposal.case_id, proposal_id, approved)
     return DecisionOut(
         proposal_id=proposal_id,
         decision=approval.decision,
@@ -129,9 +139,9 @@ def post_decision(
 
 def _run_reconcile(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
     try:
-        reconcile_refund(engine, ctx, proposal_id)
-    except ExecutionRefused as exc:
-        log.info("refund %s not reconciled: %s", proposal_id, exc.reason)
+        lifecycle.reconcile_and_verify(engine, ctx.tenant_id, proposal_id)
+    except Exception:
+        log.exception("refund %s: reconcile/verify failed", proposal_id)
 
 
 @router.post("/approvals/{proposal_id}/reconcile", status_code=status.HTTP_202_ACCEPTED)

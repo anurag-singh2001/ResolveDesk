@@ -1,8 +1,8 @@
 """What a customer may be told about their case (hard rule 7).
 
 Only states a tool confirmed are stated. "Confirmed" requires the provider to have reported
-success; a timeout is "still processing", never success; a decision is not the same as money
-having moved.
+success AND the verifier to have re-read it from the provider by key and found it matching; a
+timeout is "still processing", never success; a decision is not the same as money having moved.
 """
 
 from dataclasses import dataclass
@@ -11,7 +11,14 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core.models import ActionProposal, Approval, Case, Execution, RefundOperation
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Execution,
+    RefundOperation,
+    Verification,
+)
 from app.core.money import format_inr
 
 STAGES = (
@@ -25,6 +32,10 @@ STAGES = (
     "escalated",
     "closed",
 )
+
+
+NEEDS_CHECK_ANY = "Your request needs a check by our team. We will update you."
+NEEDS_CHECK = "Your refund needs a check by our team before it can continue. We will update you."
 
 
 @dataclass(frozen=True)
@@ -64,10 +75,25 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
     if approval.decision == "rejected":
         return CaseStatus("declined", "Your request was reviewed and not approved.", **common)
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
+    if case.status == "escalated" and (execution is None or execution.status != "failed"):
+        # Approved, but the engine handed it to a person (e.g. the approval expired before
+        # execution, or the provider's record didn't match ours).
+        return CaseStatus("escalated", NEEDS_CHECK_ANY, **common)
     if proposal.action != "refund":
         # Vouchers/credits have no executor yet (E4): approved, not yet issued.
         return CaseStatus("processing", "Approved. We will confirm once it is ready.", **common)
-    if execution is not None and execution.status == "succeeded":
+    verification = (
+        session.scalars(
+            select(Verification.status)
+            .where(Verification.execution_id == execution.id)
+            .order_by(Verification.created_at.desc(), Verification.id)
+        ).first()
+        if execution is not None
+        else None
+    )
+    if verification == "mismatch":  # the provider's record disagrees with ours
+        return CaseStatus("escalated", NEEDS_CHECK, **common)
+    if execution is not None and execution.status == "succeeded" and verification == "verified":
         return CaseStatus(
             "confirmed",
             f"Your refund of {format_inr(amount)} has been processed by our payment provider.",
@@ -80,11 +106,7 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
         ledger == "pending_reconciliation"
     )
     if stuck:  # approved, but not moving: say so instead of "being processed"
-        return CaseStatus(
-            "escalated",
-            "Your refund needs a check by our team before it can continue. We will update you.",
-            **common,
-        )
+        return CaseStatus("escalated", NEEDS_CHECK, **common)
     if execution is not None and execution.status == "failed":
         return CaseStatus(
             "escalated",

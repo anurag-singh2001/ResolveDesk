@@ -1,15 +1,25 @@
 """The case loop as a LangGraph graph (PROJECT.md section 8): classify -> investigate ->
-policy -> resolve -> propose, stopping before approval (approval pause/resume is E4.1).
+policy -> resolve -> propose -> approve -> execute -> verify.
 
-Routing: missing info or a low-confidence guess -> one templated question, pause; no policy
-or conflicting policies -> escalate; a draft code rejects -> one repair attempt, then
-escalate; the model choosing "none" -> escalate for a person to confirm (an LLM never closes a
-case on its own); more than MAX_STEPS steps, the LLM budget, or any error -> escalate.
+Routing: missing info or a low-confidence guess -> one templated question, then pause until
+the customer replies (resume_case "info"); no policy or conflicting policies -> escalate; a
+draft code rejects -> one repair attempt, then escalate; the model choosing "none" ->
+escalate for a person to confirm (an LLM never closes a case on its own); more than MAX_STEPS
+steps, the LLM budget, or any error -> escalate.
 
-Every node opens its own short tenant transaction; no transaction is open during an LLM or
-embedding call (hard rule 5). Agents only read: the proposal is created by code
+Interrupt/resume: the graph is compiled with a Postgres checkpointer (schema lg, see
+app/engine/checkpoint.py) on thread "<tenant_id>:<case_id>". A proposal with no auto-approval
+pauses at `approve` (interrupt) and resumes on the same thread when the decision is recorded,
+even in another process. Nodes that pause (approve, wait_info) have no side effects, since
+LangGraph re-runs a resumed node from its start; side effects live in the nodes before them.
+The decision itself is read from the database (bound to the payload hash), never taken from
+the resume value.
+
+Every node opens its own short tenant transaction; no transaction is open during an LLM,
+embedding or provider call (hard rule 5). Agents only read: the proposal is created by code
 (create_proposal), after strict param validation, case binding, eligibility and citation
-checks. Text shown to the customer is templated by code, never written by a model (rule 7).
+checks; execution and verification are code (executor, verifier). Text shown to the customer
+is templated by code, never written by a model (rule 7).
 """
 
 import json
@@ -20,17 +30,19 @@ from datetime import UTC, datetime, timedelta
 from typing import Any, Protocol, TypedDict
 
 from langgraph.graph import END, StateGraph
+from langgraph.types import Command, interrupt
 from sqlalchemy import Engine, func, select, update
 
 from app.actions.base import Facts, enabled_actions, get_action
 from app.agents import tools
 from app.agents.prompts import classifier_messages, resolution_messages
 from app.agents.schemas import Classification, ResolutionDraft
-from app.core import audit
+from app.core import audit, events
 from app.core.db import tenant_session
-from app.core.models import Case, Ticket, TicketMessage, WorkflowRun
+from app.core.models import ActionProposal, Approval, Case, Ticket, TicketMessage, WorkflowRun
 from app.core.settings_resolver import tenant_pack
-from app.engine.approvals import auto_decide
+from app.engine import lifecycle
+from app.engine.checkpoint import open_checkpointer, thread_config
 from app.engine.eligibility import order_facts
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
@@ -43,6 +55,11 @@ MAX_STEPS = 12
 # A 'running' run older than this died with its process (restart, OOM); it is taken over.
 RUN_TTL = timedelta(minutes=10)
 POLICY_K = 6
+# The conversation the classifier sees after replies (oldest text dropped first).
+MAX_MESSAGE = 4000
+# Graph supersteps per invoke: the step budget plus code-only nodes and approve re-checks.
+RECURSION_LIMIT = MAX_STEPS + 12
+NO_PAUSED_WORKFLOW = "no paused workflow"
 
 # What we may need from the customer -> the question code sends (no model-written text).
 NEED_ORDER = "order"
@@ -79,7 +96,10 @@ class CaseState(TypedDict, total=False):
     citations: list[dict]
     draft: dict
     proposal_id: str | None
-    outcome: str  # proposed | awaiting_info | escalated | skipped
+    approval_status: str | None  # pending | approved | rejected
+    execution_status: str | None  # executed | declined | escalated | approved (no executor)
+    # proposed | awaiting_info | approved | declined | processing | resolved | escalated | skipped
+    outcome: str
     reason: str
     step_count: int
 
@@ -98,7 +118,7 @@ def _step(state: CaseState) -> int:
     return state.get("step_count", 0) + 1
 
 
-def build_graph(deps: Deps):
+def build_graph(deps: Deps, checkpointer=None):
     def classify(state: CaseState) -> CaseState:
         step = _step(state)
         with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
@@ -238,19 +258,49 @@ def build_graph(deps: Deps):
                     run_id=uuid.UUID(state["run_id"]),
                 )  # fmt: skip
                 # Same as the deterministic path: auto-approval only where settings allow.
-                approval = auto_decide(s, tid, proposal.id, now)
                 case = s.get(Case, uuid.UUID(state["case_id"]))
-                case.status = "executing" if approval is not None else "awaiting_approval"
+                lifecycle.proposal_made(s, tid, case, proposal.id, now)
                 proposal_id = str(proposal.id)
         except ProposalError as exc:
             return {"outcome": "escalated", "reason": f"proposal refused: {exc}",
                     "step_count": step}  # fmt: skip
         return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
 
+    def approve(state: CaseState) -> CaseState:
+        """Pause for a human unless an approval exists. No side effects (re-run on resume)."""
+        decision = _decision(deps, state)
+        if decision is None:
+            interrupt({"kind": "approval", "proposal_id": state["proposal_id"]})
+            decision = _decision(deps, state)  # the database is the truth, not the resume value
+        if decision is None:  # woken without a decision: pause again
+            return {"approval_status": "pending"}
+        outcome = "declined" if decision == "rejected" else "approved"
+        return {"approval_status": decision, "outcome": outcome}
+
+    def execute(state: CaseState) -> CaseState:
+        result = lifecycle.execute_approved(
+            deps.engine, uuid.UUID(state["tenant_id"]), uuid.UUID(state["proposal_id"]), deps.now
+        )
+        outcome = {"executed": "processing"}.get(result, result)
+        return {"execution_status": result, "outcome": outcome}
+
+    def verify(state: CaseState) -> CaseState:
+        result = lifecycle.verify_executed(
+            deps.engine, uuid.UUID(state["tenant_id"]), uuid.UUID(state["proposal_id"])
+        )
+        return {"outcome": result}
+
     def ask(state: CaseState) -> CaseState:
         question = QUESTIONS[state.get("need") or NEED_DETAILS]
         _finish(deps, state, "awaiting_info", state.get("reason") or question, ticket=question)
         return {"outcome": "awaiting_info", "step_count": _step(state)}
+
+    def wait_info(state: CaseState) -> CaseState:
+        """Pause until the customer replies. No side effects (re-run on resume)."""
+        reply = interrupt({"kind": "info"})
+        text = str(reply.get("message", "") if isinstance(reply, dict) else reply)[:2000]
+        message = f"{state['message']}\n{text}"[-MAX_MESSAGE:]
+        return {"message": message, "need": None, "outcome": "resumed", "reason": ""}
 
     def escalate(state: CaseState) -> CaseState:
         reason = state.get("reason") or (
@@ -270,17 +320,45 @@ def build_graph(deps: Deps):
 
         return route
 
+    def after_propose(state: CaseState) -> str:
+        return "escalate" if state.get("outcome") == "escalated" else "approve"
+
+    def after_approve(state: CaseState) -> str:
+        status = state.get("approval_status")
+        if status == "pending":
+            return "approve"
+        return "execute" if status == "approved" else END
+
+    def after_execute(state: CaseState) -> str:
+        return "verify" if state.get("execution_status") == "executed" else END
+
     g = StateGraph(CaseState)
     for name, fn in [("classify", classify), ("investigate", investigate), ("policy", policy),
-                     ("resolve", resolve), ("propose", propose), ("ask", ask),
-                     ("escalate", escalate)]:  # fmt: skip
+                     ("resolve", resolve), ("propose", propose), ("approve", approve),
+                     ("execute", execute), ("verify", verify), ("ask", ask),
+                     ("wait_info", wait_info), ("escalate", escalate)]:  # fmt: skip
         g.add_node(name, fn)
     g.set_entry_point("classify")
     for node in ("classify", "investigate", "policy", "resolve"):
         g.add_conditional_edges(node, route_after(node))
-    for terminal in ("propose", "ask", "escalate"):
+    g.add_conditional_edges("propose", after_propose)
+    g.add_conditional_edges("approve", after_approve)
+    g.add_conditional_edges("execute", after_execute)
+    g.add_edge("ask", "wait_info")
+    g.add_edge("wait_info", "classify")
+    for terminal in ("verify", "escalate"):
         g.add_edge(terminal, END)
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)
+
+
+def _decision(deps: Deps, state: CaseState) -> str | None:
+    """approved | rejected | None (no decision yet), for this state's proposal."""
+    tid = uuid.UUID(state["tenant_id"])
+    with tenant_session(tid, deps.engine) as s:
+        proposal = s.get(ActionProposal, uuid.UUID(state["proposal_id"]))
+        if proposal is None or str(proposal.case_id) != state["case_id"]:
+            return "rejected"  # never act on a proposal that is not this case's
+        return s.scalar(select(Approval.decision).where(Approval.proposal_id == proposal.id))
 
 
 def _check_draft(
@@ -318,7 +396,8 @@ def _check_draft(
 
 
 def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "") -> None:
-    """Set the case status and audit why; `ticket` is code-written text for the customer."""
+    """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
+    the customer. The event payload carries no reason text (it may quote the model)."""
     tid = uuid.UUID(state["tenant_id"])
     now = deps.now or datetime.now(UTC)
     with tenant_session(tid, deps.engine) as s:
@@ -332,6 +411,7 @@ def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str 
         audit.record(s, tid, actor_type="agent", actor_id=None, event=f"case.{status}",
                      entity_type="case", entity_id=case.id,
                      payload={"reason": reason[:500]})  # fmt: skip
+        events.emit(s, tid, f"case.{status}", case.id, {"run_id": state.get("run_id")})
 
 
 def _claim(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID) -> uuid.UUID | None:
@@ -355,40 +435,139 @@ def _claim(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID) -> uuid.UUI
         return run_id
 
 
+def _claim_resume(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, run_id: uuid.UUID, kind: str
+) -> bool:
+    """Take the paused run back (paused -> running) under the case row lock, so two resumes
+    (a double-clicked reply, two workers) can't both continue the thread. A run left
+    'running' past RUN_TTL died with its process and is taken over."""
+    with tenant_session(tenant_id, engine) as s:
+        case = s.scalar(select(Case).where(Case.id == case_id).with_for_update())
+        if case is None or (kind == "info" and case.status != "awaiting_info"):
+            return False
+        stale = WorkflowRun.updated_at < func.now() - RUN_TTL
+        taken = s.execute(
+            update(WorkflowRun)
+            .where(
+                WorkflowRun.id == run_id,
+                WorkflowRun.case_id == case_id,
+                (WorkflowRun.status == "paused") | ((WorkflowRun.status == "running") & stale),
+            )
+            .values(status="running", error=None)
+        ).rowcount
+        if not taken:
+            return False
+        if kind == "info":
+            case.status = "investigating"
+        return True
+
+
+def _pending(snapshot, kind: str | None = None) -> dict | None:
+    """The interrupt the thread is paused at (optionally of one kind), else None."""
+    for task in snapshot.tasks:
+        for pending in task.interrupts:
+            value = pending.value
+            if isinstance(value, dict) and (kind is None or value.get("kind") == kind):
+                return value
+    return None
+
+
+def _invoke(deps: Deps, saver, tenant_id, case_id, payload) -> tuple[dict, bool]:
+    app = build_graph(deps, saver)
+    config = {**thread_config(tenant_id, case_id), "recursion_limit": RECURSION_LIMIT}
+    app.invoke(payload, config)
+    snapshot = app.get_state(config)
+    return dict(snapshot.values), _pending(snapshot) is not None
+
+
+def _guarded(deps: Deps, base: CaseState, work) -> tuple[dict, bool]:
+    """Run the graph; any failure - LLM (budget, rate limits, invalid output after repair) or
+    not - escalates the case to a person, so a case is never left in 'investigating'."""
+    try:
+        return work()
+    except Exception as exc:
+        kind = "LLM" if isinstance(exc, LLMError) else "internal error"
+        if not isinstance(exc, LLMError):
+            log.exception("agent run %s failed", base.get("run_id"))
+        final = {**base, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
+        try:
+            _finish(deps, final, "escalated", final["reason"])
+        except Exception:
+            log.exception("could not escalate case %s", base.get("case_id"))
+        return final, False
+
+
+def _record(deps: Deps, tenant_id, run_id: uuid.UUID, final: dict, paused: bool, budget) -> dict:
+    """Write the run's status and counters. The case is already where it should be; a
+    failure here only leaves the run row stale (taken over after RUN_TTL)."""
+    snapshot = budget.snapshot() if budget is not None else {}
+    try:
+        with tenant_session(tenant_id, deps.engine) as s:
+            run = s.get(WorkflowRun, run_id)
+            if paused:
+                run.status = "paused"
+            else:
+                run.status = "escalated" if final.get("outcome") == "escalated" else "completed"
+            run.step_count = final.get("step_count", 0)
+            run.llm_calls = (run.llm_calls or 0) + snapshot.get("calls", 0)
+            if final.get("outcome") == "escalated":
+                run.error = (final.get("reason") or "")[:500]
+    except Exception:
+        log.exception("could not record the result of run %s", run_id)
+    return snapshot
+
+
 def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str, budget) -> dict:
-    """Run the graph for one case and record a workflow_runs row with step/LLM counters.
-    Any failure - LLM (budget, rate limits, invalid output after repair) or not - escalates
-    the case to a person; a case is never left in 'investigating'."""
+    """Start the graph for a new case on its thread; record a workflow_runs row. The run
+    ends 'paused' when the graph waits for an approval or the customer's reply."""
     run_id = _claim(deps.engine, tenant_id, case_id)
     if run_id is None:
         return {"outcome": "skipped", "reason": "case is not waiting for a run"}
     state: CaseState = {"tenant_id": str(tenant_id), "case_id": str(case_id),
                         "run_id": str(run_id), "message": message, "step_count": 0}  # fmt: skip
+
+    def work():
+        with open_checkpointer(deps.engine) as saver:
+            return _invoke(deps, saver, tenant_id, case_id, state)
+
+    final, paused = _guarded(deps, state, work)
+    snapshot = _record(deps, tenant_id, run_id, final, paused, budget)
+    return {**final, "run_id": str(run_id), "llm": snapshot, "paused": paused}
+
+
+RESUME_KINDS = ("approval", "info")
+
+
+def resume_case(
+    deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, kind: str, value: dict, budget=None
+) -> dict:
+    """Continue the case's paused thread with `value` (e.g. the customer's reply). Works in
+    any process: the state comes from the Postgres checkpoint. `tenant_id` comes from the
+    auth/system context and `case_id` from a record loaded under it, never from input.
+
+    Returns outcome "skipped" with reason NO_PAUSED_WORKFLOW when the thread isn't paused
+    at a `kind` interrupt (callers may then fall back to the code path)."""
+    if kind not in RESUME_KINDS:
+        raise ValueError(f"unknown resume kind {kind!r}")
     try:
-        final = build_graph(deps).invoke(state, {"recursion_limit": MAX_STEPS + 4})
-    except Exception as exc:
-        kind = "LLM" if isinstance(exc, LLMError) else "internal error"
-        if not isinstance(exc, LLMError):
-            log.exception("agent run %s failed", run_id)
-        final = {**state, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
-        try:
-            _finish(deps, final, "escalated", final["reason"])
-        except Exception:
-            log.exception("could not escalate case %s", case_id)
-    snapshot = budget.snapshot()
-    try:  # the case is already terminal here; a failure only leaves the run row stale (TTL)
-        with tenant_session(tenant_id, deps.engine) as s:
-            run = s.get(WorkflowRun, run_id)
-            run.status = {"proposed": "completed", "awaiting_info": "paused"}.get(
-                final.get("outcome"), "escalated"
+        with open_checkpointer(deps.engine) as saver:
+            snapshot = build_graph(deps, saver).get_state(thread_config(tenant_id, case_id))
+            values = dict(snapshot.values or {})
+            if _pending(snapshot, kind) is None or values.get("tenant_id") != str(tenant_id):
+                return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+            run_id = uuid.UUID(values["run_id"])
+            if not _claim_resume(deps.engine, tenant_id, case_id, run_id, kind):
+                return {"outcome": "skipped", "reason": "workflow is busy or not waiting"}
+            final, paused = _guarded(
+                deps,
+                values,
+                lambda: _invoke(deps, saver, tenant_id, case_id, Command(resume=value)),
             )
-            run.step_count = final.get("step_count", 0)
-            run.llm_calls = snapshot.get("calls", 0)
-            if final.get("outcome") == "escalated":
-                run.error = (final.get("reason") or "")[:500]
-    except Exception:
-        log.exception("could not record the result of run %s", run_id)
-    return {**final, "run_id": str(run_id), "llm": snapshot}
+    except Exception:  # the checkpointer could not be reached: nothing was resumed
+        log.exception("could not resume case %s", case_id)
+        return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+    snapshot_llm = _record(deps, tenant_id, run_id, final, paused, budget)
+    return {**final, "run_id": str(run_id), "llm": snapshot_llm, "paused": paused}
 
 
 def escalate_now(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str) -> None:
