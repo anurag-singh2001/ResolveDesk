@@ -3,7 +3,14 @@ import uuid
 from pydantic import Field
 
 from app.actions._pending import NotYetExecutable
-from app.actions.base import Action, ActionInput, Risk, register_action
+from app.actions.base import (
+    Action,
+    ActionInput,
+    Facts,
+    Risk,
+    ValidationResult,
+    register_action,
+)
 
 
 class VoucherInput(ActionInput):
@@ -20,3 +27,16 @@ class FreeItemVoucher(NotYetExecutable, Action):
     risk = Risk.MEDIUM
     Input = VoucherInput
     amount_field = "value_paise"
+    auto_approvable = True
+
+    def validate(self, ctx, inp: VoucherInput, facts: Facts) -> ValidationResult:
+        cap = facts.settings["voucher_max_paise"]
+        errors = [] if inp.value_paise <= cap else ["voucher exceeds the voucher limit"]
+        return ValidationResult(
+            ok=not errors,
+            errors=errors,
+            checks={"value_paise": inp.value_paise, "voucher_max_paise": cap},
+        )
+
+    def can_auto_approve(self, inp: VoucherInput, facts: Facts) -> bool:
+        return inp.value_paise <= facts.settings["voucher_auto_approve_max_paise"]

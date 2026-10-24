@@ -46,6 +46,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [ ] E4.1 Approve node with `interrupt()`, Postgres checkpointer (schema `lg`), auto-approve rules, resume — done when: interrupt/resume tests pass (review stop)
 - [ ] E4.2 Executor, reconciliation of `unknown`, verifier, tickets + honest messages, audit + domain events — done when: rejection + expiry tests pass
 - [ ] E4.3 Chaos suite: 50 cases/tenant, timeout 0.3, double submit, worker kill, two managers — done when: `make test-chaos` zero duplicates; safety-reviewer clean
+- [ ] E4.4 Operator release of quarantined refunds (`pending_reconciliation`, or `reserved` and never sent): after a window longer than the provider request lifetime, re-query by key, then release or record; audited, hq_owner only — done when: release never frees money the provider later applies (test with a late landing); safety-reviewer clean
 
 ## E5 · UI — Sprint 3
 - [ ] E5.1 Customer portal + login picker — done when: customer raises a late-order case
