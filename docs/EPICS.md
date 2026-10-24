@@ -40,7 +40,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 ## E3 · AI pipeline — Sprint 2
 - [ ] E3.1 LLM provider factory (gemini/groq/ollama, 429 backoff + fallback, repair, cache, counters) — done when: fake-model tests pass; `make llm-smoke` returns JSON
 - [ ] E3.2 Policy files for both tenants + RAG ingest/retrieve (version, scope, date) — done when: version/override/isolation/missing tests pass
-- [ ] E3.3 Agents + LangGraph classify → investigate/policy → propose, routing + limits — done when: routing tests pass; `pytest -m live -k proposal` passes 3 scenarios per tenant
+- [~] E3.3 Agents + LangGraph classify → investigate/policy → propose, routing + limits — done when: routing tests pass; `pytest -m live -k proposal` passes 3 scenarios per tenant
 
 ## E4 · Safe execution — Sprint 2
 - [ ] E4.1 Approve node with `interrupt()`, Postgres checkpointer (schema `lg`), auto-approve rules, resume — done when: interrupt/resume tests pass (review stop)
@@ -48,6 +48,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [ ] E4.3 Chaos suite: 50 cases/tenant, timeout 0.3, double submit, worker kill, two managers — done when: `make test-chaos` zero duplicates; safety-reviewer clean
 - [ ] E4.4 Operator release of quarantined refunds (`pending_reconciliation`, or `reserved` and never sent): after a window longer than the provider request lifetime, re-query by key, then release or record; audited, hq_owner only — done when: release never frees money the provider later applies (test with a late landing); safety-reviewer clean
 - [ ] E4.5 Sweeper for approved-but-never-executed refunds (crash between decision commit and the in-process background task): find approved, unexpired proposals with no execution and run `execute_refund` (same stable key) — done when: a test kills the task after commit and the sweeper completes it exactly once
+- [ ] E4.6 Execute auto-approved non-refund actions (vouchers): today an auto-approved voucher sets the case to `executing` but nothing issues it (both the deterministic and agent paths) — done when: an auto-approved voucher is issued exactly once via its connector with a stable key, the case reaches `resolved` only after the provider confirms, and a test covers both paths for every tenant
 
 ## E5 · UI — Sprint 3
 - [ ] E5.1 Customer portal + login picker — done when: customer raises a late-order case
