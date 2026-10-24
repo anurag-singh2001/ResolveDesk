@@ -50,7 +50,9 @@ def get_customer(session: Session, scope: Scope) -> dict:
     if c is None:
         return error("not_found", "customer not found")
     orders = session.scalar(
-        select(func.count()).select_from(Transaction).where(Transaction.customer_id == c.id)
+        select(func.count())
+        .select_from(Transaction)
+        .where(Transaction.tenant_id == scope.tenant_id, Transaction.customer_id == c.id)
     )
     return ok({"customer_ref": c.external_ref, "orders": orders})
 
@@ -81,22 +83,6 @@ def get_transaction(session: Session, scope: Scope, transaction_id: str) -> dict
             ],
         }
     )
-
-
-def list_customer_transactions(session: Session, scope: Scope, limit: int = 10) -> dict:
-    rows = session.scalars(
-        select(Transaction)
-        .where(Transaction.customer_id == scope.customer_id)
-        .order_by(Transaction.placed_at.desc())
-        .limit(max(1, min(limit, 50)))
-    )
-    return ok(
-        [
-            {"transaction_id": str(t.id), "external_ref": t.external_ref,
-             "placed_at": t.placed_at.isoformat(), "total_paise": t.total_paise}
-            for t in rows
-        ]
-    )  # fmt: skip
 
 
 def get_payment(session: Session, scope: Scope, transaction_id: str) -> dict:
@@ -134,7 +120,11 @@ def get_fulfilment(session: Session, scope: Scope, transaction_id: str) -> dict:
 def get_case_history(session: Session, scope: Scope) -> dict:
     cases = session.scalars(
         select(Case)
-        .where(Case.customer_id == scope.customer_id, Case.id != scope.case_id)
+        .where(
+            Case.tenant_id == scope.tenant_id,
+            Case.customer_id == scope.customer_id,
+            Case.id != scope.case_id,
+        )
         .order_by(Case.opened_at.desc())
         .limit(10)
     )

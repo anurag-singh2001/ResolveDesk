@@ -12,12 +12,6 @@ class Classification(BaseModel):
     needs_info: list[str] = Field(default_factory=list, max_length=3)
 
 
-class Clarification(BaseModel):
-    """One targeted question for the customer (PROJECT.md section 8 routing)."""
-
-    question: str = Field(min_length=5, max_length=300)
-
-
 class ResolutionDraft(BaseModel):
     """What the resolution agent proposes. `action` is an enabled action name, or "none"
     (nothing to do / apology) or "escalate" (a human must decide)."""

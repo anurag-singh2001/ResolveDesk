@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 import app.engine.graph as graph
-from app.agents.schemas import Clarification, Classification, ResolutionDraft
+from app.agents.schemas import Classification, ResolutionDraft
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
@@ -145,7 +145,7 @@ def case(app_engine, maint_engine, policies_loaded, tenant):
         s.execute(delete(Case).where(Case.tenant_id == tid, Case.id == case_id))
 
 
-def _refund(case, amount=None, cite=True, order=None):
+def _refund(case, amount=None, cite=True, order=None, citations=None):
     def reply(messages):
         refs = REF.findall(messages[1].content)
         return ResolutionDraft(
@@ -156,7 +156,7 @@ def _refund(case, amount=None, cite=True, order=None):
                 "reason": "missing item",
             },
             reason="item missing from the order",
-            citations=refs[:1] if cite else ["made_up_v9#1"],
+            citations=citations if citations is not None else (refs[:1] if cite else ["x#9"]),
         )
 
     return reply
@@ -205,15 +205,16 @@ def test_happy_path_ends_in_a_cited_validated_proposal(app_engine, case):
 
 
 @pytest.mark.parametrize(
-    "classification", [_classify(needs=["which item"]), _classify(category="not_a_category")]
+    "classification",
+    [
+        _classify(needs=["which item"]),
+        _classify(category="not_a_category"),
+        Classification(category="missing_items", confidence=0.2),
+    ],
+    ids=["needs_info", "unknown_category", "low_confidence"],
 )
 def test_missing_info_asks_one_question_and_pauses(app_engine, case, classification):
-    clf = FakeLLM(
-        {
-            "Classification": [classification],
-            "Clarification": [Clarification(question="Which item was missing?")],
-        }
-    )
+    clf = FakeLLM({"Classification": [classification]})
     res = FakeLLM({"ResolutionDraft": []})
     out = _run(app_engine, case, clf, res)
     assert out["outcome"] == "awaiting_info" and res.calls == []
@@ -225,7 +226,8 @@ def test_missing_info_asks_one_question_and_pauses(app_engine, case, classificat
             .join(Ticket)
             .where(Ticket.case_id == case["case_id"], TicketMessage.author == "system")
         )
-        assert "Which item was missing?" in list(bodies)
+        assert list(bodies) == [graph.QUESTIONS[graph.NEED_DETAILS]]  # code's text, not a model's
+    assert len(clf.calls) == 1
 
 
 def test_one_repair_then_a_valid_proposal(app_engine, case):
@@ -240,9 +242,10 @@ def test_one_repair_then_a_valid_proposal(app_engine, case):
     "drafts",
     [
         lambda c: [_refund(c, amount=10**9), _refund(c, amount=10**9)],  # over limits twice
-        lambda c: [_refund(c, cite=False), _refund(c, cite=False)],
-    ],  # invents citations twice
-    ids=["over_limit", "invented_citation"],
+        lambda c: [_refund(c, cite=False), _refund(c, cite=False)],  # invents citations
+        lambda c: [_refund(c, citations=[]), _refund(c, citations=[])],  # cites nothing
+    ],
+    ids=["over_limit", "invented_citation", "no_citation"],
 )
 def test_rejected_twice_escalates_without_a_proposal(app_engine, case, drafts):
     clf = FakeLLM({"Classification": [_classify()]})
@@ -261,12 +264,36 @@ def test_a_forged_order_id_from_the_model_grants_nothing(app_engine, case):
     assert _case(app_engine, case)[1] == []
 
 
-def test_model_choosing_escalate_or_none_is_respected(app_engine, case):
-    for action, expected in (("escalate", "escalated"), ("none", "resolved")):
-        clf = FakeLLM({"Classification": [_classify()]})
-        res = FakeLLM({"ResolutionDraft": [ResolutionDraft(action=action, reason="because")]})
-        _run(app_engine, case, clf, res)
-        assert _case(app_engine, case)[0] == expected
+@pytest.mark.parametrize("action", ["escalate", "none"])
+def test_escalate_or_none_goes_to_a_person(app_engine, case, action):
+    """An LLM never closes a case: "no compensation" is a suggestion a person confirms."""
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [ResolutionDraft(action=action, reason="because")]})
+    _run(app_engine, case, clf, res)
+    assert _case(app_engine, case) == ("escalated", [])
+
+
+def test_a_forged_order_id_gets_one_repair(app_engine, case):
+    clf = FakeLLM({"Classification": [_classify()]})
+    forged = _refund(case, amount=100, order=case["other_order"])
+    res = FakeLLM({"ResolutionDraft": [forged, _refund(case)]})
+    assert _run(app_engine, case, clf, res)["outcome"] == "proposed"
+    assert str(case["other_order"]) not in res.calls[1][1][-1].content  # never echoed back
+
+
+def test_any_error_escalates_instead_of_leaving_the_case_open(app_engine, case):
+    clf = FakeLLM({"Classification": [RuntimeError("boom")]})
+    out = _run(app_engine, case, clf, FakeLLM({}))
+    assert out["outcome"] == "escalated" and "RuntimeError" in out["reason"]
+    assert _case(app_engine, case)[0] == "escalated"
+
+
+def test_a_case_is_worked_by_one_run_only(app_engine, case):
+    clf = FakeLLM({"Classification": [_classify()] * 2})
+    res = FakeLLM({"ResolutionDraft": [_refund(case)] * 2})
+    assert _run(app_engine, case, clf, res)["outcome"] == "proposed"
+    assert _run(app_engine, case, clf, res)["outcome"] == "skipped"  # e.g. a resubmitted report
+    assert len(_case(app_engine, case)[1]) == 1
 
 
 def test_no_policy_in_effect_escalates(app_engine, case, monkeypatch):

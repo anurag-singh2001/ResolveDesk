@@ -49,6 +49,8 @@ class Settings(BaseSettings):
     # How a new case is worked: deterministic (customer picks a category, code proposes)
     # or agents (free text -> LangGraph: classify, investigate, policy, resolve).
     engine_mode: Literal["deterministic", "agents"] = "deterministic"
+    # Classifier guesses below this confidence ask the customer instead of proceeding.
+    agent_min_confidence: float = Field(default=0.6, ge=0, le=1)
     # Actual provider requests: every request sent, retries and fallbacks included
     # (cache hits send none). Bounds the worst case of retry * fallback per logical call.
     llm_max_provider_requests_per_run: int = Field(default=24, ge=1)
