@@ -36,7 +36,22 @@ Fits only if the keys arrive by about 2026-10-28. If not, at that point E3.3 liv
 None yet (sprint just started). Watch: E3.3 (three dependencies plus keys), E4.3 (last in the chain).
 
 ## Stand-ups
-_none yet_
+
+### 2026-10-25 (scrum-master, evidence from main session and git log)
+Day 2 of 8 (about 25% of time used). Plan order changed: E3.1, E3.2, E3.3 went first because keys arrived; E4 work is still ahead.
+
+- E3.1 LLM factory: done [f0bbde2, 14601b9]. Live smoke returned JSON (groq, 1 call). Ticked.
+- E3.2 Policies + RAG: done [3312f00]. Ticked.
+- E3.3 Agents + LangGraph: in progress [2d54e86, 95674ea]. Routing 50 passed; Flight 2 (real Groq+Gemini) 18 cases passed. Next: add the `pytest -m live -k proposal` test (3 scenarios per tenant). Stays [~] until it exists and passes.
+- Also done, unplanned: E5.0 minimal demo UI [d61e0d4], 24 UI tests passed; E5.1-E5.3 stay [ ] until a browser click-through.
+- E4.2: partial (executor, reconciliation, honest case_status exist). Next: verifier, domain events, tickets. E4.1, E4.3, E4.4, E4.5, E4.6 not started. No blockers; E0.3 only needs the human to rotate the owner password.
+- Suite before Flight 2 fixes: 520 passed (1 Neon drop, passed on rerun), isolation 157 passed. Not re-run at this stand-up (a run was in progress on the shared test DB).
+
+Flight 2 findings (all fixed): AI proposed 100% refunds from policy text (business-rule ceiling c1cc356); retired model names; free-text POST /cases crash; provider-error fallback.
+
+Risk assessment: 3 of 9 planned stories done (E3.1, E3.2, plus most of E3.3) with 25% of time used, but all the safety-critical work remains: E4.1, E4.3, E4.4, E4.5, E4.6 and the rest of E4.2, plus the E3.3 live marker. Keys are in, so the blocker named in planning is gone. Status: AMBER. E4.3 (chaos) depends on E4.1/E4.2/E4.5, so it is the story at risk. Re-scope trigger: if E4.1 and E4.5 are not done by 2026-10-28, move E4.4 to Sprint 3 first (not on the demo path), then E4.6. Never drop E4.3 or safety review; E8 stays dropped. Suggested order: E4.1, E4.5, E4.2 remainder, E4.6, E3.3 live marker, E4.3, then E4.4.
+
+Scorecard note for this stretch: safety-reviewer found real issues on each pass (see E3.3 safety-review fix commit c72d56a and hardening 15304d9). The live flight found the over-refund gap that scripted-LLM tests missed (c1cc356), so keep live flights in the Sprint 2 exit criteria. Full scorecard at sprint end.
 
 ## Review
 _to fill at sprint end_

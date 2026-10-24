@@ -18,7 +18,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 ## E0 · Setup & process — Sprint 0
 - [x] E0.1 Install make, uv, Python 3.12, ruff — done when: `make --version`, `uv --version`, `ruff --version` work
 - [x] E0.2 Git repo + .gitignore + first commit — done when: `git log` shows spec commit [047cb5d]
-- [~] E0.3 (partly done 2026-10-23: Neon project, role, resolvedesk_app bypassrls=False, resolvedesk_test DB created; remaining human: fill .env, rotate owner password, pass `make db-check` from .env) Neon project, `main` + `test` branches, `resolvedesk_app` role via `scripts/neon_bootstrap.sql`, `.env` filled (human) — done when: `make db-check` shows app role with `bypassrls = False` on both branches
+- [~] E0.3 (partly done 2026-10-23: Neon project, role, resolvedesk_app bypassrls=False, resolvedesk_test DB created; .env now filled, keys present and app runs from .env as of 2026-10-25; remaining human: rotate the owner password, then confirm `make db-check` on both branches) Neon project, `main` + `test` branches, `resolvedesk_app` role via `scripts/neon_bootstrap.sql`, `.env` filled (human) — done when: `make db-check` shows app role with `bypassrls = False` on both branches
 - [x] E0.4 Scrum-master + business-analyst agents, EPICS.md, sprint files — done when: sprint-0.md has a planning section written by scrum-master [a2b9846]
 - [x] E0.5 Docs: Docker → Neon in PROJECT.md/CLAUDE.md, decisions logged — done when: DECISIONS.md has the entries [a2b9846]
 - [ ] E0.6 (carried to Sprint 1, BA in progress) BA market research (`docs/research/market.md`) — done when: file exists with sources + recommendations mapped to stories
@@ -38,22 +38,23 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [x] E2.4 (done 2026-10-24, commit 4d37ff8, merged to test aa03f84; pulled forward from Sprint 2; verified: both files exist, 58 + 54 lines, lint clean) Skills `add-action` and `add-connector` written from real code — done when: files exist under `.claude/skills/`
 
 ## E3 · AI pipeline — Sprint 2
-- [ ] E3.1 LLM provider factory (gemini/groq/ollama, 429 backoff + fallback, repair, cache, counters) — done when: fake-model tests pass; `make llm-smoke` returns JSON
-- [ ] E3.2 Policy files for both tenants + RAG ingest/retrieve (version, scope, date) — done when: version/override/isolation/missing tests pass
-- [~] E3.3 Agents + LangGraph classify → investigate/policy → propose, routing + limits — done when: routing tests pass; `pytest -m live -k proposal` passes 3 scenarios per tenant
+- [x] E3.1 LLM provider factory (gemini/groq/ollama, 429 backoff + fallback, repair, cache, counters) — done when: fake-model tests pass; `make llm-smoke` returns JSON (done 2026-10-25, merged f0bbde2 + hardening merge 14601b9: SecretStr keys, no cache in prod, two budget caps; verified from main session report: 291 unit passed; `make llm-smoke` live returned JSON, provider=groq model=openai/gpt-oss-20b, category missing_items, 1 call)
+- [x] E3.2 Policy files for both tenants + RAG ingest/retrieve (version, scope, date) — done when: version/override/isolation/missing tests pass (done 2026-10-24, merged 3312f00; verified from main session report: tests/integration/test_rag.py 42 passed in that run, full make test 455 passed)
+- [~] E3.3 Agents + LangGraph classify → investigate/policy → propose, routing + limits — done when: routing tests pass; `pytest -m live -k proposal` passes 3 scenarios per tenant (merged 2d54e86, Flight 2 fixes merged 95674ea; routing tests met: tests/integration/test_agent_graph.py 50 passed, both tenants, scripted LLMs. Live check done via `make flight ARGS=--agents` (real Groq + Gemini): 18 cases, 9 scenarios per tenant, all checks passed. Remaining: the `pytest -m live -k proposal` marker test does not exist yet, add it. Flight 2 found and fixed: AI proposed 100% refunds via policy text (business-rule ceiling c1cc356), retired model names, free-text POST /cases crash, provider fallback)
 
 ## E4 · Safe execution — Sprint 2
 - [ ] E4.1 Approve node with `interrupt()`, Postgres checkpointer (schema `lg`), auto-approve rules, resume — done when: interrupt/resume tests pass (review stop)
-- [ ] E4.2 Executor, reconciliation of `unknown`, verifier, tickets + honest messages, audit + domain events — done when: rejection + expiry tests pass
+- [~] E4.2 (partly exists from E2.3b: executor, `unknown` reconciliation, quarantine, audit, honest case_status; remaining: verifier, domain-event subscribers, ticket handling) Executor, reconciliation of `unknown`, verifier, tickets + honest messages, audit + domain events — done when: rejection + expiry tests pass
 - [ ] E4.3 Chaos suite: 50 cases/tenant, timeout 0.3, double submit, worker kill, two managers — done when: `make test-chaos` zero duplicates; safety-reviewer clean
 - [ ] E4.4 Operator release of quarantined refunds (`pending_reconciliation`, or `reserved` and never sent): after a window longer than the provider request lifetime, re-query by key, then release or record; audited, hq_owner only — done when: release never frees money the provider later applies (test with a late landing); safety-reviewer clean
 - [ ] E4.5 Sweeper for approved-but-never-executed refunds (crash between decision commit and the in-process background task): find approved, unexpired proposals with no execution and run `execute_refund` (same stable key) — done when: a test kills the task after commit and the sweeper completes it exactly once
 - [ ] E4.6 Execute auto-approved non-refund actions (vouchers): today an auto-approved voucher sets the case to `executing` but nothing issues it (both the deterministic and agent paths) — done when: an auto-approved voucher is issued exactly once via its connector with a stable key, the case reaches `resolved` only after the provider confirms, and a test covers both paths for every tenant
 
 ## E5 · UI — Sprint 3
-- [ ] E5.1 Customer portal + login picker — done when: customer raises a late-order case
-- [ ] E5.2 Manager queue — done when: approve with evidence, citations, expiry visible
-- [ ] E5.3 HQ view + dev panel (chaos, clock, reseed) — done when: full click-through for Spice Route refund and BrewCo Baner voucher
+- [x] E5.0 Minimal demo UI over the HTTP API, login picker, customer/staff views — done when: unit UI tests pass (done 2026-10-24, merged d61e0d4; verified from main session report: 24 UI tests passed; demo UI auth hardened in 14601b9)
+- [ ] E5.1 (UI exists via E5.0; browser click-through not yet verified) Customer portal + login picker — done when: customer raises a late-order case
+- [ ] E5.2 (UI exists via E5.0; browser click-through not yet verified) Manager queue — done when: approve with evidence, citations, expiry visible
+- [ ] E5.3 (partial UI via E5.0; click-through not yet verified) HQ view + dev panel (chaos, clock, reseed) — done when: full click-through for Spice Route refund and BrewCo Baner voucher
 
 ## E6 · Evals — Sprint 3
 - [ ] E6.1 Eval harness + metrics + per-tenant report — done when: `make eval` prints table
