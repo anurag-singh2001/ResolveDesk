@@ -95,3 +95,26 @@ def test_voucher_limits_and_auto_approval(settings):
 
 def test_refunds_are_never_auto_approvable():
     assert get_action("refund").auto_approvable is False
+
+
+def test_audit_redaction_is_case_insensitive_and_covers_free_text():
+    from app.core.audit import redact
+
+    out = redact(
+        {
+            "customer_phone": "98",
+            "Email": "a@b",
+            "note": "call me",
+            "to": "+91",
+            "amount_paise": 100,
+            "nested": [{"display_name": "R"}],
+        }
+    )
+    assert out == {
+        "customer_phone": "[redacted]",
+        "Email": "[redacted]",
+        "note": "[redacted]",
+        "to": "[redacted]",
+        "amount_paise": 100,
+        "nested": [{"display_name": "[redacted]"}],
+    }

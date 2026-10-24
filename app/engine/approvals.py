@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.actions.base import Facts, get_action
 from app.core import audit
-from app.core.models import ActionProposal, Approval, Case
+from app.core.models import ActionProposal, Approval, Case, Transaction
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import order_facts
@@ -70,21 +70,33 @@ def check_usable(approval: Approval | None, proposal: ActionProposal, now: datet
     return Usability(True)
 
 
-def proposal_facts(session: Session, proposal: ActionProposal) -> tuple[uuid.UUID | None, Facts]:
-    """(location the proposal concerns, eligibility facts), read in the tenant's session."""
+def _order_id(session: Session, proposal: ActionProposal) -> uuid.UUID | None:
     case = session.get(Case, proposal.case_id)
     order_id = proposal.params.get("transaction_id") or (case and case.transaction_id)
-    if order_id:
-        order, facts = order_facts(session, uuid.UUID(str(order_id)), exclude_proposal=proposal.id)
-        return order.location_id, facts
-    return None, Facts(settings=effective_settings(session))
+    return uuid.UUID(str(order_id)) if order_id else None
+
+
+def proposal_location(session: Session, proposal: ActionProposal) -> uuid.UUID | None:
+    """The location a proposal concerns (its order's). None: no order, so hq_owner only
+    (e.g. a loyalty credit on a case with no order) - intended, not a fallback gap."""
+    order_id = _order_id(session, proposal)
+    if order_id is None:
+        return None
+    order = session.get(Transaction, order_id)
+    if order is None:
+        raise LookupError("order not found")
+    return order.location_id
 
 
 def _evaluate(session, ctx, proposal):
     action = get_action(proposal.action)()
-    location_id, facts = proposal_facts(session, proposal)
+    order_id = _order_id(session, proposal)
+    if order_id is not None:
+        _, facts = order_facts(session, order_id, exclude_proposal=proposal.id)
+    else:
+        facts = Facts(settings=effective_settings(session))
     inp = action.Input.model_validate_json(json.dumps(proposal.params))
-    return action, inp, location_id, facts, action.validate(ctx, inp, facts)
+    return action, inp, facts, action.validate(ctx, inp, facts)
 
 
 def decide(
@@ -101,12 +113,20 @@ def decide(
     proposal = session.get(ActionProposal, proposal_id)  # RLS: other tenants' don't exist
     if proposal is None or not ctx.is_staff:
         raise NotFound("proposal not found")
-    action, inp, location_id, facts, result = _evaluate(session, ctx, proposal)
+    # Scope first, and every failure before it looks like "not found": an out-of-scope
+    # proposal must be indistinguishable from one that doesn't exist (hard rule 8).
+    try:
+        location_id = proposal_location(session, proposal)
+    except LookupError:
+        raise NotFound("proposal not found") from None
     in_scope = ctx.role == "hq_owner" or (
         location_id is not None and ctx.can_see_location(location_id)
     )
     if not in_scope:
         raise NotFound("proposal not found")
+    if not proposal_hash_is_intact(proposal):
+        raise NotEligible(["proposal no longer matches its payload hash"])
+    action, inp, facts, result = _evaluate(session, ctx, proposal)
     if decision == "approved":
         if not result.ok:
             raise NotEligible(result.errors)  # eligibility is re-checked at decision time
@@ -141,17 +161,26 @@ def decide(
 def auto_decide(
     session: Session, tenant_id: uuid.UUID, proposal_id: uuid.UUID, now: datetime
 ) -> Approval | None:
-    """Apply the tenant's auto-approve rule. Returns None when a human must decide."""
+    """Apply the tenant's auto-approve rule. Returns None when a human must decide.
+
+    `tenant_id` must come from the auth or system context, never from input. The synthetic
+    context built below is only for `validate` (which ignores identity); it must never reach
+    scope- or role-sensitive code.
+    """
+    if not isinstance(tenant_id, uuid.UUID):
+        raise TypeError("tenant_id must be a UUID from the auth/system context")
     proposal = session.get(ActionProposal, proposal_id)
     if proposal is None:
         raise NotFound("proposal not found")
+    if not proposal_hash_is_intact(proposal):
+        return None
     action_cls = get_action(proposal.action)
     if not action_cls.auto_approvable:  # refunds: never (PROJECT.md section 2)
         return None
     system = TenantContext(
         tenant_id, uuid.UUID(int=0), uuid.UUID(int=0), "hq_owner", frozenset(), frozenset()
     )
-    action, inp, _, facts, result = _evaluate(session, system, proposal)
+    action, inp, facts, result = _evaluate(session, system, proposal)
     if not result.ok or not action.can_auto_approve(inp, facts):
         return None
     approval = Approval(

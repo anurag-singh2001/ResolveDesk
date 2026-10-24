@@ -7,12 +7,22 @@ from sqlalchemy.orm import Session
 
 from app.core.models import AuditEvent
 
-REDACTED_KEYS = frozenset({"phone", "email", "name", "to", "address", "message", "body"})
+# Key fragments matched case-insensitively ("customer_phone", "Phone", "email_address"...).
+REDACTED_FRAGMENTS = ("phone", "email", "name", "address", "message", "body", "note", "text")
+REDACTED_EXACT = frozenset({"to"})
+
+
+def _sensitive(key: str) -> bool:
+    k = key.lower()
+    return k in REDACTED_EXACT or any(fragment in k for fragment in REDACTED_FRAGMENTS)
 
 
 def redact(value: Any) -> Any:
     if isinstance(value, dict):
-        return {k: "[redacted]" if k in REDACTED_KEYS else redact(v) for k, v in value.items()}
+        return {
+            k: "[redacted]" if isinstance(k, str) and _sensitive(k) else redact(v)
+            for k, v in value.items()
+        }
     if isinstance(value, list):
         return [redact(v) for v in value]
     return value

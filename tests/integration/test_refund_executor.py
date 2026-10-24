@@ -382,3 +382,99 @@ def test_refunds_are_never_auto_approved(app_engine, world):
     pid = propose(app_engine, w, 1)
     with tenant_session(w["tid"], app_engine) as s:
         assert auto_decide(s, w["tid"], pid, NOW) is None
+
+
+# --- review follow-ups: stale results, resume after expiry, blind resend, error parity ------
+
+
+def test_a_stale_outcome_never_downgrades_a_finished_refund(app_engine, world):
+    from app.connectors.base import RefundOutcome
+    from app.engine.executor import _persist
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    done = execute_refund(app_engine, w["hq"], pid)
+    late = _persist(app_engine, w["hq"], pid, done.idempotency_key, RefundOutcome("processing"))
+    assert late.status == "succeeded" and late.provider_reference == done.provider_reference
+    assert [r.status for r in ledger(app_engine, w)] == ["succeeded"]
+    with tenant_session(w["tid"], app_engine) as s:
+        assert (
+            s.scalar(
+                select(func.count()).select_from(DomainEvent).where(DomainEvent.entity_id == pid)
+            )
+            == 1
+        )
+
+
+def test_resume_after_expiry_releases_a_never_sent_reservation(app_engine, world):
+    w = world
+    pid = propose(app_engine, w, small(w))
+    decided = NOW - timedelta(hours=1)
+    approve(app_engine, w, pid, now=decided)  # still valid now; expires within a few hours
+    get_mock("payment").set_chaos(Chaos(transient_error_rate=1.0), merchant_id_for(w["tid"]))
+    assert execute_refund(app_engine, w["hq"], pid, unavailable_retries=0).status == "submitted"
+    get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
+    later = NOW + timedelta(days=3)  # approval long expired, provider never got the refund
+    with pytest.raises(ExecutionRefused, match="expired"):
+        execute_refund(app_engine, w["hq"], pid, now=later)
+    assert provider_ops(w) == []
+    assert [r.status for r in ledger(app_engine, w)] == ["failed"]  # balance released
+    with tenant_session(w["tid"], app_engine) as s:
+        _, facts = order_facts(s, w["order_id"])
+    assert facts.refundable_paise == w["total"]
+
+
+def test_resume_after_expiry_still_records_money_already_sent(app_engine, world):
+    """Expiry gates sending, not recording: if the provider has it, we record it."""
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    get_mock("payment").set_chaos(Chaos(accept_then_timeout_rate=1.0), merchant_id_for(w["tid"]))
+    assert execute_refund(app_engine, w["hq"], pid).status == "unknown"
+    get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
+    later = NOW + timedelta(days=3)
+    assert execute_refund(app_engine, w["hq"], pid, now=later).status == "succeeded"
+    assert len(provider_ops(w)) == 1
+
+
+def test_resume_does_not_resend_when_the_lookup_is_unavailable(app_engine, world, monkeypatch):
+    from app.connectors.base import RefundOutcome
+    from app.connectors.mock_connectors import MockPaymentConnector
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    get_mock("payment").set_chaos(Chaos(timeout_rate=1.0), merchant_id_for(w["tid"]))
+    assert execute_refund(app_engine, w["hq"], pid).status == "unknown"
+    get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
+    monkeypatch.setattr(
+        MockPaymentConnector, "find_refund", lambda self, ctx, key: RefundOutcome("unavailable")
+    )
+    assert execute_refund(app_engine, w["hq"], pid).status == "unknown"  # unchanged
+    assert provider_ops(w) == []  # no blind resend
+
+
+def test_out_of_scope_and_missing_proposals_look_the_same(app_engine, world):
+    w = world
+    pid = propose(app_engine, w, small(w))
+    with tenant_session(w["tid"], app_engine) as s:
+        location_id = s.get(Transaction, w["order_id"]).location_id
+    outsider = next(
+        (
+            u
+            for u in w["cfg"].users
+            if u.role in ("location_manager", "franchisee_owner")
+            and not _ctx_for(app_engine, w, u.email).can_see_location(location_id)
+        ),
+        None,
+    )
+    if outsider is None:
+        pytest.skip("every scoped user in this tenant can see this order's location")
+    ctx = _ctx_for(app_engine, w, outsider.email)
+    errors = []
+    for target in (pid, uuid.uuid4()):
+        with pytest.raises(NotFound) as exc:
+            approve(app_engine, w, target, ctx=ctx)
+        errors.append((type(exc.value), str(exc.value)))
+    assert errors[0] == errors[1]

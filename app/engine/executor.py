@@ -16,6 +16,7 @@ match its proposal's amount and order.
 """
 
 import json
+import time
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -37,7 +38,7 @@ from app.core.models import (
     RefundOperation,
 )
 from app.core.tenancy import TenantContext
-from app.engine.approvals import check_usable
+from app.engine.approvals import Usability, check_usable
 from app.engine.eligibility import CAPTURED_STATUSES, order_facts
 
 TERMINAL = ("succeeded", "failed")
@@ -91,34 +92,106 @@ def execute_refund(
     if isinstance(job, RefundResult):  # already finished earlier
         return job
     connector = connector_for(job.settings, "payment")
-    # Steps 3-5. No DB transaction is open here (hard rule 5).
-    outcome = None if job.fresh else connector.find_refund(ctx, job.key)  # reconcile first
-    for _ in range(unavailable_retries + 1):
-        if outcome is not None and outcome.status != "unavailable":
-            break
-        outcome = connector.refund(ctx, job.key, job.payment_reference, job.amount_paise)
+    # Steps 3-5. No DB transaction is open from here on (hard rule 5).
+    if not job.fresh:
+        # Resuming: money may already be in flight. Ask the provider by key before anything.
+        found = connector.find_refund(ctx, job.key)
+        if found is not None and found.status == "unavailable":
+            return _current(engine, ctx, proposal_id)  # can't tell yet: reconcile later
+        if found is not None:
+            return _persist(engine, ctx, proposal_id, job.key, found)
+        # The provider has no record, so nothing is in flight: this send is the first one
+        # that can move money, and the approval must still be usable for it.
+        usable = _still_usable(engine, ctx, proposal_id, now)
+        if not usable.ok:
+            _release(engine, ctx, proposal_id, usable.reason)
+            raise ExecutionRefused(usable.reason)
+    outcome = _send(connector, ctx, job, unavailable_retries)
     return _persist(engine, ctx, proposal_id, job.key, outcome)
 
 
 def reconcile_refund(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> RefundResult:
     """For executions left `unknown`/`submitted`/`processing`: ask the provider by key."""
-    with tenant_session(ctx.tenant_id, engine) as s:
-        execution = s.scalar(select(Execution).where(Execution.proposal_id == proposal_id))
-        if execution is None:
-            raise ExecutionRefused("not_started")
-        if execution.status in TERMINAL:
-            return RefundResult(
-                execution.status, execution.idempotency_key, execution.provider_reference
-            )
+    current = _current(engine, ctx, proposal_id)
+    if current.status in TERMINAL:
+        return current
     return execute_refund(engine, ctx, proposal_id)
+
+
+def _send(connector, ctx, job: "_Job", retries: int) -> RefundOutcome:
+    """Same key every attempt. Transient errors (nothing applied) back off briefly."""
+    outcome = connector.refund(ctx, job.key, job.payment_reference, job.amount_paise)
+    for attempt in range(1, retries + 1):
+        if outcome.status != "unavailable":
+            break
+        time.sleep(0.2 * attempt)
+        outcome = connector.refund(ctx, job.key, job.payment_reference, job.amount_paise)
+    return outcome
+
+
+RESERVE_RACE_CONSTRAINTS = {
+    "uq_executions_one_per_proposal",
+    "uq_refund_operations_one_per_proposal",
+    "uq_executions_key",
+    "uq_refund_operations_key",
+}
 
 
 def _reserve(engine, ctx, proposal_id, now) -> "_Job | RefundResult":
     try:
         return _reserve_once(engine, ctx, proposal_id, now)
-    except IntegrityError:
-        # Another worker reserved this proposal between our check and insert: resume theirs.
+    except IntegrityError as exc:
+        constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint not in RESERVE_RACE_CONSTRAINTS:
+            raise
+        # Another worker reserved this proposal first (the order lock should prevent it):
+        # resume theirs instead of creating a second one.
         return _reserve_once(engine, ctx, proposal_id, now)
+
+
+def _current(engine, ctx, proposal_id) -> RefundResult:
+    with tenant_session(ctx.tenant_id, engine) as s:
+        execution = s.scalar(select(Execution).where(Execution.proposal_id == proposal_id))
+        if execution is None:
+            raise ExecutionRefused("not_started")
+        return RefundResult(
+            execution.status, execution.idempotency_key, execution.provider_reference
+        )
+
+
+def _still_usable(engine, ctx, proposal_id, now) -> Usability:
+    with tenant_session(ctx.tenant_id, engine) as s:
+        proposal = s.get(ActionProposal, proposal_id)
+        approval = s.scalar(select(Approval).where(Approval.proposal_id == proposal_id))
+        return check_usable(approval, proposal, now)
+
+
+def _release(engine, ctx, proposal_id, reason: str) -> None:
+    """Nothing was ever applied and the approval is no longer usable: fail the execution and
+    free the reserved balance (failed rows don't hold money)."""
+    with tenant_session(ctx.tenant_id, engine) as s:
+        s.execute(
+            update(Execution)
+            .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
+            .values(status="failed", error=f"released: {reason}")
+        )
+        s.execute(
+            update(RefundOperation)
+            .where(
+                RefundOperation.proposal_id == proposal_id, RefundOperation.status.notin_(TERMINAL)
+            )
+            .values(status="failed")
+        )
+        audit.record(
+            s,
+            ctx.tenant_id,
+            actor_type="system",
+            actor_id=None,
+            event="refund.released",
+            entity_type="proposal",
+            entity_id=proposal_id,
+            payload={"reason": reason},
+        )
 
 
 def _reserve_once(engine, ctx, proposal_id, now) -> "_Job | RefundResult":
@@ -203,39 +276,42 @@ def _payment_reference(session, order_id) -> str:
 
 
 def _persist(engine, ctx, proposal_id, key, outcome: RefundOutcome) -> RefundResult:
+    """Record the provider's answer. Never downgrades a finished execution (a slower worker's
+    stale answer is ignored) and never erases a known provider reference."""
     exec_status, ledger_status = STATUS_MAP[outcome.status]
+    ref = {"provider_reference": outcome.provider_reference} if outcome.provider_reference else {}
     with tenant_session(ctx.tenant_id, engine) as s:
-        s.execute(
+        changed = s.execute(
             update(Execution)
-            .where(Execution.proposal_id == proposal_id)
-            .values(
-                status=exec_status,
-                provider_reference=outcome.provider_reference,
-                error=outcome.failure_reason,
-            )
-        )
+            .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
+            .values(status=exec_status, error=outcome.failure_reason, **ref)
+        ).rowcount
         s.execute(
             update(RefundOperation)
-            .where(RefundOperation.proposal_id == proposal_id)
-            .values(status=ledger_status, provider_reference=outcome.provider_reference)
-        )
-        audit.record(
-            s,
-            ctx.tenant_id,
-            actor_type="system",
-            actor_id=None,
-            event=f"refund.{exec_status}",
-            entity_type="proposal",
-            entity_id=proposal_id,
-            payload={"provider_status": outcome.status},
-        )
-        if exec_status in TERMINAL:
-            s.add(
-                DomainEvent(
-                    tenant_id=ctx.tenant_id,
-                    event=f"refund.{exec_status}",
-                    entity_id=proposal_id,
-                    payload={"idempotency_key": key},
-                )
+            .where(
+                RefundOperation.proposal_id == proposal_id, RefundOperation.status.notin_(TERMINAL)
             )
-    return RefundResult(exec_status, key, outcome.provider_reference)
+            .values(status=ledger_status, **ref)
+        )
+        if changed:
+            audit.record(
+                s,
+                ctx.tenant_id,
+                actor_type="system",
+                actor_id=None,
+                event=f"refund.{exec_status}",
+                entity_type="proposal",
+                entity_id=proposal_id,
+                payload={"provider_status": outcome.status},
+            )
+            if exec_status in TERMINAL:
+                s.add(
+                    DomainEvent(
+                        tenant_id=ctx.tenant_id,
+                        event=f"refund.{exec_status}",
+                        entity_id=proposal_id,
+                        payload={"idempotency_key": key},
+                    )
+                )
+        current = s.scalar(select(Execution).where(Execution.proposal_id == proposal_id))
+        return RefundResult(current.status, key, current.provider_reference)
