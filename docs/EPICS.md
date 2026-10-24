@@ -32,10 +32,10 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 ## E2 · Data & money core — Sprint 1
 - [x] E2.1 (done 2026-10-23, commits d7e891c, 39bc7d0, 57e6967, merged to test 0156464; safety re-review pass 2 clean, note closed by 650c75f) Canonical tables + deterministic simulator history (SEED=42) — done when: same seed → same checksums; planted rates ±1%; seed < 60 s (verified: seed all 47 s; make test 122 passed; isolation 111 passed; lint clean; narrow-slice rates use 3 standard errors, see DECISIONS.md). Acceptance criterion (deferred from E1.4 safety pass 1, DECISIONS.md): brand scope is enforced server-side on brand-scoped users for canonical tables, with a test for both tenants
 - [x] E2.2 (done 2026-10-24, commits d1e4920, 319ab3a, merged to test 84c5395; safety pass 1 fixed, re-review pending) Mock payment/POS/delivery/messaging with failure injection + `/admin/chaos` — done when: contract tests pass incl. same key + different payload → 409 (verified from main session report: make test 188 passed (1 skip), isolation 111 passed, lint clean, unit suite stable over 3 runs)
-- [ ] E2.3a Connector + action registries, engine tables, proposals with payload hash — done when: unit tests pass
-- [ ] E2.3b Deterministic eligibility + safe refund execution (section 10 steps 1–5) — done when: over-refund, expired approval, changed payload all blocked
-- [ ] E2.3c `POST /cases` (no LLM), `GET /approvals`, `POST /approvals/{id}/decision` — done when: end-to-end refund for both tenants; safety-reviewer clean
-- [ ] E2.4 Skills `add-action` and `add-connector` written from real code — done when: files exist under `.claude/skills/`
+- [x] E2.3a (done 2026-10-24, commits 7abf3b1, 754996a, 3e3b24f, c0c7c66, merged to test 8fde736; migrations 0009 + 0010) Connector + action registries, engine tables, proposals with payload hash — done when: unit tests pass (verified from main session report: make test 297 passed (2 skips), isolation 149 passed, lint clean; safety 2 passes, 8 findings pass 1 + 1 owner-path miss pass 2, all fixed)
+- [~] E2.3b (pulled forward from Sprint 2 on 2026-10-24, Sprint 1 has time left; started) Deterministic eligibility + safe refund execution (section 10 steps 1–5) — done when: over-refund, expired approval, changed payload all blocked
+- [ ] E2.3c (moved to Sprint 2, human decision 2026-10-24) `POST /cases` (no LLM), `GET /approvals`, `POST /approvals/{id}/decision` — done when: end-to-end refund for both tenants; safety-reviewer clean
+- [ ] E2.4 (moved to Sprint 2, human decision 2026-10-24) Skills `add-action` and `add-connector` written from real code — done when: files exist under `.claude/skills/`
 
 ## E3 · AI pipeline — Sprint 2
 - [ ] E3.1 LLM provider factory (gemini/groq/ollama, 429 backoff + fallback, repair, cache, counters) — done when: fake-model tests pass; `make llm-smoke` returns JSON

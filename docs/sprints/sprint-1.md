@@ -79,6 +79,16 @@ Propose moving to Sprint 2: E2.3b, E2.3c, E2.4 (they form one safe-execution sli
 - Next: E2.3a (M). Fits: 4 days left (ends 2026-10-28), depends only on E1.2. Not at risk.
 - Rescope reconfirmed: E2.3b, E2.3c, E2.4 -> Sprint 2 (one safe-execution slice, E2.4 written from real code). Human has still not answered; default stands.
 
+### 2026-10-24 (sixth stand-up)
+- E2.3a done: 7abf3b1, 754996a, 3e3b24f, c0c7c66, merged to test as 8fde736. Ticked [x] in EPICS.md.
+- Evidence (main session report; scrum-master checked git log only, DB suites not re-run): `make test` 297 passed (2 skips); `make test-isolation` 149 passed; `make lint` clean.
+- Safety pass 1 = 8 issues (DELETE+reinsert of proposals, mutable approvals, executions not bound to an approved approval of the same proposal / double-spend, refund ledger not tied to proposal, amount column vs params, params not bound to case, audit grants untested, test gaps); fixed in migration 0009 + code. Pass 2 = 1 more owner-path miss (load_refs), fixed with a colliding-slug test.
+- Incident: Neon `neondb_owner` has BYPASSRLS (FORCE RLS does not bind it). An owner-run reseed wiped another tenant's history in the TEST db only; caught by tests, never merged. Fixed with explicit tenant filters, then (human approved) a NOBYPASSRLS maintenance role `resolvedesk_maint` (migration 0010) for reseeds/cleanup.
+- Human decisions (2026-10-24): merge E2.3a; rescope accepted: E2.3c and E2.4 move to Sprint 2 (EPICS.md updated). Human reviews test -> main via docs/review/sprint-1.md.
+- E2.3b pulled forward from Sprint 2 and started now, since Sprint 1 has time left (ends 2026-10-28). Not at risk. Needs safety review (money).
+- Blocked on human: create .env (now incl. MAINT URLs); rotate `neondb_owner` password.
+- Scorecard notes: safety-reviewer high value on E2.3a (9 findings over 2 passes, incl. a real cross-tenant data-loss path); 3 safety-driven rework commits (754996a, 3e3b24f, c0c7c66).
+
 ## Review
 _to fill at sprint end_
 
