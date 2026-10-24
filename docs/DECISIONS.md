@@ -127,3 +127,8 @@ Format:
 - Decision: Gemini Flash main, Groq classifier + fallback, Ollama offline, local embeddings.
 - Why: zero cost for a POC; provider switch shows production readiness.
 - Alternative rejected: one paid provider.
+
+## 2026-10-24 · Demo UI talks only to the HTTP API
+- Decision: the Streamlit UI (`ui/`) calls the API through a small httpx client and never touches the DB; httpx moves from dev to runtime dependencies. Tenant YAML is read only for the dev login picker.
+- Why: the UI exercises the same auth, scope and RLS checks a real client would, and holds no business logic to drift from the engine.
+- Alternative rejected: importing engine/DB code into Streamlit (faster to write, but bypasses the API's access checks).
