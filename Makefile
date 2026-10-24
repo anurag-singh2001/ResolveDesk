@@ -44,7 +44,7 @@ lint:
 	uv run ruff check . && uv run ruff format --check .
 
 ui:
-	@echo not implemented yet
+	uv run streamlit run ui/app.py
 
 llm-smoke:
 	uv run python -m scripts.llm_smoke
