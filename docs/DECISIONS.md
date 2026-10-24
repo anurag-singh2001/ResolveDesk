@@ -8,6 +8,11 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-25 · React web frontend and email + password login
+- Decision: the product UI is a React + TypeScript + Tailwind app in `web/` (built with Vite), talking only to the HTTP API through docs/api/frontend-contract.md. Login is email + password, checked against a bcrypt hash stored per user. Login failures get one uniform 401 and a lockout after 5 failures. Dev demo accounts get known passwords, which the login page lists in dev only. The Streamlit app stays as a debug UI until the React app reaches parity.
+- Why: the human tested the Streamlit demo and found it too basic to follow the flow or show as a product, and chose a real web frontend. A shared demo password isn't a login. A written contract lets the backend and frontend be built in parallel.
+- Alternative rejected: polished Streamlit (the human chose the React option); server-rendered Jinja/HTMX (a second web layer inside the API); self sign-up now (an abuse surface, not needed for the demo).
+
 ## 2026-10-24 · The tenant's business rule caps what the AI can propose
 - Decision: in agents mode, `decide_remedy` (the deterministic rule engine) sets the ceiling for each case. The model is offered only that rule's action and may propose an amount at or below the rule's amount, or escalate. A category with no automatic rule escalates without calling the model. Policy text never raises the ceiling. A provider error that isn't a rate limit falls back to the next provider.
 - Why: Flight 2 (real LLM) proposed 100% refunds at one tenant. Two were for a prompt-injection message on an order 8 minutes late, and one was for a quality complaint whose configured remedy is a voucher. The model cited a refund policy's "up to the amount paid", and code checked only the refund cap. Policy text is untrusted (rule 9), so the money decision has to come from configured rules.

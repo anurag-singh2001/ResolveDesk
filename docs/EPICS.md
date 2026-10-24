@@ -56,6 +56,10 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [ ] E5.2 (UI exists via E5.0; browser click-through not yet verified) Manager queue — done when: approve with evidence, citations, expiry visible
 - [ ] E5.3 (partial UI via E5.0; click-through not yet verified) HQ view + dev panel (chaos, clock, reseed) — done when: full click-through for Spice Route refund and BrewCo Baner voucher
 
+- [ ] E5.4 Email + password login (bcrypt hash per user, uniform 401, lockout after 5 failures, token expiry), CORS, and the API fields in docs/api/frontend-contract.md (businesses, dev demo accounts, names on orders, order_ref/created_at on cases, customer-safe case timeline, citations + customer message on approvals) — done when: auth + contract API tests pass for every tenant; safety-reviewer clean
+- [ ] E5.5 React web app (`web/`, Vite + React + TypeScript + Tailwind): login page, role-based layout; customer: orders, report a problem (category or free text), my cases with a stage stepper and timeline; staff: approval queue with evidence, checks, policy citations and approve/reject, all cases; HQ: the same across all locations — done when: `npm test` and `npm run build` pass; a browser click-through for one Spice Route refund and one BrewCo voucher works end to end
+- [ ] E5.6 User manual per role (customer, location manager, franchisee owner, HQ owner), in `docs/manual/` and as an in-app Help page for the logged-in role — done when: each role's Help page renders its manual; the manual's steps match the click-through
+
 ## E6 · Evals — Sprint 3
 - [ ] E6.1 Eval harness + metrics + per-tenant report — done when: `make eval` prints table
 - [ ] E6.2 30 scenarios (15/tenant, 6 held out) across the six categories — done when: all load and run
