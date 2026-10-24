@@ -8,6 +8,13 @@ Format:
 - Why:
 - Alternative rejected:
 
+## 2026-10-24 · Refund execution: lock, reserve, call outside, reconcile by key
+- Decision: `execute_refund` follows PROJECT.md section 10 exactly. A short transaction locks the order row (`SELECT … FOR UPDATE`), re-checks the approval (`check_usable`) and eligibility against the refundable balance (captured payments − refunds reserved/submitted/succeeded/unknown/pending), then inserts the execution and the `reserved` ledger row under `P-<proposal_id>:refund:1` and commits. The connector call happens with no transaction open. The outcome is written in a second short transaction; a timeout is stored as `unknown`, never as success. Re-running for an existing execution never mints a key: it asks the provider by key first and re-sends with the same key only if the provider has no record (timeout before accept) or was temporarily unavailable. Amounts come from the hashed params, never a separate column.
+- Eligibility is pure: `Action.validate(ctx, inp, facts)` gets a `Facts` object (effective settings, order total, refundable balance) built by the engine. This extends the spec's `validate(ctx, inp)` so actions stay deterministic and unit-testable with no DB.
+- Decisions (`decide`): staff only, in scope (otherwise "not found"); eligibility re-checked when approving; refunds above `refund_without_escalation_paise` need an hq_owner; expiry from `approval_expiry_minutes`; a second decision → `AlreadyDecided`. `auto_decide` never approves refunds; vouchers up to `voucher_auto_approve_max_paise`.
+- Why: the lock serialises reservations per order (two refunds that fit alone can't both pass), the DB constraints from 0009 back every step, and the same-key rule makes retries and crashes safe.
+- Alternative rejected: calling the provider inside the reservation transaction (holds locks across the network; a crash leaves no record of the attempt).
+
 ## 2026-10-24 · Engine least privilege, and the Neon owner bypasses RLS
 - Finding: Neon's `neondb_owner` has `rolbypassrls = true` (via `neon_superuser`). `FORCE ROW LEVEL SECURITY` does not constrain it. Moving the dev reseed to the owner role made one tenant's reseed delete every tenant's history in the test database (caught by tests before any merge; the main database was last reseeded as the app role).
 - Decision: every statement run as the owner (reseed, test cleanup) filters on `tenant_id` explicitly, and a test proves reseeding tenant A leaves tenant B unchanged. Runtime code never uses the owner.

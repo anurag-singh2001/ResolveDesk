@@ -28,6 +28,15 @@ class ActionInput(BaseModel):
 
 
 @dataclass(frozen=True)
+class Facts:
+    """What eligibility may look at, read by the engine inside the tenant's transaction."""
+
+    settings: dict[str, Any]  # effective settings for the order's brand + location
+    order_total_paise: int | None = None
+    refundable_paise: int | None = None  # captured payments minus held/succeeded refunds
+
+
+@dataclass(frozen=True)
 class ValidationResult:
     ok: bool
     errors: list[str] = field(default_factory=list)
@@ -53,9 +62,15 @@ class Action(ABC):
     Input: ClassVar[type[ActionInput]]
     # Whether params carry an amount the approval/limit rules must see.
     amount_field: ClassVar[str | None] = None
+    # Whether an approval rule may approve it without a human (refunds: never).
+    auto_approvable: ClassVar[bool] = False
 
     @abstractmethod
-    def validate(self, ctx: TenantContext, inp: ActionInput) -> ValidationResult: ...
+    def validate(self, ctx: TenantContext, inp: ActionInput, facts: "Facts") -> ValidationResult:
+        """Deterministic eligibility from facts the engine read from the DB. No I/O here."""
+
+    def can_auto_approve(self, inp: ActionInput, facts: "Facts") -> bool:
+        return False
 
     @abstractmethod
     def execute(
