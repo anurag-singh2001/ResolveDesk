@@ -23,6 +23,7 @@ from app.core.models import (
     User,
     WorkflowRun,
 )
+from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import tenant_dirs
 from app.llm.providers import BudgetExceeded
@@ -333,18 +334,23 @@ def test_a_crashed_run_only_blocks_the_case_until_its_ttl(app_engine, case, age_
 
 
 def _ceiling(app_engine, case):
+    """The rule's remedy for this case's (missing-item) order, under the pack's own category."""
     with tenant_session(case["tid"], app_engine) as s:
+        remedies = tenant_pack(s).remedies
+        category = next(cat for cat, rule in remedies.items() if rule == "refund_missing")
         c = s.get(Case, case["case_id"])
-        c.category = "missing_items"
+        c.category = category
         s.flush()
-        return graph.decide_remedy(s, c)
+        ceiling = graph.decide_remedy(s, c)
+    assert ceiling.action == "refund", ceiling
+    return category, ceiling
 
 
 def test_proposals_never_exceed_the_business_rule(app_engine, case):
     """Policy text or an injected message can't buy more than the tenant's configured rule."""
-    ceiling = _ceiling(app_engine, case)
+    category, ceiling = _ceiling(app_engine, case)
     over = ceiling.params["amount_paise"] + 1
-    clf = FakeLLM({"Classification": [_classify()]})
+    clf = FakeLLM({"Classification": [_classify(category)]})
     res = FakeLLM({"ResolutionDraft": [_refund(case, amount=over)] * 2})
     out = _run(app_engine, case, clf, res)
     assert out["outcome"] == "escalated" and "business rules allow" in out["reason"]
@@ -371,3 +377,20 @@ def test_no_automatic_remedy_escalates_without_asking_the_model(app_engine, case
     res = FakeLLM({"ResolutionDraft": []})
     out = _run(app_engine, case, clf, res)
     assert out["outcome"] == "escalated" and res.calls == []
+
+
+def test_a_draft_at_the_ceiling_is_accepted(app_engine, case):
+    category, ceiling = _ceiling(app_engine, case)
+    clf = FakeLLM({"Classification": [_classify(category)]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case, amount=ceiling.params["amount_paise"])]})
+    assert _run(app_engine, case, clf, res)["outcome"] == "proposed"
+
+
+@pytest.mark.parametrize("amount", ["999999", 999999.0, 10.5])
+def test_non_integer_amounts_never_crash_or_pass_the_ceiling(app_engine, case, amount):
+    category, _ = _ceiling(app_engine, case)
+    clf = FakeLLM({"Classification": [_classify(category)]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case, amount=amount)] * 2})
+    out = _run(app_engine, case, clf, res)
+    assert out["outcome"] == "escalated" and "internal error" not in out["reason"]
+    assert _case(app_engine, case)[1] == []

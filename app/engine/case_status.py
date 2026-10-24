@@ -48,7 +48,7 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
             return CaseStatus("escalated", "A member of our team will look into this.")
         if case.status == "awaiting_info":
             return CaseStatus(
-                "awaiting_info", "We need a little more information. Please see our question."
+                "awaiting_info", "We need a little more information from you about this order."
             )
         if case.status == "resolved":
             return CaseStatus("closed", "Sorry about this. We have noted it with the team.")

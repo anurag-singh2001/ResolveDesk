@@ -304,7 +304,8 @@ def _check_draft(
         return [f"params invalid: {str(exc)[:200]}"]
     errors = []
     field = action.amount_field
-    if field is not None and draft.params.get(field, 0) > ceiling.params.get(field, 0):
+    # The validated value (strict integer paise), never the raw draft param.
+    if field is not None and getattr(inp, field) > ceiling.params.get(field, 0):
         errors.append(f"{field} is above what the business rules allow for this case")
     if str(draft.params.get("transaction_id", order_id)) != order_id:
         errors.append("transaction_id must be the order in the evidence")
