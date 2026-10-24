@@ -3,7 +3,7 @@ TENANT ?= all
 SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate seed api test test-tenant test-isolation test-chaos eval lint ui
+.PHONY: up down db-check migrate seed api flight test test-tenant test-isolation test-chaos eval lint ui
 
 db-check:
 	uv run python -m scripts.db_check
@@ -21,6 +21,9 @@ seed:
 
 api:
 	uv run uvicorn app.main:app --reload --port 8000
+
+flight:
+	uv run python -m scripts.flight $(ARGS)
 
 test:
 	uv run pytest -q -m "not isolation and not chaos and not live"

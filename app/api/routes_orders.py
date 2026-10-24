@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant_context, not_found, tenant_db
-from app.core.models import LineItem, Transaction
+from app.core.models import Fulfilment, LineItem, Transaction
 from app.core.tenancy import TenantContext
 
 router = APIRouter(tags=["orders"])
@@ -33,6 +33,9 @@ class LineItemOut(BaseModel):
 
 class OrderDetailOut(OrderOut):
     items: list[LineItemOut]
+    # What the customer was promised and when it actually arrived/was ready.
+    promised_at: datetime | None = None
+    completed_at: datetime | None = None
 
 
 def _order_out(t: Transaction) -> dict:
@@ -74,8 +77,11 @@ def get_order(
     items = db.scalars(
         select(LineItem).where(LineItem.transaction_id == order.id).order_by(LineItem.sku)
     )
+    fulfilment = db.scalar(select(Fulfilment).where(Fulfilment.transaction_id == order.id))
     return OrderDetailOut(
         **_order_out(order),
+        promised_at=fulfilment.promised_at if fulfilment else None,
+        completed_at=fulfilment.completed_at if fulfilment else None,
         items=[
             LineItemOut(
                 sku=i.sku,
