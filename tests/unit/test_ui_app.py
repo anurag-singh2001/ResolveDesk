@@ -38,18 +38,20 @@ PENDING = {
     "eligible": True,
     "errors": [],
 }
-CATEGORIES = {"categories": ["late_delivery", "missing_items"]}
+CATEGORIES = {"categories": ["late_delivery", "missing_items"], "free_text": False}
 
 
 def fake_api(monkeypatch, routes: dict) -> list[tuple[str, str, dict]]:
-    """Patch the client: a route maps to a JSON body, or to an exception it raises."""
+    """Patch the client: a route ("/path" or "METHOD /path") maps to a JSON body, or to an
+    exception it raises."""
     seen: list[tuple[str, str, dict]] = []
 
     def request(self, method, path, **kwargs):
         seen.append((method, path, kwargs))
-        if path not in routes:
+        key = f"{method} {path}" if f"{method} {path}" in routes else path
+        if key not in routes:
             raise NotFound(404, "not found")
-        out = routes[path]
+        out = routes[key]
         if isinstance(out, Exception):
             raise out
         return out
@@ -161,3 +163,23 @@ def test_expired_token_on_case_list_ends_session_and_shows_login(monkeypatch, ro
     assert [b.label for b in at.button] == ["Log in"]
     assert any("session has ended" in w.value for w in at.warning)
     assert not at.error  # a 401 is not reported as an API error
+
+
+def test_free_text_mode_lets_a_customer_skip_the_category(monkeypatch):
+    seen = fake_api(
+        monkeypatch,
+        {
+            "/orders": [ORDER],
+            "/orders/o1": {**ORDER, "items": []},
+            "/cases": [],
+            "POST /cases": {**CASE, "category": None, "stage": "investigating"},
+            "/meta/categories": {**CATEGORIES, "free_text": True},
+        },
+    )
+    at = logged_in("customer")
+    assert at.selectbox[1].options[0] == "Not sure: just describe it"
+    at.text_area[0].input("My coffee was cold.")
+    at.button[0].click().run()
+    assert not at.exception
+    post = next(kw for method, path, kw in seen if (method, path) == ("POST", "/cases"))
+    assert post["json"]["category"] is None

@@ -5,6 +5,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant_context, tenant_db
+from app.config import get_settings
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 
@@ -13,6 +14,7 @@ router = APIRouter(tags=["meta"])
 
 class CategoriesOut(BaseModel):
     categories: list[str]
+    free_text: bool  # agents mode: a customer may describe the problem without a category
 
 
 @router.get("/meta/categories")
@@ -23,4 +25,7 @@ def issue_categories(
 
     Any authenticated role may read it; `ctx` is here so a missing/invalid token is a 401.
     """
-    return CategoriesOut(categories=list(tenant_pack(db).issue_categories))
+    return CategoriesOut(
+        categories=list(tenant_pack(db).issue_categories),
+        free_text=get_settings().engine_mode == "agents",
+    )

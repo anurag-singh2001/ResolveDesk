@@ -30,6 +30,7 @@ LABELS = {
     "confirmed": "Confirmed",
     "declined": "Declined",
     "escalated": "Escalated to a person",
+    "awaiting_info": "We need more information",
     "closed": "Closed",
 }
 
@@ -38,8 +39,15 @@ def money(paise: int | None) -> str:
     return "-" if paise is None else format_inr(paise)
 
 
+NOT_SURE = "Not sure: just describe it"
+
+
 def label(slug: str | None) -> str:
     return (slug or "-").replace("_", " ").capitalize()
+
+
+def category_label(slug: str | None) -> str:
+    return NOT_SURE if slug is None else label(slug)
 
 
 @st.cache_data
@@ -185,11 +193,13 @@ def customer_view() -> None:
                 ]
             )
         # Fetched once per login (cleared on logout); a failed fetch is retried next rerun.
-        cats = st.session_state.get("categories") or call(api.categories) or []
-        if cats:
-            st.session_state["categories"] = cats
+        opts = st.session_state.get("issue_options") or call(api.issue_options) or {}
+        if opts:
+            st.session_state["issue_options"] = opts
+        # In agents mode the assistant works out the category from the description.
+        cats = ([None] if opts.get("free_text") else []) + list(opts.get("categories", []))
         with st.form("report", clear_on_submit=True):
-            category = st.selectbox("What went wrong?", cats, format_func=label)
+            category = st.selectbox("What went wrong?", cats, format_func=category_label)
             message = st.text_area("Tell us more", max_chars=2000)
             if st.form_submit_button("Report a problem", type="primary"):
                 if not message.strip():

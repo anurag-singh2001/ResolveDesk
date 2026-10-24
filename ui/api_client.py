@@ -91,6 +91,10 @@ class ApiClient:
         """The caller's tenant issue categories (from its vertical pack, via the API)."""
         return self._request("GET", "/meta/categories")["categories"]
 
+    def issue_options(self) -> dict:
+        """Categories plus `free_text`: whether a case may be opened without one."""
+        return self._request("GET", "/meta/categories")
+
     # orders
     def list_orders(self, limit: int = 20) -> list[dict]:
         return self._request("GET", "/orders", params={"limit": limit})
@@ -99,7 +103,7 @@ class ApiClient:
         return self._request("GET", f"/orders/{order_id}")
 
     # cases
-    def create_case(self, transaction_id: str, category: str, message: str) -> dict:
+    def create_case(self, transaction_id: str, category: str | None, message: str) -> dict:
         body = {"transaction_id": transaction_id, "category": category, "message": message}
         return self._request("POST", "/cases", json=body)
 
