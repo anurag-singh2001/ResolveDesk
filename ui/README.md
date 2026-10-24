@@ -11,7 +11,9 @@ Needs a filled-in `.env` (database URLs, `DEMO_AUTH=true`) and a migrated, seede
 1. Terminal 1: `make api` (FastAPI on http://localhost:8000)
 2. Terminal 2: `make ui` (Streamlit on http://localhost:8501)
 
-Set `API_URL` if the API runs somewhere else. Every demo user's password is `demo`.
+Set `API_URL` if the API runs somewhere else. Demo passwords come from each tenant folder
+(`demo_password` in `tenants/<slug>/tenant.yaml`, optionally per user); `make seed` hashes them
+into the database only when `DEMO_AUTH=true`.
 
 ## What's there
 

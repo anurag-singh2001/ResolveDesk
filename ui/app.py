@@ -14,7 +14,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 import streamlit as st
 
-from app.config import get_settings
 from app.core.money import format_inr
 from app.core.tenant_config import TenantConfig, load_tenant, tenant_dirs
 from ui.api_client import ApiClient, ApiError, NotFound, Unauthorized
@@ -95,7 +94,8 @@ def login_view() -> None:
     if st.button("Log in", type="primary") and user is not None:
         # The picker only chooses whom to log in as; who we are comes from the API.
         api = ApiClient()
-        if call(api.login, slug, user.email, get_settings().demo_password) is None:
+        password = all_tenants[slug].demo_password_for(user)  # dev demo password
+        if call(api.login, slug, user.email, password) is None:
             return
         me = call(api.me)
         if me is None:

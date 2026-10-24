@@ -22,7 +22,11 @@ settings:
       voucher_auto_approve_max_paise: 10000
   locations: {}
 
-# Demo users; password "demo" (auth, story E1.4). No scope = whole org.
+# Dev/demo login password for the users below (a user may override it with its own
+# demo_password). Hashed into the DB only with DEMO_AUTH=true; never a real credential.
+demo_password: spice-route-demo
+
+# Demo users. No scope = whole org.
 users:
   - {email: owner@spiceroute.test, name: Asha Kulkarni, role: hq_owner}
   - {email: kharadi.manager@spiceroute.test, name: Rohit Shinde, role: location_manager, locations: [kharadi]}

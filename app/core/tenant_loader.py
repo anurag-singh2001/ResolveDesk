@@ -8,11 +8,12 @@ being loaded, never from a request.
 import uuid
 from typing import Any
 
-from sqlalchemy import Engine, delete, or_
+from sqlalchemy import Engine, delete, or_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core.db import tenant_session
 from app.core.models import (
     CONFIG_MODELS,
@@ -29,6 +30,7 @@ from app.core.models import (
     User,
     VerticalPackRow,
 )
+from app.core.passwords import hash_password, verify_password
 from app.core.tenancy import NAMESPACE, tenant_id_for
 from app.core.tenant_config import TenantConfig, validate_tenant
 from app.core.verticals import VerticalPack
@@ -127,6 +129,7 @@ def load_tenant_into_db(engine: Engine, cfg: TenantConfig, pack: VerticalPack) -
             User,
             [row("user", u.email, email=u.email, display_name=u.name) for u in cfg.users],
         )
+        _sync_demo_passwords(s, cfg, tid)
         put(
             Membership,
             [
@@ -221,6 +224,35 @@ def load_tenant_into_db(engine: Engine, cfg: TenantConfig, pack: VerticalPack) -
                     "a removed brand or location)."
                 ) from exc
     return tid
+
+
+def _sync_demo_passwords(session: Session, cfg: TenantConfig, tid: uuid.UUID) -> None:
+    """Demo users' password hashes follow the folder: set while DEMO_AUTH is on (never in
+    prod), cleared when it is off, so a known demo password never works where it shouldn't.
+    A stored hash that already matches is kept: bcrypt salts differ per run, so rehashing
+    would rewrite every user on every load. Users without a demo password are left alone."""
+    s = get_settings()
+    demo_on = s.demo_auth and s.app_env != "prod"
+    ids = {u.email: _id(tid, "user", u.email) for u in cfg.users}
+    stored = dict(
+        session.execute(
+            select(User.id, User.password_hash).where(User.id.in_(list(ids.values())))
+        ).all()
+    )
+    for user in cfg.users:
+        password = cfg.demo_password_for(user)
+        if password is None:
+            continue
+        uid = ids[user.email]
+        current = stored.get(uid)
+        if not demo_on:
+            new_hash = None
+        elif current is not None and verify_password(password, current):
+            continue
+        else:
+            new_hash = hash_password(password)
+        if new_hash != current:
+            session.execute(update(User).where(User.id == uid).values(password_hash=new_hash))
 
 
 class TenantLoadError(ValueError):

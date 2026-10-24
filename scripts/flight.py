@@ -67,9 +67,11 @@ def _client(url: str | None) -> httpx.Client:
     return TestClient(create_app())  # same interface; background tasks run before returning
 
 
-def _login(c, tenant: str, email: str) -> dict[str, str]:
-    password = get_settings().demo_password
-    r = c.post("/auth/login", json={"tenant": tenant, "email": email, "password": password})
+def _login(c, cfg, user) -> dict[str, str]:
+    """Log in as a demo user with the demo password from its tenant folder."""
+    password = cfg.demo_password_for(user)
+    body = {"tenant": cfg.slug, "email": user.email, "password": password}
+    r = c.post("/auth/login", json=body)
     r.raise_for_status()
     return {"Authorization": f"Bearer {r.json()['access_token']}"}
 
@@ -82,10 +84,10 @@ def fly(url: str | None, agents: bool = False) -> tuple[list[Row], list[str]]:
         cfg = load_tenant(folder)
         categories = sorted(load_pack(cfg.vertical_pack).remedies)
         hq = next(u for u in cfg.users if u.role == "hq_owner")
-        hq_headers = _login(c, cfg.slug, hq.email)
+        hq_headers = _login(c, cfg, hq)
         opened: dict[str, tuple[Row, dict]] = {}
         for customer in (u for u in cfg.users if u.role == "customer"):
-            headers = _login(c, cfg.slug, customer.email)
+            headers = _login(c, cfg, customer)
             used = {
                 case["transaction_id"] for case in c.get("/cases?limit=200", headers=headers).json()
             }

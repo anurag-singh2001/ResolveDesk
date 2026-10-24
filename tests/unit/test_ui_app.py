@@ -3,7 +3,6 @@
 import pytest
 from streamlit.testing.v1 import AppTest
 
-from app.config import get_settings
 from app.core.tenant_config import load_tenant, tenant_dirs
 from ui.api_client import ApiClient, NotFound, Unauthorized
 
@@ -111,7 +110,8 @@ def test_login_takes_identity_from_me_not_from_the_picker(monkeypatch):
     assert at.session_state["name"] == "Name From API"
     assert at.session_state["user_id"] == "u-from-api"
     login = next(kw for _, path, kw in seen if path == "/auth/login")
-    assert login["json"]["password"] == get_settings().demo_password
+    first_cfg = load_tenant(tenant_dirs()[0])
+    assert login["json"]["password"] == first_cfg.demo_password_for(first)
 
 
 def test_customer_view_shows_orders_in_rupees_and_api_message(monkeypatch):

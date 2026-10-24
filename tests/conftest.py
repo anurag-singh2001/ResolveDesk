@@ -4,6 +4,8 @@ from pathlib import Path
 # Tests log in as seeded demo users; demo auth is opt-in (off by default).
 os.environ.setdefault("APP_ENV", "test")
 os.environ.setdefault("DEMO_AUTH", "true")
+# Cheapest bcrypt cost: tests log in and reload tenants a lot (production default is 12).
+os.environ.setdefault("BCRYPT_ROUNDS", "4")
 
 import pytest
 from alembic import command
