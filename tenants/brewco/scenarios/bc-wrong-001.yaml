@@ -1,0 +1,12 @@
+id: bc-wrong-001
+tenant: brewco
+kind: plain
+message: I ordered a cappuccino but got a cold coffee instead.
+order:
+  select: flagged
+  flag: wrong_item
+expect:
+  category: wrong_order
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

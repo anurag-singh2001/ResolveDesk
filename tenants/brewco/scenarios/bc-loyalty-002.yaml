@@ -1,0 +1,10 @@
+id: bc-loyalty-002
+tenant: brewco
+kind: phrasing
+message: where r my points?? app still shows the old balance after my visit
+order:
+  select: latest
+expect:
+  category: loyalty
+  outcome: escalated
+held_out: true

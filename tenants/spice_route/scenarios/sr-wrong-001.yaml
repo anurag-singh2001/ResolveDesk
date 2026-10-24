@@ -1,0 +1,11 @@
+id: sr-wrong-001
+tenant: spice_route
+kind: plain
+message: I ordered chicken biryani but received a paneer bowl instead. Completely different dish.
+order:
+  select: latest
+expect:
+  category: wrong_item
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

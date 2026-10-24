@@ -1,0 +1,10 @@
+id: sr-missing-003
+tenant: spice_route
+kind: wrong_claim
+message: Half of my order was missing when it arrived!
+order:
+  select: on_time
+expect:
+  category: missing_items
+  outcome: escalated
+note: 'nothing short on record: no automatic refund'

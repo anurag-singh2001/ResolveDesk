@@ -1,0 +1,11 @@
+id: sr-late-002
+tenant: spice_route
+kind: hinglish
+message: Bhai order ek ghante se zyada late aaya, khana thanda ho gaya. Refund chahiye.
+order:
+  select: most_late
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: refund
+  amount: exact

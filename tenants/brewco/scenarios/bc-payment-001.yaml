@@ -1,0 +1,11 @@
+id: bc-payment-001
+tenant: brewco
+kind: plain
+message: My UPI payment showed failed but the money was still deducted from my account.
+order:
+  select: latest
+expect:
+  category: payment_issue
+  outcome: escalated
+tags:
+- live

@@ -1,0 +1,13 @@
+id: bc-missing-001
+tenant: brewco
+kind: plain
+message: The croissant I paid for wasn't in my bag.
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact
+tags:
+- live

@@ -38,7 +38,7 @@ test-chaos:
 	@echo not implemented yet
 
 eval:
-	@echo not implemented yet
+	uv run python -m evals.run $(ARGS)
 
 lint:
 	uv run ruff check . && uv run ruff format --check .

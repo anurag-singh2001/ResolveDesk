@@ -1,0 +1,9 @@
+id: bc-status-001
+tenant: brewco
+kind: plain
+message: Is my pickup order ready yet? How long will it take?
+order:
+  select: latest
+expect:
+  category: status_question
+  outcome: escalated

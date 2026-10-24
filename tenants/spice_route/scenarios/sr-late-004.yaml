@@ -1,0 +1,10 @@
+id: sr-late-004
+tenant: spice_route
+kind: wrong_claim
+message: This order was super late!!! Totally unacceptable.
+order:
+  select: on_time
+expect:
+  category: late_delivery
+  outcome: escalated
+note: 'delivered on time: the apology tier has no automatic remedy, a person replies'

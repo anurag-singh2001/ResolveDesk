@@ -1,0 +1,13 @@
+id: sr-missing-001
+tenant: spice_route
+kind: plain
+message: One of the items I paid for wasn't in the bag at all.
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact
+tags:
+- live
