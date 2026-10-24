@@ -1,0 +1,49 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Typography for the rendered manuals (Help page). */
+@layer components {
+  .manual {
+    @apply max-w-3xl text-[0.95rem] leading-7 text-slate-700;
+  }
+  .manual h1 {
+    @apply mb-4 text-2xl font-semibold tracking-tight text-slate-900;
+  }
+  .manual h2 {
+    @apply mb-3 mt-10 border-t border-slate-100 pt-6 text-lg font-semibold text-slate-900;
+  }
+  .manual h3 {
+    @apply mb-2 mt-6 text-base font-semibold text-slate-900;
+  }
+  .manual p {
+    @apply my-3;
+  }
+  .manual ul {
+    @apply my-3 list-disc space-y-1 pl-6;
+  }
+  .manual ol {
+    @apply my-3 list-decimal space-y-1 pl-6;
+  }
+  .manual strong {
+    @apply font-semibold text-slate-900;
+  }
+  .manual code {
+    @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.85em] text-slate-800;
+  }
+  .manual blockquote {
+    @apply my-4 rounded-r-lg border-l-4 border-accent-200 bg-accent-50 px-4 py-2 text-slate-700;
+  }
+  .manual table {
+    @apply my-4 w-full border-collapse text-sm;
+  }
+  .manual th {
+    @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium text-slate-700;
+  }
+  .manual td {
+    @apply border-b border-slate-100 px-3 py-2 align-top;
+  }
+  .manual a {
+    @apply font-medium text-accent-700 underline;
+  }
+}

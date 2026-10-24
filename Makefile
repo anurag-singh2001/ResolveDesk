@@ -3,7 +3,7 @@ TENANT ?= all
 SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate seed api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke
+.PHONY: up down db-check migrate seed api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
 
 db-check:
 	uv run python -m scripts.db_check
@@ -48,3 +48,16 @@ ui:
 
 llm-smoke:
 	uv run python -m scripts.llm_smoke
+
+# React web app (web/). Run web-install once; the API must be running (make api).
+web-install:
+	npm --prefix web ci
+
+web:
+	npm --prefix web run dev
+
+web-build:
+	npm --prefix web run build
+
+web-test:
+	npm --prefix web test

@@ -1,0 +1,62 @@
+import type { ReactNode } from "react";
+import { Navigate, Route, Routes, useLocation } from "react-router-dom";
+import { useAuth } from "./auth/session";
+import { AppShell } from "./components/AppShell";
+import { EmptyState, Loading } from "./components/ui";
+import { homePath, isStaff } from "./lib/roles";
+import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
+import { ApprovalsPage } from "./pages/ApprovalsPage";
+import { CasePage } from "./pages/CasePage";
+import { CasesPage } from "./pages/CasesPage";
+import { HelpPage } from "./pages/HelpPage";
+import { LoginPage } from "./pages/LoginPage";
+import { OrderDetailPage } from "./pages/OrderDetailPage";
+import { OrdersPage } from "./pages/OrdersPage";
+import { ReportProblemPage } from "./pages/ReportProblemPage";
+
+/** Hides screens a role has no use for. Access itself is enforced by the API on every call. */
+function Only({ when, children }: { when: boolean; children: ReactNode }) {
+  return when ? <>{children}</> : <NotFound />;
+}
+
+function NotFound() {
+  return <EmptyState title="Page not found">The page you're looking for doesn't exist or isn't available to you.</EmptyState>;
+}
+
+export function App() {
+  const { status, me } = useAuth();
+  const location = useLocation();
+
+  if (status === "loading") return <Loading label="Signing you in…" />;
+
+  if (status === "signed_out" || !me) {
+    return (
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
+      </Routes>
+    );
+  }
+
+  const customer = me.role === "customer";
+  const staff = isStaff(me.role);
+  const from = (location.state as { from?: string } | null)?.from;
+
+  return (
+    <Routes>
+      <Route path="/login" element={<Navigate to={from && from !== "/login" ? from : homePath(me.role)} replace />} />
+      <Route element={<AppShell />}>
+        <Route index element={<Navigate to={homePath(me.role)} replace />} />
+        <Route path="/orders" element={<Only when={customer}><OrdersPage /></Only>} />
+        <Route path="/orders/:orderId" element={<Only when={customer}><OrderDetailPage /></Only>} />
+        <Route path="/orders/:orderId/report" element={<Only when={customer}><ReportProblemPage /></Only>} />
+        <Route path="/cases" element={<CasesPage />} />
+        <Route path="/cases/:caseId" element={<CasePage />} />
+        <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
+        <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
+        <Route path="/help" element={<HelpPage />} />
+        <Route path="*" element={<NotFound />} />
+      </Route>
+    </Routes>
+  );
+}
