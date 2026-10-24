@@ -37,9 +37,18 @@ class VerticalPack(BaseModel):
     fulfilment_kinds: dict[str, str] = {}  # order source -> delivery | pickup | counter
     issue_categories: list[str]
     actions: list[str]
+    # issue category -> deterministic remedy rule (app/engine/resolver.py); others escalate
+    remedies: dict[str, Literal["late_tiers", "refund_missing", "voucher"]] = {}
     metrics: list[str]
     features: dict[str, bool]
     settings: dict[str, SettingSpec]
+
+    @model_validator(mode="after")
+    def _remedies_use_known_categories(self) -> "VerticalPack":
+        unknown = set(self.remedies) - set(self.issue_categories)
+        if unknown:
+            raise ValueError(f"remedies for unknown issue categories: {sorted(unknown)}")
+        return self
 
 
 def is_limit_value(value: Any) -> bool:

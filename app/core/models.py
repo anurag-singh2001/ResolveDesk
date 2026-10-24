@@ -382,6 +382,13 @@ class Ticket(TenantOwned, Base):
         UniqueConstraint("tenant_id", "id", name="uq_tickets_tenant_id"),
         _fk("customer_id", "customers"),
         _fk("transaction_id", "transactions"),
+        # A live case's conversation (migration 0011). Clearing a case only unlinks it.
+        ForeignKeyConstraint(
+            ["tenant_id", "case_id"],
+            ["cases.tenant_id", "cases.id"],
+            ondelete="SET NULL (case_id)",
+            name="fk_tickets_case",
+        ),
         CheckConstraint(
             "status IN ('open', 'resolved', 'escalated', 'closed')", name="ck_tickets_status"
         ),
@@ -394,6 +401,7 @@ class Ticket(TenantOwned, Base):
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    case_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
 
 
 class TicketMessage(TenantOwned, Base):
