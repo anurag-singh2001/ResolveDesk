@@ -32,10 +32,10 @@ This is a portfolio POC for AI engineer and Forward Deployed Engineer roles. It 
 - Mocked external services: payment, POS, delivery app, messaging (WhatsApp-like).
 - One issue per case.
 - Synthetic data only.
-- Simple UI in Streamlit.
+- Web UI in React (`web/`, decided 2026-10-25, see DECISIONS.md); the Streamlit app in `ui/` stays as a debug UI.
 
 ### Out of scope (v1)
-Real integrations, chargebacks, fraud decisions, partial returns spanning orders, multiple currencies, React frontend, production deployment.
+Real integrations, chargebacks, fraud decisions, partial returns spanning orders, multiple currencies, production deployment.
 
 ---
 
@@ -65,7 +65,7 @@ Real integrations, chargebacks, fraud decisions, partial returns spanning orders
 | Database | PostgreSQL 16 + pgvector, SQLAlchemy 2.x, Alembic |
 | Embeddings | Local: `BAAI/bge-small-en-v1.5` via sentence-transformers (384 dims) |
 | Tests | pytest, pytest-asyncio, httpx |
-| UI | Streamlit |
+| UI | React + TypeScript + Tailwind (Vite) in `web/`; Streamlit debug UI in `ui/` |
 | Lint/format | ruff |
 | Database hosting | Neon (hosted Postgres 16 + pgvector); branches `main` (dev/demo) and `test` (pytest). No Docker. |
 | Dev env | `uv` for Python deps, Makefile (GNU make; on Windows via winget `ezwinports.make`) |
@@ -129,7 +129,8 @@ tenants/
   brewco/       tenant.yaml  catalogue.csv  policies/  policies/outlets/  scenarios/
 simulator/              deterministic data + behaviour simulator
 evals/                  harness, metrics, report
-ui/                     Streamlit pages
+web/                    React web app (product UI)
+ui/                     Streamlit debug pages
 migrations/             Alembic
 tests/                  unit/ integration/ isolation/ chaos/
 scripts/                neon_bootstrap.sql, db_check.py
@@ -311,7 +312,7 @@ Every route checks role and scope. Return 404 (not 403) for records in another t
 
 ---
 
-## 13. UI (Streamlit)
+## 13. UI (React web app; Streamlit debug UI)
 
 - **Customer portal:** login as a demo customer, order list, chat to raise a case, status bar (Received → Investigated → Awaiting approval → Confirmed), honest status text.
 - **Manager queue:** pending approvals with evidence, policy citations, amount, code-check results, expiry, approve/reject.
@@ -446,7 +447,7 @@ If a request fits none of these, discuss it before writing code.
 | 2 | Canonical tables, mock services with failure injection, connector + action registries, deterministic eligibility, simulator history | A refund resolves via API with no LLM, for both tenants |
 | 3 | LLM provider factory, policy files, RAG ingest + retrieve, LangGraph classify → investigate → policy → propose | Cited, validated proposals for 3 scenarios per tenant |
 | 4 | Approval interrupt/resume, executor, reconciliation, verifier, tickets, audit, events | Chaos tests show zero duplicate refunds |
-| 5 | Streamlit customer portal, manager queue, HQ view, dev panel | Full demo click-through for both tenants |
+| 5 | Web app: customer portal, manager queue, HQ view, dev panel | Full demo click-through for both tenants |
 | 6 | Eval harness, 30 scenarios, baseline comparison, report | `make eval` prints per-tenant table |
 | 7 | README, architecture diagram, demo script; stretch growth signal | Another developer runs it from README |
 
