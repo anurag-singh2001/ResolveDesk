@@ -41,6 +41,9 @@ class Settings(BaseSettings):
     llm_retry_max_seconds: float = Field(default=20.0, ge=0)
     # Engine limit (PROJECT.md section 8): more LLM calls in one run -> stop and escalate.
     llm_max_calls_per_run: int = Field(default=8, ge=1)
+    # How a new case is worked: deterministic (customer picks a category, code proposes)
+    # or agents (free text -> LangGraph: classify, investigate, policy, resolve).
+    engine_mode: Literal["deterministic", "agents"] = "deterministic"
 
     # Fail safe: an unset APP_ENV is treated as prod (dev/test must opt in explicitly).
     app_env: Literal["dev", "test", "prod"] = "prod"
