@@ -2,13 +2,15 @@
 Money columns end in _paise and are bigint (hard rule 3)."""
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
+from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -23,6 +25,7 @@ from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 ROLES = ("customer", "location_manager", "franchisee_owner", "hq_owner")
+EMBEDDING_DIMS = 384  # BAAI/bge-small-en-v1.5
 
 
 class Base(DeclarativeBase):
@@ -663,6 +666,57 @@ class DomainEvent(TenantOwned, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+# --- Policies (PROJECT.md section 11) ----------------------------------------------------
+
+
+class PolicyDocument(TenantOwned, Base):
+    """One version of one policy. Scope: org (no brand/location), a brand, or a location."""
+
+    __tablename__ = "policy_documents"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_policy_documents_tenant_id"),
+        UniqueConstraint("tenant_id", "doc_key", name="uq_policy_documents_key"),
+        ForeignKeyConstraint(["tenant_id", "brand_id"], ["brands.tenant_id", "brands.id"]),
+        ForeignKeyConstraint(["tenant_id", "location_id"], ["locations.tenant_id", "locations.id"]),
+        CheckConstraint("brand_id IS NULL OR location_id IS NULL", name="ck_policy_one_scope"),
+        CheckConstraint(
+            "effective_to IS NULL OR effective_to > effective_from", name="ck_policy_window"
+        ),
+    )
+
+    doc_key: Mapped[str] = mapped_column(String(100), nullable=False)  # e.g. late_delivery_v3
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    topic: Mapped[str] = mapped_column(String(64), nullable=False)
+    version: Mapped[int] = mapped_column(Integer, nullable=False)
+    brand_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    effective_from: Mapped[date] = mapped_column(Date, nullable=False)
+    effective_to: Mapped[date | None] = mapped_column(Date)
+    source_uri: Mapped[str] = mapped_column(String(300), nullable=False)
+    content_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+
+
+class PolicyChunk(TenantOwned, Base):
+    """One section of a policy with its embedding. Content is untrusted (hard rule 9)."""
+
+    __tablename__ = "policy_chunks"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "section_ref", name="uq_policy_chunks_ref"),
+        ForeignKeyConstraint(
+            ["tenant_id", "document_id"],
+            ["policy_documents.tenant_id", "policy_documents.id"],
+            ondelete="CASCADE",
+        ),
+    )
+
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    section_ref: Mapped[str] = mapped_column(String(120), nullable=False)  # late_delivery_v3#2.1
+    heading: Mapped[str] = mapped_column(String(300), nullable=False)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    embedding: Mapped[list[float]] = mapped_column(Vector(EMBEDDING_DIMS), nullable=False)
+    meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
+
+
 # Loaded from tenant folders (the loader syncs these and only these).
 CONFIG_MODELS = [
     Organization,
@@ -702,6 +756,8 @@ ENGINE_MODELS = [
 ]
 # Append-only; never deleted by reseed or the loader (no app-role DELETE privilege).
 APPEND_ONLY_MODELS = [AuditEvent]
+# Policy documents + chunks (written by app/rag/ingest.py, not the tenant loader).
+POLICY_MODELS = [PolicyDocument, PolicyChunk]
 # Parents before children: cleanup code deletes in reverse order.
-TENANT_MODELS = CONFIG_MODELS + COMMERCE_MODELS + ENGINE_MODELS + APPEND_ONLY_MODELS
+TENANT_MODELS = CONFIG_MODELS + POLICY_MODELS + COMMERCE_MODELS + ENGINE_MODELS + APPEND_ONLY_MODELS
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]
