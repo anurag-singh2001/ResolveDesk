@@ -112,5 +112,5 @@ def downgrade() -> None:
     op.drop_index("ix_login_failures_key_time", table_name="login_failures")
     op.drop_index(op.f("ix_login_failures_tenant_id"), table_name="login_failures")
     op.drop_table("login_failures")
-    op.drop_column("users", "password_is_demo")
+    op.execute("ALTER TABLE users DROP COLUMN IF EXISTS password_is_demo")
     op.drop_column("users", "password_hash")
