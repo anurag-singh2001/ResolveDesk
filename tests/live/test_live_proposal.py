@@ -7,8 +7,6 @@ injection buys nothing. Skipped when an LLM key for the configured providers is 
 Not part of `make test` (marker `live`): it costs real calls and needs the network.
 """
 
-import uuid
-
 import pytest
 
 from app.config import get_settings
@@ -52,7 +50,7 @@ def test_live_proposal_scenarios(app_engine, maint_engine, live_policies, tenant
     pack = load_pack(cfg.vertical_pack)
     scenarios = [sc for sc in load_scenarios(tenant, cfg.slug, pack) if "live" in sc.tags]
     assert len(scenarios) == 3
-    planted: list[uuid.UUID] = []
+    planted: list = []
     results = []
     try:
         results = run_scenarios(app_engine, cfg.slug, scenarios, "agents", run_agents,

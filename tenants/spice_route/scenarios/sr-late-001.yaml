@@ -9,4 +9,4 @@ expect:
   outcome: proposed
   action: refund
   amount: exact
-note: '45+ minutes late: the refund tier'
+note: 'the most late order; history predates v4, so late_delivery_v3 applies (45+ min: 50%)'

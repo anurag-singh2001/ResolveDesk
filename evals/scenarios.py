@@ -5,6 +5,7 @@ item), never a hard-coded id, so it survives a reseed. `expect` is the outcome t
 own rules call for; scoring is deterministic code (evals/metrics.py).
 """
 
+from datetime import date
 from pathlib import Path
 from typing import Literal
 
@@ -31,6 +32,9 @@ class OrderSelector(BaseModel):
     - shortfall: newest order with an item short (one is made on the newest order if none)
     - flagged: newest order whose fulfilment has attribute `flag` true (else latest)
     - none: the case has no order (the customer must say which)
+
+    `placed_on` moves the picked order to that business date (intervals kept), for rules
+    dated after the generated history ends (e.g. late tiers in force from a later date).
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -38,6 +42,7 @@ class OrderSelector(BaseModel):
     min_minutes: int | None = None
     max_minutes: int | None = None
     flag: str | None = None
+    placed_on: date | None = None
 
     @model_validator(mode="after")
     def _params(self) -> "OrderSelector":

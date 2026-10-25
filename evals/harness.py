@@ -14,13 +14,16 @@ import time
 import uuid
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
+from datetime import time as clock_time
 from types import SimpleNamespace
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from app.actions.base import get_action
+from app.core.business_time import DEFAULT_TIMEZONE
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
@@ -33,6 +36,7 @@ from app.core.models import (
     Transaction,
 )
 from app.core.tenancy import tenant_id_for
+from app.engine.eligibility import order_facts
 from app.engine.resolver import decide_remedy
 from evals.scenarios import OrderSelector, Scenario
 
@@ -104,11 +108,12 @@ def select_order(
     s: Session,
     sel: OrderSelector,
     skip: set[uuid.UUID],
-    planted: list[uuid.UUID] | None = None,
+    planted: list | None = None,
 ) -> Transaction | None:
     """The order a selector names (deterministic for a given seed). `shortfall` may mark one
-    item of the newest order as not delivered when the history has none; that line's id is
-    appended to `planted` so a caller can undo it. `on_time` never picks a short order (it
+    item of the newest order as not delivered when the history has none, and `placed_on`
+    re-dates the pick; both are recorded in `planted` (undo_planted). `on_time` never picks a
+    short order (it
     backs "nothing is missing" claims)."""
     if sel.select == "none":
         return None
@@ -144,10 +149,48 @@ def select_order(
                 .values(quantity_fulfilled=line.quantity - 1)
             )
             if planted is not None:
-                planted.append(line.id)
+                planted.append(("line", line.id, None))
     if pick is None:
         raise LookupError(f"no order matches selector {sel.model_dump(exclude_none=True)}")
+    if sel.placed_on is not None:
+        _redate(s, pick, sel.placed_on, planted)
     return pick
+
+
+def _redate(s: Session, order: Transaction, placed_on: date, planted: list | None) -> None:
+    """Move an order (and its fulfilment and payments) to noon of `placed_on` in the tenant's
+    business timezone, keeping every interval (so lateness is unchanged). Lets a scenario
+    exercise rules dated after the generated history ends."""
+    _, facts = order_facts(s, order.id)
+    tz = ZoneInfo(facts.settings.get("business_timezone") or DEFAULT_TIMEZONE)
+    delta = datetime.combine(placed_on, clock_time(12), tz) - order.placed_at
+    s.execute(update(Transaction).where(Transaction.id == order.id)
+              .values(placed_at=Transaction.placed_at + delta))  # fmt: skip
+    s.execute(update(Fulfilment).where(Fulfilment.transaction_id == order.id)
+              .values(promised_at=Fulfilment.promised_at + delta,
+                      completed_at=Fulfilment.completed_at + delta))  # fmt: skip
+    s.execute(update(Payment).where(Payment.transaction_id == order.id)
+              .values(captured_at=Payment.captured_at + delta))  # fmt: skip
+    s.refresh(order)
+    if planted is not None:
+        planted.append(("redate", order.id, delta))
+
+
+def undo_planted(s: Session, planted: list) -> None:
+    """Reverse what select_order changed (tests clean up their database with this)."""
+    for kind, ref, delta in reversed(planted):
+        if kind == "line":
+            line = s.get(LineItem, ref)
+            s.execute(update(LineItem).where(LineItem.id == ref)
+                      .values(quantity_fulfilled=line.quantity))  # fmt: skip
+        else:
+            s.execute(update(Transaction).where(Transaction.id == ref)
+                      .values(placed_at=Transaction.placed_at - delta))  # fmt: skip
+            s.execute(update(Fulfilment).where(Fulfilment.transaction_id == ref)
+                      .values(promised_at=Fulfilment.promised_at - delta,
+                              completed_at=Fulfilment.completed_at - delta))  # fmt: skip
+            s.execute(update(Payment).where(Payment.transaction_id == ref)
+                      .values(captured_at=Payment.captured_at - delta))  # fmt: skip
 
 
 def ceiling_for(s: Session, category: str | None, order_id: uuid.UUID | None) -> Ceiling:
@@ -194,7 +237,7 @@ def run_scenarios(
     run: Runner,
     skip: set[uuid.UUID],
     pause_seconds: float = 0.0,
-    planted: list[uuid.UUID] | None = None,
+    planted: list | None = None,
 ) -> list[Result]:
     tid = tenant_id_for(slug)
     used: set[uuid.UUID] = set()

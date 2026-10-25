@@ -2,11 +2,18 @@
 a stand-in runner), and each scenario's expectation agrees with the tenant's business rule.
 """
 
-import uuid
+from datetime import date
 
+from sqlalchemy import select
+
+from app.core.business_time import business_date
+from app.core.db import tenant_session
+from app.core.models import Fulfilment
+from app.core.tenancy import tenant_id_for
 from app.core.verticals import load_pack
-from evals.harness import existing_case_orders, run_scenarios
-from evals.scenarios import load_scenarios
+from app.engine.eligibility import order_facts
+from evals.harness import existing_case_orders, run_scenarios, select_order, undo_planted
+from evals.scenarios import OrderSelector, load_scenarios
 from tests.helpers import remove_eval_cases
 
 
@@ -19,7 +26,7 @@ def test_every_scenario_runs_and_matches_the_business_rule(
 ):
     cfg = seeded_history[tenant.name]
     scenarios = load_scenarios(tenant, cfg.slug, load_pack(cfg.vertical_pack))
-    planted: list[uuid.UUID] = []
+    planted: list = []
     results = []
     try:
         results = run_scenarios(app_engine, cfg.slug, scenarios, "agents", _stand_in,
@@ -39,3 +46,28 @@ def test_every_scenario_runs_and_matches_the_business_rule(
             assert (r.order_id is None) == (r.scenario.order.select == "none")
     finally:
         remove_eval_cases(app_engine, maint_engine, cfg.slug, results, planted)
+
+
+def test_placed_on_moves_an_order_to_that_business_date_and_back(
+    app_engine, seeded_history, tenant
+):
+    cfg = seeded_history[tenant.name]
+    target = date(2026, 10, 27)
+    planted: list = []
+    with tenant_session(tenant_id_for(cfg.slug), app_engine) as s:
+        sel = OrderSelector(select="latest")
+        order = select_order(s, sel, set())
+        before = (order.placed_at, _minutes_late(s, order.id))
+        moved = select_order(s, sel.model_copy(update={"placed_on": target}), set(), planted)
+        _, facts = order_facts(s, moved.id)
+        assert moved.id == order.id
+        assert business_date(moved.placed_at, facts.settings) == target
+        assert _minutes_late(s, moved.id) == before[1]  # lateness is unchanged
+        undo_planted(s, planted)
+        s.refresh(order)
+        assert order.placed_at == before[0]
+
+
+def _minutes_late(s, order_id):
+    f = s.scalar(select(Fulfilment).where(Fulfilment.transaction_id == order_id))
+    return (f.completed_at - f.promised_at).total_seconds()
