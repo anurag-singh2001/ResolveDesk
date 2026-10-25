@@ -139,7 +139,7 @@ def _start_once(engine, ctx, proposal_id, now) -> "_Job | VoucherResult":
             return VoucherResult(
                 existing.status, existing.idempotency_key, existing.provider_reference
             )
-        _, _, facts, result = evaluate_proposal(s, ctx, proposal)  # validate is identity-free
+        _, _, facts, result = evaluate_proposal(s, ctx, proposal, now)  # validate is identity-free
         job = _Job(
             key=existing.idempotency_key if existing else voucher_key(proposal.id),
             customer_reference=str(case.customer_id),  # from the case row, never from params
