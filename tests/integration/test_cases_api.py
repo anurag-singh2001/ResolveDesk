@@ -8,9 +8,11 @@ from sqlalchemy import delete, select, update
 
 from app.core.db import tenant_session
 from app.core.models import (
+    ActionProposal,
     Case,
     Customer,
     LineItem,
+    Location,
     RefundOperation,
     Ticket,
     TicketMessage,
@@ -287,6 +289,7 @@ def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engin
         )
     stage = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()["stage"]
     assert stage == "escalated"
+    assert _stages(api, opened["id"], f["customer"])[-1] == "escalated"  # timeline agrees
 
 
 def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):
@@ -342,3 +345,93 @@ def test_category_is_required_outside_agents_mode(api, flow):
         json={"transaction_id": str(f["order_id"]), "message": "Something was missing."},
     )
     assert resp.status_code == 422
+
+
+def test_cases_and_approvals_carry_the_frontend_fields(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    with tenant_session(f["tid"], app_engine) as s:
+        order = s.get(Transaction, f["order_id"])
+        location_name = s.scalar(select(Location.name).where(Location.id == order.location_id))
+        order_ref = order.external_ref
+    assert opened["order_ref"] == order_ref
+    assert opened["created_at"]
+    cases = api.get("/cases", headers=f["customer"]).json()
+    assert next(c for c in cases if c["id"] == opened["id"])["order_ref"] == order_ref
+
+    queue = api.get("/approvals", headers=f["hq"]).json()
+    item = next(p for p in queue if p["case_id"] == opened["id"])
+    assert item["customer_message"] == "One item was missing from my order."
+    assert item["location_name"] == location_name
+    assert item["created_at"]
+    assert isinstance(item["citations"], list)
+    assert all(isinstance(c["section_ref"], str) for c in item["citations"])
+
+
+def _stages(api, case_id, headers):
+    resp = api.get(f"/cases/{case_id}/timeline", headers=headers)
+    assert resp.status_code == 200, resp.text
+    return [step["stage"] for step in resp.json()]
+
+
+def test_timeline_follows_the_refund_in_code_written_steps(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    assert _stages(api, opened["id"], f["customer"]) == [
+        "received",
+        "investigating",
+        "awaiting_approval",
+    ]
+    api.post(
+        f"/approvals/{opened['proposal_id']}/decision",
+        headers=f["hq"],
+        json={"decision": "approved", "note": "internal note"},
+    )
+    steps = api.get(f"/cases/{opened['id']}/timeline", headers=f["customer"]).json()
+    assert [s["stage"] for s in steps] == [
+        "received",
+        "investigating",
+        "awaiting_approval",
+        "processing",
+        "confirmed",
+    ]
+    times = [s["at"] for s in steps]
+    assert times == sorted(times)
+    with tenant_session(f["tid"], app_engine) as s:
+        reason = s.scalar(
+            select(ActionProposal.reason).where(
+                ActionProposal.id == uuid.UUID(opened["proposal_id"])
+            )
+        )
+    text = " ".join(s["title"] + " " + s["text"] for s in steps)
+    assert reason not in text and "internal note" not in text  # templates only
+    assert _stages(api, opened["id"], f["hq"]) == [s["stage"] for s in steps]
+
+
+def test_declined_case_timeline_ends_declined(api, flow):
+    f = flow
+    opened = _open(api, f)
+    api.post(
+        f"/approvals/{opened['proposal_id']}/decision",
+        headers=f["hq"],
+        json={"decision": "rejected"},
+    )
+    assert _stages(api, opened["id"], f["customer"])[-1] == "declined"
+
+
+def test_timeline_has_the_same_visibility_as_the_case(api, seeded, flow):
+    f = flow
+    opened = _open(api, f)
+    others = [u for u in f["cfg"].users if u.role == "customer" and u.email != f["customer_email"]]
+    for other in others:
+        headers = login(api, f["cfg"].slug, other.email)
+        assert api.get(f"/cases/{opened['id']}", headers=headers).status_code == 404
+        resp = api.get(f"/cases/{opened['id']}/timeline", headers=headers)
+        assert resp.status_code == 404 and resp.json() == {"detail": "not found"}
+    for cfg in (c for c in seeded.values() if c.slug != f["cfg"].slug):
+        for user in cfg.users:
+            resp = api.get(
+                f"/cases/{opened['id']}/timeline", headers=login(api, cfg.slug, user.email)
+            )
+            assert resp.status_code == 404, user.email
+    assert api.get(f"/cases/{uuid.uuid4()}/timeline", headers=f["customer"]).status_code == 404

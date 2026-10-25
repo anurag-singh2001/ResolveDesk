@@ -9,7 +9,15 @@ from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db_engine, not_found, require_staff, tenant_db
-from app.core.models import ActionProposal, Approval, Case, Transaction
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Location,
+    Ticket,
+    TicketMessage,
+    Transaction,
+)
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
 from app.engine import lifecycle
@@ -18,6 +26,12 @@ from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFoun
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
+
+
+class CitationOut(BaseModel):
+    section_ref: str
+    doc_key: str | None = None
+    version: int | None = None
 
 
 class PendingOut(BaseModel):
@@ -33,6 +47,37 @@ class PendingOut(BaseModel):
     checks: dict
     eligible: bool
     errors: list[str]
+    created_at: datetime
+    # The customer's own words (their first message on the case), shown to staff as text.
+    customer_message: str | None
+    location_name: str | None
+    citations: list[CitationOut]
+
+
+def _citations(raw: object) -> list[CitationOut]:
+    """Stored proposal citations, keeping only well-formed entries (never the policy text)."""
+    out = []
+    for c in raw if isinstance(raw, list) else []:
+        if isinstance(c, dict) and isinstance(c.get("section_ref"), str):
+            version = c.get("version")
+            out.append(
+                CitationOut(
+                    section_ref=c["section_ref"],
+                    doc_key=c["doc_key"] if isinstance(c.get("doc_key"), str) else None,
+                    version=version if type(version) is int else None,
+                )
+            )
+    return out
+
+
+def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
+    return db.scalar(
+        select(TicketMessage.body)
+        .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+        .where(Ticket.case_id == case_id, TicketMessage.author == "customer")
+        .order_by(TicketMessage.sent_at, TicketMessage.id)
+        .limit(1)
+    )
 
 
 @router.get("/approvals")
@@ -43,9 +88,10 @@ def pending_approvals(
 ) -> list[PendingOut]:
     """Undecided proposals in the caller's scope, with the code checks the approver needs."""
     query = (
-        select(ActionProposal, Case, Transaction)
+        select(ActionProposal, Case, Transaction, Location.name)
         .join(Case, Case.id == ActionProposal.case_id)
         .outerjoin(Transaction, Transaction.id == Case.transaction_id)
+        .outerjoin(Location, Location.id == Transaction.location_id)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
         .where(Approval.id.is_(None))
         .order_by(ActionProposal.created_at)
@@ -54,8 +100,9 @@ def pending_approvals(
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
-    for proposal, case, order in db.execute(query).all():
-        _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal)
+    now = datetime.now(UTC)
+    for proposal, case, order, location_name in db.execute(query).all():
+        _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         out.append(
             PendingOut(
                 proposal_id=proposal.id,
@@ -70,6 +117,10 @@ def pending_approvals(
                 checks=result.checks,
                 eligible=result.ok,
                 errors=result.errors,
+                created_at=proposal.created_at,
+                customer_message=_customer_message(db, case.id),
+                location_name=location_name,
+                citations=_citations(proposal.citations),
             )
         )
     return out

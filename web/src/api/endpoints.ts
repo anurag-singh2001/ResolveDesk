@@ -1,0 +1,44 @@
+import { request } from "./client";
+import type {
+  AuditEvent,
+  Business,
+  Case,
+  Categories,
+  DecisionResponse,
+  DemoAccount,
+  LoginResponse,
+  Me,
+  Order,
+  OrderDetail,
+  PendingApproval,
+  TimelineEntry,
+} from "./types";
+
+const enc = encodeURIComponent;
+
+export const api = {
+  businesses: () => request<Business[]>("/auth/businesses", { anonymous: true }),
+  demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts", { anonymous: true }),
+  login: (tenant: string, email: string, password: string) =>
+    request<LoginResponse>("/auth/login", {
+      method: "POST",
+      body: { tenant, email, password },
+      anonymous: true,
+    }),
+  me: () => request<Me>("/me"),
+  categories: () => request<Categories>("/meta/categories"),
+  orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
+  order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
+  cases: (limit = 100) => request<Case[]>(`/cases?limit=${limit}`),
+  case: (id: string) => request<Case>(`/cases/${enc(id)}`),
+  createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
+    request<Case>("/cases", { method: "POST", body }),
+  timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
+  events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
+  approvals: (limit = 200) => request<PendingApproval[]>(`/approvals?limit=${limit}`),
+  decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
+    request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {
+      method: "POST",
+      body: { decision, note },
+    }),
+};

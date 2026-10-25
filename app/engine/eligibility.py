@@ -5,12 +5,21 @@ succeeded, unknown, pending_reconciliation): an in-flight refund must block a se
 """
 
 import uuid
+from dataclasses import dataclass
+from datetime import datetime, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.actions.base import Facts
-from app.core.models import Payment, RefundOperation, Transaction
+from app.actions.base import Facts, registered_actions
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Payment,
+    RefundOperation,
+    Transaction,
+)
 from app.core.settings_resolver import effective_settings
 
 HOLDING_STATUSES = ("reserved", "submitted", "succeeded", "unknown", "pending_reconciliation")
@@ -32,6 +41,57 @@ def refundable_paise(
     if exclude_proposal is not None:
         held = held.where(RefundOperation.proposal_id != exclude_proposal)
     return int(captured) - int(session.scalar(held))
+
+
+FAIR_USE_WINDOW = timedelta(days=30)
+
+
+@dataclass(frozen=True)
+class FairUse:
+    grants_30d: int
+    max_grants_30d: int
+
+    @property
+    def ok(self) -> bool:
+        return self.grants_30d < self.max_grants_30d
+
+    def checks(self) -> dict:
+        return {
+            "fair_use_ok": self.ok,
+            "fair_use_grants_30d": self.grants_30d,
+            "fair_use_max_grants_30d": self.max_grants_30d,
+        }
+
+
+def fair_use(
+    session: Session,
+    customer_id: uuid.UUID,
+    settings: dict,
+    now: datetime,
+    exclude_proposal: uuid.UUID | None = None,
+) -> FairUse:
+    """Refunds and vouchers approved (by a person or a tenant rule) for this customer in the
+    30 days before `now`. Approval is the grant decision: vouchers have no execution yet, and
+    an approved refund that later failed still counts, which only sends more cases to a
+    person. A signal for review, never a denial (PROJECT.md section 2). RLS keeps it to the
+    session's tenant; `customer_id` comes from the case record, never from input."""
+    grant_actions = [name for name, cls in registered_actions().items() if cls.counts_as_grant]
+    query = (
+        select(func.count())
+        .select_from(Approval)
+        .join(ActionProposal, ActionProposal.id == Approval.proposal_id)
+        .join(Case, Case.id == ActionProposal.case_id)
+        .where(
+            Case.customer_id == customer_id,
+            Approval.decision == "approved",
+            ActionProposal.action.in_(grant_actions),
+            Approval.decided_at > now - FAIR_USE_WINDOW,
+            Approval.decided_at <= now,
+        )
+    )
+    if exclude_proposal is not None:
+        query = query.where(ActionProposal.id != exclude_proposal)
+    return FairUse(int(session.scalar(query)), settings["fair_use_max_grants_30d"])
 
 
 def order_facts(
