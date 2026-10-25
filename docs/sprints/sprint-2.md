@@ -123,6 +123,12 @@ Status: AMBER, trending better thanks to parallelism, with new risks:
 - No story is formally at risk yet (more than 25% of time remains). Watch list: E4.3 chaos (provable only after three merges) and the E5.5 click-through (waits for E5.4). Both become at risk on 2026-10-29 if their predecessors are not merged.
 - E7.1 must not wait for the very end because it needs eval numbers.
 
+## Stand-up (2026-10-26, evening)
+- Done: 71592bd merged E4.1/E4.2/E4.4/E4.5/E4.6 on one execution path (930 passed, 9 skipped, chaos 2 passed, ruff clean at ec2a80a; safety mediums fixed). Evals edd25e5: brewco 100%, spice_route 91% (baseline 91%/75%), 0 over-rule proposals. Browser click-through 2026-10-25 passed for both tenants. Ticked E4.1, E4.4-E4.6, E6.1-E6.3.
+- Next: E7.1 README + demo script (main session, in progress); E7.2 clean-clone check; re-run make eval including sr-quality-002; test to main release review; finish E4.2 (subscribers, tickets) and E4.3 (50 cases/tenant).
+- Blocked/user: rotate the Neon owner password.
+- Follow-ups: replace error-prefix "never sent" detection in app/engine/verifier.py with an explicit flag; demo seed should keep packs current (click-through needed seed --no-history plus scripts.sweep).
+
 ## Review
 _to fill at sprint end_
 
