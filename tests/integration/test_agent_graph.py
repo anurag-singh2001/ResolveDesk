@@ -201,7 +201,8 @@ def test_happy_path_ends_in_a_cited_validated_proposal(app_engine, case):
     assert p.citations and p.citations[0]["section_ref"]
     with tenant_session(case["tid"], app_engine) as s:
         run = s.get(WorkflowRun, uuid.UUID(out["run_id"]))
-        assert (run.status, run.llm_calls) == ("completed", 2)
+        # Paused at the approve node (interrupt), waiting for a person's decision.
+        assert (run.status, run.llm_calls) == ("paused", 2) and out["paused"]
         assert p.run_id == run.id
 
 
