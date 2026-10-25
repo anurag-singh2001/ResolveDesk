@@ -1,0 +1,11 @@
+id: sr-payment-001
+tenant: spice_route
+kind: plain
+message: I was charged twice on my card for this one order.
+order:
+  select: latest
+expect:
+  category: payment_issue
+  outcome: escalated
+tags:
+- live

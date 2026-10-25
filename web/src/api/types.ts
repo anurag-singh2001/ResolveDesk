@@ -118,7 +118,7 @@ export interface PendingApproval {
   order_ref: string | null;
   order_total_paise: number | null;
   reason: string;
-  checks: Record<string, boolean>;
+  checks: Record<string, boolean | number | string>; // pass/fail booleans plus values (amounts, counts) and needs_* flags
   eligible: boolean;
   errors: string[];
   created_at?: string | null; // NEW

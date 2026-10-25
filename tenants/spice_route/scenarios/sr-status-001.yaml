@@ -1,0 +1,10 @@
+id: sr-status-001
+tenant: spice_route
+kind: plain
+message: Can you tell me the status of my order? I want to know when it was delivered.
+order:
+  select: latest
+expect:
+  category: status_question
+  outcome: escalated
+note: 'no automatic remedy: a person answers'

@@ -22,8 +22,12 @@ settings:
     # Percents are requests: refund_max_percent stays the ceiling.
     late_delivery_tiers:
       - {min_minutes_late: 0, remedy: apology}
-      - {min_minutes_late: 20, remedy: voucher}
-      - {min_minutes_late: 45, remedy: refund_percent, percent: 50, effective_to: "2026-10-26"}
+      # late_delivery_v2 (orders before 2026-09-01): over 60 min -> voucher; never a refund.
+      - {min_minutes_late: 61, remedy: voucher, effective_to: "2026-09-01"}
+      # late_delivery_v3 (2026-09-01 to 2026-10-26).
+      - {min_minutes_late: 20, remedy: voucher, effective_from: "2026-09-01"}
+      - {min_minutes_late: 45, remedy: refund_percent, percent: 50, effective_from: "2026-09-01", effective_to: "2026-10-26"}
+      # late_delivery_v4 (from 2026-10-26).
       - {min_minutes_late: 45, remedy: refund_percent, percent: 25, effective_from: "2026-10-26"}
       - {min_minutes_late: 60, remedy: refund_percent, percent: 50, effective_from: "2026-10-26"}
   brands:

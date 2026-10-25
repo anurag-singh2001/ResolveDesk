@@ -1,0 +1,14 @@
+id: sr-late-003
+tenant: spice_route
+kind: phrasing
+message: food reached like half an hour after the eta shown in the app. not cool
+order:
+  select: late_between
+  min_minutes: 20
+  max_minutes: 44
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
+note: '20-44 minutes late: the voucher tier'

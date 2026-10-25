@@ -1,0 +1,10 @@
+id: sr-info-001
+tenant: spice_route
+kind: missing_info
+message: Hi, I have a problem.
+order:
+  select: none
+expect:
+  category: null
+  outcome: awaiting_info
+note: 'no order, nothing said: ask'

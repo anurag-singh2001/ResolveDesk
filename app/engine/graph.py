@@ -182,65 +182,16 @@ def build_graph(deps: Deps, checkpointer=None):
         step = _step(state)
         tid = uuid.UUID(state["tenant_id"])
         with tenant_session(tid, deps.engine) as s:
-            case = s.get(Case, uuid.UUID(state["case_id"]))
-            scope = tools.Scope(tid, case.id, case.customer_id)
-            if case.transaction_id is None:
-                return {"need": NEED_ORDER, "step_count": step}
-            order_ref = str(case.transaction_id)
-            order = tools.get_transaction(s, scope, order_ref)
-            if not order["ok"]:
-                return {"need": NEED_ORDER, "step_count": step}
-            order_row, facts = order_facts(s, case.transaction_id)
-            evidence = {
-                "order": order["data"],
-                "fulfilment": tools.get_fulfilment(s, scope, order_ref),
-                "payments": tools.get_payment(s, scope, order_ref),
-                "customer": tools.get_customer(s, scope),
-                "previous_cases": tools.get_case_history(s, scope),
-                "refundable_paise": facts.refundable_paise,
-                # Dated policies are judged on the tenant's calendar date of the order.
-                "order_business_date": business_date(
-                    order_row.placed_at, facts.settings
-                ).isoformat(),
-                "missing_items_value_paise": sum(
-                    i["unit_price_paise"] * (i["quantity"] - i["quantity_fulfilled"])
-                    for i in order["data"]["items"]
-                ),
-            }
+            evidence = gather_evidence(s, tid, s.get(Case, uuid.UUID(state["case_id"])))
+        if evidence is None:
+            return {"need": NEED_ORDER, "step_count": step}
         _work(deps, state)["evidence"] = evidence
         return {"step_count": step}
 
     def policy(state: CaseState) -> CaseState:
-        step = _step(state)
-        tid = uuid.UUID(state["tenant_id"])
-        w = _work(deps, state)
-        order = w["evidence"]["order"]
         query = f"{state['category'].replace('_', ' ')}: {_message(deps, state)}"
-        vector = _QueryVector(deps.embedder.embed_query(query))  # before the transaction
-        with tenant_session(tid, deps.engine) as s:
-            findings = search_policies(
-                s,
-                vector,
-                query,
-                as_of=date.fromisoformat(w["evidence"]["order_business_date"]),  # order date
-                brand_id=uuid.UUID(order["brand_id"]),
-                location_id=uuid.UUID(order["location_id"]),
-                k=POLICY_K,
-            )
-        citations = [
-            {"section_ref": c.section_ref, "version": c.version, "scope": c.scope,
-             "heading": c.heading, "text": c.text, "doc_key": c.doc_key, "topic": c.topic}
-            for c in findings.citations
-        ]  # fmt: skip
-        w["citations"] = citations
-        update: CaseState = {"step_count": step}
-        if findings.missing:
-            update["outcome"] = "escalated"
-            w["reason"] = "no policy in effect covers this case"
-        elif findings.conflicts:
-            update["outcome"] = "escalated"
-            w["reason"] = "conflicting policies: " + "; ".join(findings.conflicts)
-        return update
+        update = retrieve_policies(deps, state, query)
+        return {**update, "step_count": _step(state)}
 
     def resolve(state: CaseState) -> CaseState:
         step = _step(state)
@@ -282,32 +233,7 @@ def build_graph(deps: Deps, checkpointer=None):
         return {"outcome": "escalated", "step_count": step}
 
     def propose(state: CaseState) -> CaseState:
-        step = _step(state)
-        w = _work(deps, state)
-        draft = ResolutionDraft.model_validate(w["draft"])
-        tid = uuid.UUID(state["tenant_id"])
-        now = deps.now or datetime.now(UTC)
-        cited = set(draft.citations)
-        citations = [
-            {"section_ref": c["section_ref"], "doc_key": c["doc_key"], "version": c["version"]}
-            for c in w["citations"]
-            if c["section_ref"] in cited
-        ]
-        try:
-            with tenant_session(tid, deps.engine) as s:
-                proposal = create_proposal(
-                    s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
-                    params=draft.params, reason=draft.reason, citations=citations,
-                    run_id=uuid.UUID(state["run_id"]),
-                )  # fmt: skip
-                # Same as the deterministic path: auto-approval only where settings allow.
-                case = s.get(Case, uuid.UUID(state["case_id"]))
-                lifecycle.proposal_made(s, tid, case, proposal.id, now)
-                proposal_id = str(proposal.id)
-        except ProposalError as exc:
-            w["reason"] = f"proposal refused: {exc}"
-            return {"outcome": "escalated", "step_count": step}
-        return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
+        return store_proposal(deps, state)
 
     def approve(state: CaseState) -> CaseState:
         """Pause for a human unless an approval exists. No side effects (re-run on resume)."""
@@ -334,10 +260,7 @@ def build_graph(deps: Deps, checkpointer=None):
         return {"outcome": result}
 
     def ask(state: CaseState) -> CaseState:
-        question = QUESTIONS[state.get("need") or NEED_DETAILS]
-        reason = _work(deps, state).get("reason") or question
-        _finish(deps, state, "awaiting_info", reason, ticket=question)
-        return {"outcome": "awaiting_info", "step_count": _step(state)}
+        return ask_customer(deps, state)
 
     def wait_info(state: CaseState) -> CaseState:
         """Pause until the customer replies. No side effects (re-run on resume)."""
@@ -348,13 +271,7 @@ def build_graph(deps: Deps, checkpointer=None):
         return {"need": None, "outcome": "resumed"}
 
     def escalate(state: CaseState) -> CaseState:
-        w = _work(deps, state)
-        reason = w.get("reason") or (
-            "step limit reached" if state.get("step_count", 0) >= MAX_STEPS else "needs a person"
-        )
-        _finish(deps, state, "escalated", reason)
-        w["reason"] = reason
-        return {"outcome": "escalated", "step_count": _step(state)}
+        return escalate_case(deps, state)
 
     def route_after(node: str):
         def route(state: CaseState) -> str:
@@ -406,6 +323,113 @@ def _decision(deps: Deps, state: CaseState) -> str | None:
         if proposal is None or str(proposal.case_id) != state["case_id"]:
             return "rejected"  # never act on a proposal that is not this case's
         return s.scalar(select(Approval.decision).where(Approval.proposal_id == proposal.id))
+
+
+def gather_evidence(s, tid: uuid.UUID, case: Case) -> dict | None:
+    """What the read tools return for the case's own order, or None if the case has no order
+    the customer owns (then the customer is asked which order)."""
+    if case.transaction_id is None:
+        return None
+    scope = tools.Scope(tid, case.id, case.customer_id)
+    order_ref = str(case.transaction_id)
+    order = tools.get_transaction(s, scope, order_ref)
+    if not order["ok"]:
+        return None
+    order_row, facts = order_facts(s, case.transaction_id)
+    return {
+        "order": order["data"],
+        "fulfilment": tools.get_fulfilment(s, scope, order_ref),
+        "payments": tools.get_payment(s, scope, order_ref),
+        "customer": tools.get_customer(s, scope),
+        "previous_cases": tools.get_case_history(s, scope),
+        "refundable_paise": facts.refundable_paise,
+        # Dated policies are judged on the tenant's calendar date of the order.
+        "order_business_date": business_date(order_row.placed_at, facts.settings).isoformat(),
+        "missing_items_value_paise": sum(
+            i["unit_price_paise"] * (i["quantity"] - i["quantity_fulfilled"])
+            for i in order["data"]["items"]
+        ),
+    }
+
+
+def retrieve_policies(deps: Deps, state: CaseState, query: str) -> CaseState:
+    """Policies in force for the order (its date, brand, location), as citations in the run's
+    scratch (policy text is never checkpointed); escalates when none apply or they conflict.
+    The query is embedded before the transaction opens."""
+    w = _work(deps, state)
+    evidence = w["evidence"]
+    order = evidence["order"]
+    vector = _QueryVector(deps.embedder.embed_query(query))
+    with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+        findings = search_policies(
+            s,
+            vector,
+            query,
+            as_of=date.fromisoformat(evidence["order_business_date"]),  # order date
+            brand_id=uuid.UUID(order["brand_id"]),
+            location_id=uuid.UUID(order["location_id"]),
+            k=POLICY_K,
+        )
+    w["citations"] = [
+        {"section_ref": c.section_ref, "version": c.version, "scope": c.scope,
+         "heading": c.heading, "text": c.text, "doc_key": c.doc_key, "topic": c.topic}
+        for c in findings.citations
+    ]  # fmt: skip
+    if findings.missing:
+        w["reason"] = "no policy in effect covers this case"
+        return {"outcome": "escalated"}
+    if findings.conflicts:
+        w["reason"] = "conflicting policies: " + "; ".join(findings.conflicts)
+        return {"outcome": "escalated"}
+    return {}
+
+
+def store_proposal(deps: Deps, state: CaseState) -> CaseState:
+    """Code creates the proposal from a checked draft (in the run's scratch), with the
+    citations the draft relied on, and applies the tenant's auto-approval rules."""
+    step = _step(state)
+    w = _work(deps, state)
+    draft = ResolutionDraft.model_validate(w["draft"])
+    tid = uuid.UUID(state["tenant_id"])
+    now = deps.now or datetime.now(UTC)
+    cited = set(draft.citations)
+    citations = [
+        {"section_ref": c["section_ref"], "doc_key": c["doc_key"], "version": c["version"]}
+        for c in w["citations"]
+        if c["section_ref"] in cited
+    ]
+    try:
+        with tenant_session(tid, deps.engine) as s:
+            proposal = create_proposal(
+                s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
+                params=draft.params, reason=draft.reason, citations=citations,
+                run_id=uuid.UUID(state["run_id"]),
+            )  # fmt: skip
+            # Same as the deterministic path: auto-approval only where settings allow.
+            case = s.get(Case, uuid.UUID(state["case_id"]))
+            lifecycle.proposal_made(s, tid, case, proposal.id, now)
+            proposal_id = str(proposal.id)
+    except ProposalError as exc:
+        w["reason"] = f"proposal refused: {exc}"
+        return {"outcome": "escalated", "step_count": step}
+    return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
+
+
+def ask_customer(deps: Deps, state: CaseState) -> CaseState:
+    question = QUESTIONS[state.get("need") or NEED_DETAILS]
+    reason = _work(deps, state).get("reason") or question
+    _finish(deps, state, "awaiting_info", reason, ticket=question)
+    return {"outcome": "awaiting_info", "step_count": _step(state)}
+
+
+def escalate_case(deps: Deps, state: CaseState) -> CaseState:
+    w = _work(deps, state)
+    reason = w.get("reason") or (
+        "step limit reached" if state.get("step_count", 0) >= MAX_STEPS else "needs a person"
+    )
+    _finish(deps, state, "escalated", reason)
+    w["reason"] = reason
+    return {"outcome": "escalated", "step_count": _step(state)}
 
 
 def _check_draft(
@@ -519,8 +543,8 @@ def _pending(snapshot, kind: str | None = None) -> dict | None:
     return None
 
 
-def _invoke(deps: Deps, saver, tenant_id, case_id, payload) -> tuple[dict, bool]:
-    app = build_graph(deps, saver)
+def _invoke(deps: Deps, saver, tenant_id, case_id, payload, build) -> tuple[dict, bool]:
+    app = build(deps, saver)
     config = {**thread_config(tenant_id, case_id), "recursion_limit": RECURSION_LIMIT}
     app.invoke(payload, config)
     snapshot = app.get_state(config)
@@ -536,6 +560,10 @@ def _guarded(deps: Deps, base: CaseState, work) -> tuple[dict, bool]:
         kind = "LLM" if isinstance(exc, LLMError) else "internal error"
         if not isinstance(exc, LLMError):
             log.exception("agent run %s failed", base.get("run_id"))
+        else:  # provider names and error classes only, never customer text
+            log.warning(
+                "agent run %s: %s: %s", base.get("run_id"), type(exc).__name__, str(exc)[:200]
+            )
         if _has_execution(deps, base):
             # Money may be in flight: reconcile/verify own the case from here (it stays
             # 'executing'); escalating would hide a refund that may still land.
@@ -631,9 +659,18 @@ def _returned(deps: Deps, run_id: str) -> dict:
     return {k: w[k] for k in ("reason", "evidence", "citations", "draft") if k in w}
 
 
-def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str, budget) -> dict:
+def run_case(
+    deps: Deps,
+    tenant_id: uuid.UUID,
+    case_id: uuid.UUID,
+    message: str,
+    budget,
+    build=build_graph,
+) -> dict:
     """Start the graph for a new case on its thread; record a workflow_runs row. The run
-    ends 'paused' when the graph waits for an approval or the customer's reply."""
+    ends 'paused' when the graph waits for an approval or the customer's reply. `build`
+    makes the graph: the specialist pipeline, or the single-call baseline (evals); both keep
+    text out of the checkpoint (it lives in `deps.scratch`)."""
     run_id = _claim(deps.engine, tenant_id, case_id)
     if run_id is None:
         return {"outcome": "skipped", "reason": "case is not waiting for a run"}
@@ -643,7 +680,7 @@ def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str,
 
     def work():
         with open_checkpointer(deps.engine) as saver:
-            return _invoke(deps, saver, tenant_id, case_id, state)
+            return _invoke(deps, saver, tenant_id, case_id, state, build)
 
     final, paused = _guarded(deps, state, work)
     paused = _still_paused(deps, tenant_id, final, paused)
@@ -696,7 +733,9 @@ def resume_case(
             final, paused = _guarded(
                 deps,
                 values,
-                lambda: _invoke(deps, saver, tenant_id, case_id, Command(resume=value)),
+                lambda: _invoke(
+                    deps, saver, tenant_id, case_id, Command(resume=value), build_graph
+                ),
             )
     except Exception as exc:
         log.exception("could not resume case %s", case_id)
