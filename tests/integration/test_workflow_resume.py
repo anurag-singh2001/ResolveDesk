@@ -4,6 +4,7 @@ decision - also in a new process - executes, verifies, and tells the customer on
 facts. Also: rejection, expiry, auto-approval without a pause, the customer-reply resume, and
 the verifier's mismatch path. For every tenant (scripted LLMs; no tenant is named)."""
 
+import json
 import subprocess
 import sys
 import uuid
@@ -11,7 +12,7 @@ from datetime import timedelta
 from pathlib import Path
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
 
 import app.engine.graph as graph
 from app.api import routes_cases
@@ -335,3 +336,111 @@ def test_a_failed_subscriber_leaves_the_event_for_redelivery(app_engine, case, m
     with tenant_session(case["tid"], app_engine) as s:
         assert s.get(DomainEvent, event_id).published_at is not None
     assert calls.count(event_id) == 2
+
+
+# ---- Checkpoint guards (human sign-off 2026-10-26, DECISIONS.md): ids and codes only, thread
+# ---- ownership, no API over `lg`, pruning of finished runs. ----
+
+
+def _lg_text(app_engine, case):  # noqa: F811
+    """Everything stored for this case's thread, as one searchable bytes string."""
+    thread = f"{case['tid']}:{case['case_id']}"
+    chunks = []
+    with app_engine.connect() as conn:
+        queries = [
+            "SELECT checkpoint::text, metadata::text FROM lg.checkpoints WHERE thread_id = :t",
+            "SELECT blob FROM lg.checkpoint_blobs WHERE thread_id = :t",
+            "SELECT blob FROM lg.checkpoint_writes WHERE thread_id = :t",
+        ]
+        for q in queries:
+            for row in conn.execute(text(q), {"t": thread}):
+                chunks += [bytes(v) if isinstance(v, memoryview | bytes) else str(v).encode()
+                           for v in row if v]  # fmt: skip
+    return b"\n".join(chunks)
+
+
+def _lg_rows(app_engine, case):  # noqa: F811
+    with app_engine.connect() as conn:
+        return conn.execute(
+            text("SELECT count(*) FROM lg.checkpoints WHERE thread_id = :t"),
+            {"t": f"{case['tid']}:{case['case_id']}"},
+        ).scalar()
+
+
+def test_checkpoints_hold_ids_and_codes_not_customer_data(app_engine, case):  # noqa: F811
+    secret = "ZEBRA-QUOKKA-7731 my order was wrong"
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case)]})
+    out = graph.run_case(_deps(app_engine, clf, res), case["tid"], case["case_id"], secret,
+                         FakeBudget([clf, res]))  # fmt: skip
+    assert out["paused"] and _lg_rows(app_engine, case) > 0
+    stored = _lg_text(app_engine, case)
+    assert str(case["case_id"]).encode() in stored  # it does hold ids
+    assert b"ZEBRA-QUOKKA" not in stored
+    assert out["reason"].encode() not in stored  # the model's reason
+    assert out["citations"] and all(c["text"][:40].encode() not in stored for c in out["citations"])
+    assert json.dumps(out["evidence"]["order"]["items"][0]).encode() not in stored
+
+
+def test_a_waiting_for_info_checkpoint_has_no_message_either(app_engine, case):  # noqa: F811
+    secret = "ZEBRA-QUOKKA-9912 something odd"
+    clf = FakeLLM({"Classification": [_classify(needs=["which item"])]})
+    out = graph.run_case(_deps(app_engine, clf, FakeLLM({})), case["tid"], case["case_id"],
+                         secret, FakeBudget([clf]))  # fmt: skip
+    assert out["outcome"] == "awaiting_info" and out["paused"]
+    stored = _lg_text(app_engine, case)
+    assert stored and b"ZEBRA-QUOKKA" not in stored
+
+
+def test_a_forged_thread_of_another_tenant_cannot_be_resumed(app_engine, case, hq):  # noqa: F811
+    pid, _ = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+    other = uuid.uuid4()
+    real, forged = f"{case['tid']}:{case['case_id']}", f"{other}:{case['case_id']}"
+    with app_engine.begin() as conn:  # a planted copy of the thread under the other tenant id
+        for t in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
+            conn.execute(text(f"UPDATE lg.{t} SET thread_id = :f WHERE thread_id = :r"),
+                         {"f": forged, "r": real})  # fmt: skip
+    out = graph.resume_case(_deps(app_engine), other, case["case_id"], "approval", {})
+    assert out["outcome"] == "skipped" and _ops(case) == []
+    assert _state(app_engine, case, pid)["execution"] is None
+
+
+def test_a_thread_whose_stored_tenant_differs_is_refused(app_engine, case, hq):  # noqa: F811
+    pid, _ = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+    config = thread_config(case["tid"], case["case_id"])
+    with open_checkpointer(app_engine) as saver:
+        graph.build_graph(_deps(app_engine), saver).update_state(
+            config,
+            {"tenant_id": str(uuid.uuid4())},  # the state claims another tenant
+        )
+    out = graph.resume_case(_deps(app_engine), case["tid"], case["case_id"], "approval", {})
+    assert out["outcome"] == "skipped" and _ops(case) == []
+    assert _state(app_engine, case, pid)["execution"] is None
+
+
+def test_finished_runs_leave_no_checkpoints(app_engine, case, hq):  # noqa: F811
+    pid, _ = _paused_refund(app_engine, case)
+    assert _lg_rows(app_engine, case) > 0  # paused: kept
+    _decide(app_engine, case, hq, pid, "approved")
+    out = agent_runner.after_decision(app_engine, case["tid"], case["case_id"], pid, True)
+    assert out["outcome"] == "resolved" and not out["paused"]
+    assert _lg_rows(app_engine, case) == 0  # finished: pruned
+
+
+def test_prune_finished_deletes_only_finished_threads(app_engine, case):  # noqa: F811
+    _, run_id = _paused_refund(app_engine, case)
+    graph.prune_finished(app_engine, case["tid"])
+    assert _lg_rows(app_engine, case) > 0  # its run is paused: kept
+    with tenant_session(case["tid"], app_engine) as s:
+        s.get(WorkflowRun, run_id).status = "escalated"
+    assert graph.prune_finished(app_engine, case["tid"]) >= 1
+    assert _lg_rows(app_engine, case) == 0
+
+
+def test_no_api_route_exposes_checkpoint_data(monkeypatch):
+    from app.main import create_app
+
+    paths = " ".join(getattr(r, "path", "") for r in create_app().routes).lower()
+    assert "checkpoint" not in paths and "/lg" not in paths and "thread" not in paths

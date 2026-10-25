@@ -36,10 +36,14 @@ def checkpoint_url(engine: Engine) -> str:
     return url.render_as_string(hide_password=False)
 
 
-def thread_config(tenant_id: uuid.UUID, case_id: uuid.UUID) -> dict:
+def thread_id(tenant_id: uuid.UUID, case_id: uuid.UUID) -> str:
     if not isinstance(tenant_id, uuid.UUID) or not isinstance(case_id, uuid.UUID):
         raise TypeError("tenant_id and case_id must be UUIDs from server-side context")
-    return {"configurable": {"thread_id": f"{tenant_id}:{case_id}"}}
+    return f"{tenant_id}:{case_id}"
+
+
+def thread_config(tenant_id: uuid.UUID, case_id: uuid.UUID) -> dict:
+    return {"configurable": {"thread_id": thread_id(tenant_id, case_id)}}
 
 
 @contextmanager

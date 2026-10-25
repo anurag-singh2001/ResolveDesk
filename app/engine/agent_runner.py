@@ -54,7 +54,7 @@ def resume_info(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, messag
         deps = _deps(engine, budget)
     except Exception as exc:
         return _unavailable(engine, tenant_id, case_id, exc)
-    return graph.resume_case(deps, tenant_id, case_id, "info", {"message": message}, budget)
+    return graph.resume_case(deps, tenant_id, case_id, "info", {"kind": "info"}, budget)
 
 
 def after_decision(
