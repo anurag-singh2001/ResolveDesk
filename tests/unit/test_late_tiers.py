@@ -82,9 +82,9 @@ def test_late_policy_percents_match_the_tiers_in_force(tenant):
         if f.meta.topic != "late_delivery" or f.meta.scope != "org":
             continue
         text = " ".join(sec.content for sec in f.sections)
+        # A version that states no refund percent (e.g. "Refunds are not offered") must not
+        # have a refund tier in force on its dates either: code and policy text agree.
         stated = {int(p) for p in re.findall(r"Refund (\d+)% of the order", text)}
-        if not stated:
-            continue  # an older version without refund tiers, judged by its own text
         day = f.meta.effective_from
         applied = {
             t["percent"]
