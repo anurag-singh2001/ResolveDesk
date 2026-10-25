@@ -432,7 +432,7 @@ def test_chaos_run_keeps_money_safe(api, app_engine, world, monkeypatch):
 
     # --- 3b. worker killed between the decision commit and execution --------------------
     with monkeypatch.context() as m:
-        m.setattr(routes_approvals, "run_refund", lambda *a, **k: None)
+        m.setattr(routes_approvals, "run_execution", lambda *a, **k: None)
         kill_jobs = [
             (w.hq_email, pid, "approved")
             for o in groups["kill_after_commit"]

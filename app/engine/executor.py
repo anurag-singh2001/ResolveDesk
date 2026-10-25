@@ -278,7 +278,7 @@ def _quarantine(engine, ctx, proposal_id, reason: str) -> None:
     request. Never free the money on that uncertainty: mark the ledger
     pending_reconciliation (it still holds the balance), keep the execution unknown, and let
     later reconciles record whatever the provider reports. Releasing it is a deliberate
-    operator action after a quarantine window (not automated in v1)."""
+    operator action after a quarantine window (app/engine/release.py)."""
     with tenant_session(ctx.tenant_id, engine) as s:
         s.execute(
             update(Execution)

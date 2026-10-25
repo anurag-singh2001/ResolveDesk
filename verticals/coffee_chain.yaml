@@ -46,4 +46,5 @@ settings:
   # settings change for the tenant, not a code change.
   payment_connector: {kind: value, default: mock_payment}
   messaging_connector: {kind: value, default: mock_messaging}
+  vouchers_connector: {kind: value, default: mock_vouchers}
   orders_connector: {kind: value, default: mock_pos}

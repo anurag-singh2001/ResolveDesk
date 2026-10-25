@@ -64,8 +64,10 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
     if approval.decision == "rejected":
         return CaseStatus("declined", "Your request was reviewed and not approved.", **common)
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
+    if proposal.action == "free_item_voucher":
+        return _voucher_status(execution, approval, now, amount, common)
     if proposal.action != "refund":
-        # Vouchers/credits have no executor yet (E4): approved, not yet issued.
+        # No executor for this action yet: approved, not yet done.
         return CaseStatus("processing", "Approved. We will confirm once it is ready.", **common)
     if execution is not None and execution.status == "succeeded":
         return CaseStatus(
@@ -96,5 +98,32 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
         "processing",
         f"Your refund of {format_inr(amount)} is approved and "
         "being processed. We will confirm once the payment provider does.",
+        **common,
+    )
+
+
+def _voucher_status(execution, approval, now, amount, common) -> CaseStatus:
+    """Issued only when the voucher provider confirmed it; a timeout is still processing."""
+    status = execution.status if execution is not None else None
+    if status == "succeeded":
+        return CaseStatus(
+            "confirmed", f"Your voucher worth {format_inr(amount)} has been issued.", **common
+        )
+    if status == "failed":
+        return CaseStatus(
+            "escalated",
+            "We could not issue the voucher automatically. A member of our team will contact you.",
+            **common,
+        )
+    if now >= approval.expires_at:  # approved long ago and still not issued: not moving
+        return CaseStatus(
+            "escalated",
+            "Your voucher needs a check by our team before it can be issued. We will update you.",
+            **common,
+        )
+    return CaseStatus(
+        "processing",
+        f"Your voucher worth {format_inr(amount)} is approved. "
+        "We will confirm once it has been issued.",
         **common,
     )

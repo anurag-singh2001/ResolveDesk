@@ -7,11 +7,12 @@ account is always derived from the tenant in the auth context, never from input.
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, ClassVar, Literal
 
 from app.core.tenancy import TenantContext
 
-Kind = Literal["payment", "messaging", "orders"]
+Kind = Literal["payment", "messaging", "orders", "vouchers"]
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,9 @@ class Connector(ABC):
 
 class PaymentConnector(Connector):
     kind = "payment"
+    # Provider contract: a request (e.g. one that timed out) is applied within this long of
+    # being sent or never. Releasing quarantined money waits longer than this (E4.4).
+    request_lifetime: ClassVar[timedelta]
 
     @abstractmethod
     def refund(
@@ -44,6 +48,32 @@ class PaymentConnector(Connector):
 
     @abstractmethod
     def find_refund(self, ctx: TenantContext, idempotency_key: str) -> RefundOutcome | None: ...
+
+
+@dataclass(frozen=True)
+class VoucherOutcome:
+    """Provider truth for one voucher key. `unknown` = no answer; reconcile before retry."""
+
+    status: Literal["processing", "succeeded", "failed", "unknown", "unavailable"]
+    provider_reference: str | None = None
+    failure_reason: str | None = None
+
+
+class VoucherConnector(Connector):
+    kind = "vouchers"
+
+    @abstractmethod
+    def issue(
+        self,
+        ctx: TenantContext,
+        idempotency_key: str,
+        customer_reference: str,
+        order_reference: str,
+        value_paise: int,
+    ) -> VoucherOutcome: ...
+
+    @abstractmethod
+    def find_voucher(self, ctx: TenantContext, idempotency_key: str) -> VoucherOutcome | None: ...
 
 
 class MessagingConnector(Connector):

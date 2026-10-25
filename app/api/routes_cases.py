@@ -7,7 +7,7 @@ from sqlalchemy import Engine, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_db_engine, get_tenant_context, not_found, require_staff, tenant_db
-from app.api.routes_approvals import run_refund
+from app.api.routes_approvals import run_execution
 from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
 from app.core.tenancy import TenantContext
@@ -15,6 +15,7 @@ from app.engine.agent_runner import run_agents
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, open_case
+from app.engine.dispatch import executable
 
 router = APIRouter(tags=["cases"])
 
@@ -110,11 +111,11 @@ def create_case(
     db.flush()
     if body.category is None and case.status == "investigating":
         background.add_task(run_agents, engine, ctx.tenant_id, case.id, body.message)
-    if proposal_id is not None:  # an auto-approved refund must actually run
+    if proposal_id is not None:  # an auto-approved remedy must actually run
         proposal = db.get(ActionProposal, proposal_id)
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))
-        if proposal.action == "refund" and approved is not None:
-            background.add_task(run_refund, engine, ctx, proposal_id)
+        if approved is not None and executable(proposal.action):
+            background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
     return _out(db, case)
 
 

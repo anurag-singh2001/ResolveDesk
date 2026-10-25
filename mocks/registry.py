@@ -7,12 +7,14 @@ from mocks.base import Chaos
 from mocks.messaging import MockMessaging
 from mocks.payment import MockPayment
 from mocks.sources import MockDeliveryApp, MockPOS
+from mocks.vouchers import MockVouchers
 
 _MOCKS = {
     "payment": MockPayment(),
     "messaging": MockMessaging(),
     "pos": MockPOS(),
     "delivery_app": MockDeliveryApp(),
+    "vouchers": MockVouchers(),
 }
 
 
