@@ -476,8 +476,8 @@ def test_a_decision_that_lands_before_paused_is_recorded_completes_the_run(
 ):
     real = graph._invoke
 
-    def racing(deps, saver, tid, cid, payload):
-        result = real(deps, saver, tid, cid, payload)
+    def racing(deps, saver, tid, cid, payload, build):
+        result = real(deps, saver, tid, cid, payload, build)
         _decide(app_engine, case, hq, uuid.UUID(result[0]["proposal_id"]), "approved")
         return result  # the first pass is about to record 'paused'
 
@@ -493,6 +493,40 @@ def test_a_decision_that_lands_before_paused_is_recorded_completes_the_run(
     monkeypatch.setattr(graph, "_invoke", real)
     done = agent_runner.after_decision(app_engine, case["tid"], case["case_id"], pid, True)
     assert done["outcome"] == "resolved" and len(_ops(case)) == 1  # the code path ran it once
+
+
+def test_a_staff_approval_of_a_paused_case_executes_once_even_if_both_paths_fire(  # noqa: F811
+    app_engine, case, hq
+):
+    """One execution path: the decision task resumes the paused graph (its execute node) and
+    the dispatch fallback also fires (a retry, the sweeper, a second worker). One approval,
+    one stable key, so exactly one provider operation and one verdict - in either order and
+    even when they overlap."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app.api import routes_approvals
+    from app.engine.dispatch import run_approved
+
+    pid, run_id = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+    tid, cid = case["tid"], case["case_id"]
+
+    def resume():  # what the decision route's task does first
+        return agent_runner.resume_after_decision(app_engine, tid, cid, pid)
+
+    def fallback():  # the second entry into the same path
+        return run_approved(app_engine, tid, pid, "refund")
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        jobs = [pool.submit(resume), pool.submit(fallback)]
+        [j.result() for j in jobs]
+    fallback()  # and once more after both finished: still a no-op
+    routes_approvals._after_decision(app_engine, hq, cid, pid, "refund", True)
+
+    assert len(_ops(case)) == 1  # one provider operation
+    st = _state(app_engine, case, pid, run_id)
+    assert (st["status"], st["stage"], st["execution"]) == ("resolved", "confirmed", "succeeded")
+    assert st["verifications"] == ["verified"]
 
 
 def test_no_api_route_exposes_checkpoint_data(monkeypatch):

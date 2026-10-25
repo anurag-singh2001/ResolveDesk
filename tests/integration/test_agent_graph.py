@@ -466,3 +466,81 @@ def test_baseline_unsure_asks_the_customer(app_engine, case, category, confidenc
                                                   confidence=confidence)]})  # fmt: skip
     assert _run_baseline(app_engine, case, res)["outcome"] == "awaiting_info"
     assert _case(app_engine, case) == ("awaiting_info", [])
+
+
+def _voucher_ceiling(app_engine, case):
+    """The pack's voucher category and the rule's voucher for this case (auto-approvable)."""
+    with tenant_session(case["tid"], app_engine) as s:
+        remedies = tenant_pack(s).remedies
+        category = next(cat for cat, rule in remedies.items() if rule == "voucher")
+        c = s.get(Case, case["case_id"])
+        c.category = category
+        s.flush()
+        ceiling = graph.decide_remedy(s, c)
+        c.category = None  # the classifier sets it during the run
+    assert ceiling.action == "free_item_voucher", ceiling
+    return category, ceiling
+
+
+def _voucher(case, value):
+    def reply(messages):
+        return ResolutionDraft(
+            action="free_item_voucher",
+            params={"transaction_id": str(case["order_id"]), "value_paise": value,
+                    "reason": "wrong order"},
+            reason="voucher per policy",
+            citations=REF.findall(messages[1].content)[:1],
+        )  # fmt: skip
+
+    return reply
+
+
+def test_an_auto_approved_voucher_is_issued_once_after_the_run(app_engine, case):
+    """E4.6, agent path: the case is resolved only after the voucher provider confirms."""
+    from app.core.models import Execution
+    from app.engine.dispatch import run_approved
+    from app.engine.voucher_executor import voucher_key
+    from mocks.base import Chaos
+    from mocks.registry import get_mock, merchant_id_for, reset_mocks
+
+    reset_mocks()
+    vouchers, merchant = get_mock("vouchers"), merchant_id_for(case["tid"])
+    category, ceiling = _voucher_ceiling(app_engine, case)
+    vouchers.set_chaos(Chaos(accept_then_timeout_rate=1.0), merchant)  # issued, no answer
+    clf = FakeLLM({"Classification": [_classify(category)]})
+    res = FakeLLM({"ResolutionDraft": [_voucher(case, ceiling.params["value_paise"])]})
+    out = _run(app_engine, case, clf, res)
+    # the graph itself executed it (approve -> execute -> verify): a timeout is "processing"
+    assert out["outcome"] == "processing" and out["proposal_id"], out
+    pid = uuid.UUID(out["proposal_id"])
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(Case, case["case_id"]).status == "executing"  # not resolved on a timeout
+        assert s.scalar(select(Execution.status).where(Execution.proposal_id == pid)) == "unknown"
+    vouchers.set_chaos(Chaos(), merchant)
+    run_approved(app_engine, case["tid"], pid, "free_item_voucher")  # reconcile by key
+    run_approved(app_engine, case["tid"], pid, "free_item_voucher")  # and again: no-op
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(Case, case["case_id"]).status == "resolved"
+        execution = s.scalar(select(Execution).where(Execution.proposal_id == pid))
+        assert (execution.status, execution.idempotency_key) == ("succeeded", voucher_key(pid))
+    (op,) = vouchers.operations(merchant)
+    assert op.request.value_paise == ceiling.params["value_paise"]
+    reset_mocks()
+
+
+def test_a_late_run_adds_nothing_to_a_case_a_person_took_over(app_engine, case, monkeypatch):
+    """The sweeper escalated the case while this run was still working: no proposal."""
+    category, ceiling = _voucher_ceiling(app_engine, case)
+    real_resolve = graph.decide_remedy
+
+    def escalate_meanwhile(s, c):
+        with tenant_session(case["tid"], app_engine) as other:
+            other.get(Case, case["case_id"]).status = "escalated"
+        return real_resolve(s, c)
+
+    monkeypatch.setattr(graph, "decide_remedy", escalate_meanwhile)
+    clf = FakeLLM({"Classification": [_classify(category)]})
+    res = FakeLLM({"ResolutionDraft": [_voucher(case, ceiling.params["value_paise"])]})
+    assert _run(app_engine, case, clf, res)["outcome"] == "skipped"
+    status, proposals = _case(app_engine, case)
+    assert status == "escalated" and proposals == []

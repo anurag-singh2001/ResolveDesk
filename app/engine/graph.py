@@ -52,6 +52,7 @@ from app.core.models import (
 from app.core.settings_resolver import tenant_pack
 from app.engine import lifecycle
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
+from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
@@ -285,7 +286,12 @@ def build_graph(deps: Deps, checkpointer=None):
         return route
 
     def after_propose(state: CaseState) -> str:
-        return "escalate" if state.get("outcome") == "escalated" else "approve"
+        # skipped: a person took the case over while this run worked (nothing was stored)
+        return (
+            "escalate"
+            if state.get("outcome") == "escalated"
+            else (END if state.get("outcome") == "skipped" else "approve")
+        )
 
     def after_approve(state: CaseState) -> str:
         status = state.get("approval_status")
@@ -400,13 +406,20 @@ def store_proposal(deps: Deps, state: CaseState) -> CaseState:
     ]
     try:
         with tenant_session(tid, deps.engine) as s:
+            # The sweeper may have escalated a run that outlived its TTL: then a person
+            # owns the case and this (late) run must not add a proposal to it.
+            case = s.scalar(
+                select(Case).where(Case.id == uuid.UUID(state["case_id"])).with_for_update()
+            )
+            if case.status != "investigating":
+                w["reason"] = f"case is {case.status}"
+                return {"outcome": "skipped", "step_count": step}
             proposal = create_proposal(
                 s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
                 params=draft.params, reason=draft.reason, citations=citations,
                 run_id=uuid.UUID(state["run_id"]),
             )  # fmt: skip
             # Same as the deterministic path: auto-approval only where settings allow.
-            case = s.get(Case, uuid.UUID(state["case_id"]))
             lifecycle.proposal_made(s, tid, case, proposal.id, now)
             proposal_id = str(proposal.id)
     except ProposalError as exc:
@@ -615,6 +628,8 @@ def _record(deps: Deps, tenant_id, run_id: uuid.UUID, final: dict, paused: bool,
             run = s.get(WorkflowRun, run_id)
             if paused:
                 run.status = "paused"
+            elif final.get("outcome") == "skipped":  # the sweeper already failed this run
+                run.status = "failed"
             else:
                 run.status = "escalated" if final.get("outcome") == "escalated" else "completed"
             run.step_count = final.get("step_count", 0)
@@ -685,6 +700,7 @@ def run_case(
     final, paused = _guarded(deps, state, work)
     paused = _still_paused(deps, tenant_id, final, paused)
     snapshot = _record(deps, tenant_id, run_id, final, paused, budget)
+    _execute_if_graph_stopped_early(deps, tenant_id, final)
     if not paused and not final.get("keep_checkpoint"):
         _prune(deps, tenant_id, case_id)
     return {
@@ -694,6 +710,21 @@ def run_case(
         "llm": snapshot,
         "paused": paused,
     }
+
+
+def _execute_if_graph_stopped_early(deps: Deps, tenant_id: uuid.UUID, final: dict) -> None:
+    """The single-call baseline graph ends at `propose` (it has no approve/execute nodes). If
+    the tenant's rule auto-approved its proposal, run it through the same single execution
+    path the agent graph's execute node uses, now that the propose step has committed (rule
+    5). A crash here is picked up by the sweeper (same stable key)."""
+    proposal_id = final.get("proposal_id")
+    if final.get("outcome") != "proposed" or not proposal_id:
+        return
+    try:
+        if _decision(deps, {"tenant_id": str(tenant_id), "proposal_id": proposal_id}) == "approved":
+            run_approved(deps.engine, tenant_id, uuid.UUID(proposal_id))
+    except Exception:
+        log.exception("could not execute proposal %s", proposal_id)
 
 
 RESUME_KINDS = ("approval", "info")

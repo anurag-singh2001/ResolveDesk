@@ -68,18 +68,26 @@ def resume_info(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, messag
     return graph.resume_case(deps, tenant_id, case_id, "info", {"kind": "info"}, budget)
 
 
+def resume_after_decision(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, proposal_id: uuid.UUID
+) -> dict:
+    """A decision was recorded: resume the case's thread paused at `approve` (it reads the
+    decision from the database; its execute node is the single execution path). Returns
+    outcome "skipped" when there is no paused thread to resume."""
+    deps = graph.Deps(engine=engine, classifier=None, resolver=None, embedder=None)
+    return graph.resume_case(
+        deps, tenant_id, case_id, "approval", {"proposal_id": str(proposal_id)}
+    )
+
+
 def after_decision(
     engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, proposal_id: uuid.UUID, approved: bool
 ) -> dict:
-    """A decision was recorded: resume the case's thread paused at `approve` (it reads the
-    decision from the database). Cases with no paused thread (the deterministic path, or a
-    checkpoint that can't be reached) go straight to the code path: execute, then verify.
-    Both are safe to overlap: the executor's stable key and the verifier's verdict make a
-    second pass a no-op."""
-    deps = graph.Deps(engine=engine, classifier=None, resolver=None, embedder=None)
-    out = graph.resume_case(deps, tenant_id, case_id, "approval", {"proposal_id": str(proposal_id)})
-    # Any skip (no paused thread, or the first pass hasn't marked its run paused yet) must
-    # not strand an approved refund: the code path is idempotent, so run it.
+    """resume_after_decision, then (for an approval the graph did not pick up: no paused
+    thread, or the first pass hasn't marked its run paused yet) the same single execution
+    path the graph uses. Safe to overlap: the executor's stable key and the verifier's
+    verdict make a second pass a no-op."""
+    out = resume_after_decision(engine, tenant_id, case_id, proposal_id)
     if out.get("outcome") == "skipped" and approved:
         return {"outcome": lifecycle.execute_and_verify(engine, tenant_id, proposal_id)}
     return out

@@ -59,7 +59,7 @@ def test_unknown_action_is_an_error():
         enabled_actions(["refund", "wire_transfer"])
 
 
-@pytest.mark.parametrize("kind", ["payment", "messaging", "orders"])
+@pytest.mark.parametrize("kind", ["payment", "messaging", "orders", "vouchers"])
 def test_tenant_settings_select_a_registered_connector(tenant, kind):
     _, _, settings = _tenant_settings(tenant)
     connector = connector_for(settings, kind)
@@ -102,6 +102,21 @@ def test_payment_connector_maps_provider_outcomes(ctx):
     get_mock("payment").set_chaos(Chaos(transient_error_rate=1.0), merchant)
     assert pay.refund(ctx, "k3", "PAY-1", 100).status == "unavailable"
     assert pay.find_refund(ctx, "k3") is None  # nothing applied
+
+
+def test_voucher_connector_maps_provider_outcomes(ctx):
+    vc = get_connector("mock_vouchers", "vouchers")
+    merchant = merchant_id_for(ctx.tenant_id)
+    first = vc.issue(ctx, "v1", "CUST-1", "ORD-1", 100)
+    assert first.status == "succeeded" and first.provider_reference
+    assert vc.issue(ctx, "v1", "CUST-1", "ORD-1", 100) == first  # same key: same voucher
+    get_mock("vouchers").set_chaos(Chaos(accept_then_timeout_rate=1.0), merchant)
+    assert vc.issue(ctx, "v2", "CUST-1", "ORD-1", 100).status == "unknown"
+    assert vc.find_voucher(ctx, "v2").status == "succeeded"
+    get_mock("vouchers").set_chaos(Chaos(transient_error_rate=1.0), merchant)
+    assert vc.issue(ctx, "v3", "CUST-1", "ORD-1", 100).status == "unavailable"
+    assert vc.find_voucher(ctx, "v3") is None
+    assert len(get_mock("vouchers").operations(merchant)) == 2
 
 
 def test_connector_uses_the_contexts_tenant_account(ctx):

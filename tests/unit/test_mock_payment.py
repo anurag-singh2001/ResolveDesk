@@ -211,3 +211,49 @@ def test_returned_results_are_snapshots(merchant):
     first = pay.refund(merchant, KEY, req())
     pay.get_refund(merchant, KEY)  # settles the stored operation
     assert first.status == "processing"  # what the caller already holds doesn't change
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.t = 1_000_000.0
+
+    def __call__(self) -> float:
+        return self.t
+
+
+def test_a_late_request_lands_within_the_request_lifetime(merchant):
+    pay, clock = MockPayment(), _Clock()
+    pay.set_clock(clock)
+    pay.set_chaos(Chaos(land_late_rate=1.0, land_after_s=pay.request_lifetime_s / 2))
+    with pytest.raises(ProviderTimeout):
+        pay.refund(merchant, KEY, req())
+    assert pay.get_refund(merchant, KEY) is None  # still in flight
+    clock.t += pay.request_lifetime_s / 2
+    assert pay.get_refund(merchant, KEY).status == "succeeded"  # landed late
+    assert len(pay.operations(merchant)) == 1
+
+
+def test_a_request_past_its_lifetime_never_lands(merchant):
+    pay, clock = MockPayment(), _Clock()
+    pay.set_clock(clock)
+    pay.set_chaos(Chaos(land_late_rate=1.0, land_after_s=pay.request_lifetime_s * 2))
+    with pytest.raises(ProviderTimeout):
+        pay.refund(merchant, KEY, req())
+    clock.t += pay.request_lifetime_s + 1
+    assert pay.get_refund(merchant, KEY) is None
+    clock.t += pay.request_lifetime_s * 2
+    assert pay.get_refund(merchant, KEY) is None  # the contract: it is gone for good
+    assert pay.operations(merchant) == []
+
+
+def test_a_same_key_resend_while_in_flight_makes_one_operation(merchant):
+    pay, clock = MockPayment(), _Clock()
+    pay.set_clock(clock)
+    pay.set_chaos(Chaos(land_late_rate=1.0, land_after_s=5))
+    with pytest.raises(ProviderTimeout):
+        pay.refund(merchant, KEY, req())
+    pay.set_chaos(Chaos())
+    first = pay.refund(merchant, KEY, req())
+    clock.t += 10
+    assert pay.get_refund(merchant, KEY) == first
+    assert len(pay.operations(merchant)) == 1

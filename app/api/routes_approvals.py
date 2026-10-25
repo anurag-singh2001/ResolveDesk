@@ -20,9 +20,11 @@ from app.core.models import (
 )
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
-from app.engine import lifecycle
-from app.engine.agent_runner import after_decision
+from app.engine.agent_runner import resume_after_decision
 from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
+from app.engine.dispatch import executable, run_approved
+from app.engine.dispatch import reconcile as reconcile_execution
+from app.engine.release import check_release, release_refund
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
@@ -138,21 +140,31 @@ class DecisionOut(BaseModel):
     execution: str  # what happens next: queued | none
 
 
-def run_refund(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
-    """Execute, then verify. Runs after the response, once the request's transaction has
-    committed: the provider is never called while a DB transaction is open (hard rule 5).
-    Refusals and escalations are recorded in the DB/audit; nothing to raise to anyone."""
+def run_execution(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID, action: str) -> None:
+    """Execute, then verify, through the single execution path (dispatch.run_approved ->
+    lifecycle). Runs after the response, once the request's transaction has committed: the
+    provider is never called while a DB transaction is open (hard rule 5). Refusals and
+    escalations are recorded in the DB/audit; nothing is raised to anyone."""
     try:
-        lifecycle.execute_and_verify(engine, ctx.tenant_id, proposal_id)
+        run_approved(engine, ctx.tenant_id, proposal_id, action)
     except Exception:
-        log.exception("refund %s: execute/verify failed", proposal_id)
+        log.exception("%s %s: execute/verify failed", action, proposal_id)
 
 
-def _after_decision(engine, ctx: TenantContext, case_id, proposal_id, approved: bool) -> None:
+def _after_decision(
+    engine, ctx: TenantContext, case_id, proposal_id, action: str, approved: bool
+) -> None:
+    """Resume the case's paused graph thread (its execute node uses the same single path).
+    With no paused thread (deterministic path, or a checkpoint that can't be reached) fall
+    back to run_execution. Both firing for one approval is safe: one stable key, one
+    provider operation."""
     try:
-        after_decision(engine, ctx.tenant_id, case_id, proposal_id, approved)
+        out = resume_after_decision(engine, ctx.tenant_id, case_id, proposal_id)
     except Exception:
-        log.exception("case %s: continuing after the decision failed", case_id)
+        log.exception("case %s: resuming the workflow after the decision failed", case_id)
+        out = {"outcome": "skipped"}
+    if approved and out.get("outcome") == "skipped" and executable(action):
+        run_execution(engine, ctx, proposal_id, action)
 
 
 @router.post("/approvals/{proposal_id}/decision")
@@ -177,9 +189,12 @@ def post_decision(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
     proposal = db.get(ActionProposal, proposal_id)
     approved = body.decision == "approved"
-    queued = approved and proposal.action == "refund"
-    # Resume the case's paused workflow (or run the code path): after this request commits.
-    background.add_task(_after_decision, engine, ctx, proposal.case_id, proposal_id, approved)
+    queued = approved and executable(proposal.action)
+    # Resume the case's paused workflow, or run the execution path: after this request
+    # commits (always queued: a rejection must finish a paused thread too).
+    background.add_task(
+        _after_decision, engine, ctx, proposal.case_id, proposal_id, proposal.action, approved
+    )
     return DecisionOut(
         proposal_id=proposal_id,
         decision=approval.decision,
@@ -188,11 +203,11 @@ def post_decision(
     )
 
 
-def _run_reconcile(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
+def _run_reconcile(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID, action: str) -> None:
     try:
-        lifecycle.reconcile_and_verify(engine, ctx.tenant_id, proposal_id)
+        reconcile_execution(engine, ctx.tenant_id, proposal_id, action)
     except Exception:
-        log.exception("refund %s: reconcile/verify failed", proposal_id)
+        log.exception("%s %s: reconcile/verify failed", action, proposal_id)
 
 
 @router.post("/approvals/{proposal_id}/reconcile", status_code=status.HTTP_202_ACCEPTED)
@@ -203,11 +218,11 @@ def reconcile(
     db: Session = Depends(tenant_db),
     engine: Engine = Depends(get_db_engine),
 ) -> dict[str, str]:
-    """Ask the provider about an unfinished refund (e.g. after a timeout). Queued: the
+    """Ask the provider about an unfinished refund or voucher (e.g. after a timeout). Queued: the
     provider is only called after this request's transaction has ended (hard rule 5).
     Poll GET /cases/{id} for the result."""
     proposal = db.get(ActionProposal, proposal_id)
-    if proposal is None or proposal.action != "refund":
+    if proposal is None or not executable(proposal.action):
         raise not_found()
     try:
         location = engine_approvals.proposal_location(db, proposal)
@@ -215,5 +230,36 @@ def reconcile(
         raise not_found() from None
     if ctx.role != "hq_owner" and (location is None or not ctx.can_see_location(location)):
         raise not_found()
-    background.add_task(_run_reconcile, engine, ctx, proposal_id)
+    background.add_task(_run_reconcile, engine, ctx, proposal_id, proposal.action)
+    return {"status": "queued"}
+
+
+def _run_release(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
+    result = release_refund(engine, ctx, proposal_id)
+    log.info("release of %s: %s (%s)", proposal_id, result.outcome, result.reason)
+
+
+@router.post("/approvals/{proposal_id}/release", status_code=status.HTTP_202_ACCEPTED)
+def release(
+    proposal_id: uuid.UUID,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> dict[str, str]:
+    """hq_owner only: free a quarantined refund's held balance once the provider can no
+    longer apply it. Checked here (DB only), then queued: the provider lookup by key runs
+    after this request's transaction has ended (hard rule 5). If the provider has the
+    refund, it is recorded instead of released. See GET /cases/{id}/events."""
+    if ctx.role != "hq_owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "hq_owner only")
+    check = check_release(db, proposal_id, datetime.now(UTC))
+    if check.reason == "not_found":
+        raise not_found()
+    if not check.ok:
+        detail = {"reason": check.reason, "ledger_status": check.ledger_status}
+        if check.ready_at is not None:
+            detail["ready_at"] = check.ready_at.isoformat()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail)
+    background.add_task(_run_release, engine, ctx, proposal_id)
     return {"status": "queued"}

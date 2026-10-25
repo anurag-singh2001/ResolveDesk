@@ -3,7 +3,7 @@ TENANT ?= all
 SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate seed api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
+.PHONY: up down db-check migrate seed sweep api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
 
 db-check:
 	uv run python -m scripts.db_check
@@ -15,6 +15,9 @@ down:
 
 migrate:
 	uv run alembic upgrade head
+
+sweep:
+	uv run python -m scripts.sweep
 
 seed:
 	uv run python -m scripts.seed $(TENANT) --seed $(SEED)

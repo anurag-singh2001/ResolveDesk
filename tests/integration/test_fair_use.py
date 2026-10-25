@@ -152,7 +152,8 @@ def test_below_the_threshold_a_voucher_is_still_auto_approved(api, app_engine, w
     opened = _open(api, w)
     assert opened["action"] == "free_item_voucher"
     status, approval = _status_and_approval(app_engine, w, opened["id"], opened["proposal_id"])
-    assert (status, approval) == ("executing", ("approved", "auto"))
+    # the voucher is issued right after approval (E4.6): executing, then resolved once confirmed
+    assert status in ("executing", "resolved") and approval == ("approved", "auto")
 
 
 def test_at_the_threshold_a_person_decides_and_sees_the_count(api, app_engine, world):
@@ -238,10 +239,13 @@ def test_agent_path_applies_the_same_rule(app_engine, world, at_threshold):
     _fill_to(app_engine, w, w["max"] if at_threshold else w["max"] - 1)
     case_id = _agent_case(app_engine, w)
     out = _run_agents(app_engine, w, case_id)
-    # Below the threshold the graph continues past approve (auto); at it, the run pauses.
-    assert out["outcome"] == ("proposed" if at_threshold else "approved"), out
+    # Below the threshold the graph continues past approve (auto) and, since vouchers have an
+    # executor (E4.6), issues and verifies it: resolved once the provider confirms. At the
+    # threshold the run pauses.
+    assert out["outcome"] == ("proposed" if at_threshold else "resolved"), out
     status, approval = _status_and_approval(app_engine, w, case_id, out["proposal_id"])
     if at_threshold:
         assert (status, approval) == ("awaiting_approval", None)
     else:
-        assert (status, approval) == ("executing", ("approved", "auto"))
+        # the voucher is issued right after approval (E4.6): executing, then resolved once confirmed
+        assert status in ("executing", "resolved") and approval == ("approved", "auto")
