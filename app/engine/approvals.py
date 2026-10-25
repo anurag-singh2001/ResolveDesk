@@ -8,7 +8,7 @@ execution; this adds expiry and that the proposal still hashes to what was appro
 
 import json
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from sqlalchemy import select
@@ -17,10 +17,10 @@ from sqlalchemy.orm import Session
 
 from app.actions.base import Facts, get_action
 from app.core import audit
-from app.core.models import ActionProposal, Approval, Case, Transaction
+from app.core.models import ActionProposal, Approval, Case, Customer, Transaction
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine.eligibility import order_facts
+from app.engine.eligibility import fair_use, order_facts
 from app.engine.proposals import proposal_hash_is_intact
 
 
@@ -88,7 +88,9 @@ def proposal_location(session: Session, proposal: ActionProposal) -> uuid.UUID |
     return order.location_id
 
 
-def evaluate_proposal(session, ctx, proposal):
+def evaluate_proposal(session, ctx, proposal, now: datetime):
+    """The action's own checks, plus the fair-use signal for compensation actions. Fair use
+    only adds checks: it never makes a proposal ineligible (a person can still approve)."""
     action = get_action(proposal.action)()
     order_id = _order_id(session, proposal)
     if order_id is not None:
@@ -96,7 +98,12 @@ def evaluate_proposal(session, ctx, proposal):
     else:
         facts = Facts(settings=effective_settings(session))
     inp = action.Input.model_validate_json(json.dumps(proposal.params))
-    return action, inp, facts, action.validate(ctx, inp, facts)
+    result = action.validate(ctx, inp, facts)
+    if action.counts_as_grant:
+        case = session.get(Case, proposal.case_id)
+        usage = fair_use(session, case.customer_id, facts.settings, now, proposal.id)
+        result = replace(result, checks={**result.checks, **usage.checks()})
+    return action, inp, facts, result
 
 
 def decide(
@@ -126,7 +133,7 @@ def decide(
         raise NotFound("proposal not found")
     if not proposal_hash_is_intact(proposal):
         raise NotEligible(["proposal no longer matches its payload hash"])
-    action, inp, facts, result = evaluate_proposal(session, ctx, proposal)
+    action, inp, facts, result = evaluate_proposal(session, ctx, proposal, now)
     if decision == "approved":
         if not result.ok:
             raise NotEligible(result.errors)  # eligibility is re-checked at decision time
@@ -177,11 +184,29 @@ def auto_decide(
     action_cls = get_action(proposal.action)
     if not action_cls.auto_approvable:  # refunds: never (PROJECT.md section 2)
         return None
+    # Serialise auto-approvals per customer, so two concurrent ones can't both read the same
+    # fair-use count and both pass (the lock is held until this transaction commits).
+    customer_id = session.scalar(select(Case.customer_id).where(Case.id == proposal.case_id))
+    session.scalar(select(Customer.id).where(Customer.id == customer_id).with_for_update())
     system = TenantContext(
         tenant_id, uuid.UUID(int=0), uuid.UUID(int=0), "hq_owner", frozenset(), frozenset()
     )
-    action, inp, facts, result = evaluate_proposal(session, system, proposal)
+    action, inp, facts, result = evaluate_proposal(session, system, proposal, now)
     if not result.ok or not action.can_auto_approve(inp, facts):
+        return None
+    if result.checks.get("fair_use_ok") is False:
+        # Many recent grants: a person decides. Never an automatic denial either: the
+        # proposal stays pending for a manager, who sees the count in the checks.
+        audit.record(
+            session,
+            tenant_id,
+            actor_type="system",
+            actor_id=None,
+            event="approval.auto_skipped",
+            entity_type="proposal",
+            entity_id=proposal.id,
+            payload={"reason": "fair_use", "checks": result.checks},
+        )
         return None
     approval = Approval(
         id=uuid.uuid4(),

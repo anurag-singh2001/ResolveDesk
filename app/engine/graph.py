@@ -16,7 +16,7 @@ import json
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any, Protocol, TypedDict
 
 from langgraph.graph import END, StateGraph
@@ -27,6 +27,7 @@ from app.agents import tools
 from app.agents.prompts import classifier_messages, resolution_messages
 from app.agents.schemas import Classification, ResolutionDraft
 from app.core import audit
+from app.core.business_time import business_date
 from app.core.db import tenant_session
 from app.core.models import Case, Ticket, TicketMessage, WorkflowRun
 from app.core.settings_resolver import tenant_pack
@@ -139,7 +140,7 @@ def build_graph(deps: Deps):
             order = tools.get_transaction(s, scope, order_ref)
             if not order["ok"]:
                 return {"need": NEED_ORDER, "step_count": step}
-            _, facts = order_facts(s, case.transaction_id)
+            order_row, facts = order_facts(s, case.transaction_id)
             evidence = {
                 "order": order["data"],
                 "fulfilment": tools.get_fulfilment(s, scope, order_ref),
@@ -147,6 +148,10 @@ def build_graph(deps: Deps):
                 "customer": tools.get_customer(s, scope),
                 "previous_cases": tools.get_case_history(s, scope),
                 "refundable_paise": facts.refundable_paise,
+                # Dated policies are judged on the tenant's calendar date of the order.
+                "order_business_date": business_date(
+                    order_row.placed_at, facts.settings
+                ).isoformat(),
                 "missing_items_value_paise": sum(
                     i["unit_price_paise"] * (i["quantity"] - i["quantity_fulfilled"])
                     for i in order["data"]["items"]
@@ -165,7 +170,7 @@ def build_graph(deps: Deps):
                 s,
                 vector,
                 query,
-                as_of=datetime.fromisoformat(order["placed_at"]).date(),  # judged by order date
+                as_of=date.fromisoformat(state["evidence"]["order_business_date"]),  # order date
                 brand_id=uuid.UUID(order["brand_id"]),
                 location_id=uuid.UUID(order["location_id"]),
                 k=POLICY_K,

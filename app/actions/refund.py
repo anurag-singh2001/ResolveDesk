@@ -28,6 +28,7 @@ class Refund(NotYetExecutable, Action):
     risk = Risk.HIGH
     Input = RefundInput
     amount_field = "amount_paise"
+    counts_as_grant = True
 
     def validate(self, ctx, inp: RefundInput, facts: Facts) -> ValidationResult:
         s = facts.settings

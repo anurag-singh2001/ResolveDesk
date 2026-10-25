@@ -8,11 +8,12 @@ the same `create_proposal`, so both paths get the same validation and approvals.
 
 import uuid
 from dataclasses import dataclass
-from datetime import timedelta
+from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.business_time import business_date
 from app.core.models import Case, Fulfilment, LineItem
 from app.core.money import percent_of
 from app.core.settings_resolver import tenant_pack
@@ -43,16 +44,18 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
             return Remedy(None, {}, "order not completed yet", "escalate")
         late = max(timedelta(0), f.completed_at - f.promised_at)
         minutes = int(late.total_seconds() // 60)
-        tier = max(
-            (t for t in s["late_delivery_tiers"] if t["min_minutes_late"] <= minutes),
-            key=lambda t: t["min_minutes_late"],
-            default=None,
-        )
         why = f"{minutes} min late"
+        # The cause comes from the delivery record (connector data), never the customer's text.
+        cause = (f.attributes or {}).get("delay_cause")
+        if cause is not None and cause in s["late_delivery_excluded_causes"]:
+            return Remedy(None, {}, f"{why}; delay cause on record: {cause}", "apology")
+        placed_on = business_date(order.placed_at, s)  # the tenant's calendar, not UTC
+        tier = late_tier(s["late_delivery_tiers"], minutes, placed_on)
         if tier is None or tier["remedy"] == "apology":
             return Remedy(None, {}, f"{why}: apology tier", "apology")
         if tier["remedy"] == "voucher":
             return _voucher(order_ref, s, why)
+        # The tier's percent is what the tenant asks for; refund_max_percent stays the ceiling.
         percent = min(tier.get("percent", 0), s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
         return _refund(order_ref, amount, f"{why}: {percent}% refund tier")
@@ -66,6 +69,23 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         return _refund(order_ref, min(missing, cap, facts.refundable_paise), "missing items")
 
     return _voucher(order_ref, s, case.category.replace("_", " "))
+
+
+def late_tier(tiers: list[dict], minutes: int, placed_on: date) -> dict | None:
+    """The highest tier reached among the tiers in force on the order date.
+
+    A tier may carry `effective_from` / `effective_to` (ISO dates, `to` exclusive): the same
+    order-date rule as policy versions, so changing tiers never re-prices older orders.
+    """
+
+    def in_force(t: dict) -> bool:
+        start, end = t.get("effective_from"), t.get("effective_to")
+        return (start is None or date.fromisoformat(start) <= placed_on) and (
+            end is None or placed_on < date.fromisoformat(end)
+        )
+
+    reached = [t for t in tiers if in_force(t) and t["min_minutes_late"] <= minutes]
+    return max(reached, key=lambda t: t["min_minutes_late"], default=None)
 
 
 def _refund(order_ref: str, amount: int, why: str) -> Remedy:
