@@ -38,11 +38,13 @@ class MockPaymentConnector(PaymentConnector):
             return RefundOutcome("unknown")
         except ProviderUnavailable:
             return RefundOutcome("unavailable")  # nothing applied; retry with the same key
-        return RefundOutcome(r.status, r.operation_id, r.failure_reason)
+        return RefundOutcome(r.status, r.operation_id, r.failure_reason, r.amount_paise)
 
     def find_refund(self, ctx, idempotency_key) -> RefundOutcome | None:
         r = get_mock("payment").get_refund(merchant_id_for(ctx.tenant_id), idempotency_key)
-        return None if r is None else RefundOutcome(r.status, r.operation_id, r.failure_reason)
+        if r is None:
+            return None
+        return RefundOutcome(r.status, r.operation_id, r.failure_reason, r.amount_paise)
 
 
 @register_connector

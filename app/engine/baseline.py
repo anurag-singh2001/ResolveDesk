@@ -28,7 +28,9 @@ from app.engine.graph import (
     CaseState,
     Deps,
     _check_draft,
+    _message,
     _step,
+    _work,
     ask_customer,
     escalate_case,
     gather_evidence,
@@ -37,15 +39,14 @@ from app.engine.graph import (
 )
 from app.engine.resolver import Remedy, decide_remedy
 
-
-class BaselineState(CaseState, total=False):
-    ceilings: dict  # category -> {action, params, reason, outcome} from decide_remedy
+BaselineState = CaseState  # ids and codes only; ceilings, evidence, text live in deps.scratch
 
 
-def build_baseline_graph(deps: Deps):
+def build_baseline_graph(deps: Deps, checkpointer=None):
     def gather(state: BaselineState) -> BaselineState:
         step = _step(state)
         tid = uuid.UUID(state["tenant_id"])
+        w = _work(deps, state)
         with tenant_session(tid, deps.engine) as s:
             case = s.get(Case, uuid.UUID(state["case_id"]))
             evidence = gather_evidence(s, tid, case)
@@ -62,26 +63,28 @@ def build_baseline_graph(deps: Deps):
                     "reason": r.reason,
                     "outcome": r.outcome,
                 }
-        update_ = retrieve_policies(deps, tid, state["message"], evidence)
-        return {**update_, "evidence": evidence, "ceilings": ceilings, "step_count": step}
+        w["evidence"], w["ceilings"] = evidence, ceilings
+        update_ = retrieve_policies(deps, state, _message(deps, state))
+        return {**update_, "step_count": step}
 
     def decide(state: BaselineState) -> BaselineState:
         step = _step(state)
         tid = uuid.UUID(state["tenant_id"])
         case_id = uuid.UUID(state["case_id"])
-        order_id = state["evidence"]["order"]["transaction_id"]
+        w = _work(deps, state)
+        order_id = w["evidence"]["order"]["transaction_id"]
         with tenant_session(tid, deps.engine) as s:
             pack = tenant_pack(s)
             categories, vocabulary = list(pack.issue_categories), dict(pack.vocabulary)
             actions = enabled_actions(pack.actions)
             _, facts = order_facts(s, uuid.UUID(order_id))
-        ceilings = state["ceilings"]
+        ceilings = w["ceilings"]
         offered = {c["action"] for c in ceilings.values() if c["action"] in actions}
         schemas = {name: actions[name].Input.model_json_schema() for name in sorted(offered)}
         shown = {k: {"action": v["action"], "params": v["params"]} for k, v in ceilings.items()}
         reply: BaselineDecision = deps.resolver.invoke_structured(
-            baseline_messages(state["message"], categories, vocabulary, state["evidence"],
-                              shown, state["citations"], schemas),
+            baseline_messages(_message(deps, state), categories, vocabulary, w["evidence"],
+                              shown, w["citations"], schemas),
             BaselineDecision,
         )  # fmt: skip
         if (
@@ -89,8 +92,8 @@ def build_baseline_graph(deps: Deps):
             or reply.confidence < deps.min_confidence
             or bool(reply.needs_info)
         ):
-            return {"need": NEED_DETAILS, "step_count": step,
-                    "reason": f"baseline unsure: {reply.model_dump_json()[:300]}"}  # fmt: skip
+            w["reason"] = f"baseline unsure: {reply.model_dump_json()[:300]}"
+            return {"need": NEED_DETAILS, "step_count": step}
         with tenant_session(tid, deps.engine) as s:
             s.get(Case, case_id).category = reply.category  # validated above
             s.execute(update(Ticket).where(Ticket.case_id == case_id)
@@ -98,21 +101,24 @@ def build_baseline_graph(deps: Deps):
         ceiling = Remedy(**ceilings[reply.category])
         out: BaselineState = {"category": reply.category, "step_count": step}
         if ceiling.action is None:
-            return {**out, "outcome": "escalated", "reason": f"business rules: {ceiling.reason}"}
+            w["reason"] = f"business rules: {ceiling.reason}"
+            return {**out, "outcome": "escalated"}
         if reply.action == "escalate":
-            return {**out, "outcome": "escalated", "reason": reply.reason}
+            w["reason"] = reply.reason
+            return {**out, "outcome": "escalated"}
         if reply.action == "none":
-            return {**out, "outcome": "escalated",
-                    "reason": f"agent suggests no compensation: {reply.reason}"}  # fmt: skip
+            w["reason"] = f"agent suggests no compensation: {reply.reason}"
+            return {**out, "outcome": "escalated"}
         draft = ResolutionDraft(action=reply.action, params=reply.params, reason=reply.reason,
                                 citations=reply.citations)  # fmt: skip
-        allowed_refs = {c["section_ref"] for c in state["citations"]}
+        allowed_refs = {c["section_ref"] for c in w["citations"]}
         errors = _check_draft(draft, {ceiling.action: actions[ceiling.action]}, facts,
                               allowed_refs, order_id, ceiling)  # fmt: skip
         if errors:  # one call only: no repair round
-            return {**out, "outcome": "escalated",
-                    "reason": "proposal rejected by code: " + "; ".join(errors)}  # fmt: skip
-        return {**out, "reason": reply.reason, "draft": draft.model_dump()}
+            w["reason"] = "proposal rejected by code: " + "; ".join(errors)
+            return {**out, "outcome": "escalated"}
+        w["reason"], w["draft"] = reply.reason, draft.model_dump()
+        return out
 
     def route_after(node: str):
         def route(state: BaselineState) -> str:
@@ -135,4 +141,4 @@ def build_baseline_graph(deps: Deps):
         g.add_conditional_edges(node, route_after(node))
     for terminal in ("propose", "ask", "escalate"):
         g.add_edge(terminal, END)
-    return g.compile()
+    return g.compile(checkpointer=checkpointer)

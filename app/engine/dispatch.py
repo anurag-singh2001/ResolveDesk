@@ -1,22 +1,21 @@
-"""Run an approved proposal with the executor for its action.
+"""The executor table (action -> execute, reconcile) and thin entry points into the single
+execution path in app/engine/lifecycle.py.
 
-Called only after the decision has committed (a background task, the agent run after its
-propose step, or the sweeper), so no DB transaction is open during the provider call
-(hard rule 5). Every executor uses a stable key per proposal, so calling this twice for one
-proposal (a retry, the sweeper racing the background task) still writes once.
+Called only after the decision has committed (a background task, the graph's execute node,
+or the sweeper), so no DB transaction is open during the provider call (hard rule 5). Every
+executor uses a stable key per proposal, so calling this twice for one proposal (a retry,
+the sweeper racing the background task, the graph resume racing the decision fallback)
+still writes once.
 """
 
-import logging
 import uuid
 from collections.abc import Callable
 
 from sqlalchemy import Engine
 
 from app.core.tenancy import TenantContext
-from app.engine.executor import ExecutionRefused, execute_refund, reconcile_refund
+from app.engine.executor import execute_refund, reconcile_refund
 from app.engine.voucher_executor import execute_voucher, reconcile_voucher
-
-log = logging.getLogger(__name__)
 
 # action -> (execute, reconcile). Actions not listed have no executor yet.
 EXECUTORS: dict[str, tuple[Callable, Callable]] = {
@@ -38,25 +37,19 @@ def system_context(tenant_id: uuid.UUID) -> TenantContext:
     )
 
 
-def run_approved(engine: Engine, tenant_id: uuid.UUID, proposal_id: uuid.UUID, action: str):
-    """Execute one approved proposal. Refusals are recorded by the executor; nothing raises."""
-    if not executable(action):
-        return None
-    execute, _ = EXECUTORS[action]
-    try:
-        return execute(engine, system_context(tenant_id), proposal_id)
-    except ExecutionRefused as exc:
-        log.info("%s %s not executed: %s", action, proposal_id, exc.reason)
-        return None
+def run_approved(engine: Engine, tenant_id: uuid.UUID, proposal_id: uuid.UUID, action: str = ""):
+    """Execute one approved proposal, then verify it: a thin call into the single execution
+    path (lifecycle.execute_and_verify). The action is read from the proposal, so a caller's
+    `action` is never trusted. Refusals are recorded and escalated there; nothing raises for
+    them. Imported lazily because lifecycle builds on this module's executor table."""
+    from app.engine import lifecycle
+
+    return lifecycle.execute_and_verify(engine, tenant_id, proposal_id)
 
 
-def reconcile(engine: Engine, tenant_id: uuid.UUID, proposal_id: uuid.UUID, action: str):
-    """Ask the provider about an unfinished execution, by its key."""
-    if not executable(action):
-        return None
-    _, rec = EXECUTORS[action]
-    try:
-        return rec(engine, system_context(tenant_id), proposal_id)
-    except ExecutionRefused as exc:
-        log.info("%s %s not reconciled: %s", action, proposal_id, exc.reason)
-        return None
+def reconcile(engine: Engine, tenant_id: uuid.UUID, proposal_id: uuid.UUID, action: str = ""):
+    """Ask the provider about an unfinished execution, by its key, then verify: a thin call
+    into lifecycle.reconcile_and_verify."""
+    from app.engine import lifecycle
+
+    return lifecycle.reconcile_and_verify(engine, tenant_id, proposal_id)

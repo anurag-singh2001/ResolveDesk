@@ -202,7 +202,8 @@ def test_happy_path_ends_in_a_cited_validated_proposal(app_engine, case):
     assert p.citations and p.citations[0]["section_ref"]
     with tenant_session(case["tid"], app_engine) as s:
         run = s.get(WorkflowRun, uuid.UUID(out["run_id"]))
-        assert (run.status, run.llm_calls) == ("completed", 2)
+        # Paused at the approve node (interrupt), waiting for a person's decision.
+        assert (run.status, run.llm_calls) == ("paused", 2) and out["paused"]
         assert p.run_id == run.id
 
 
@@ -327,8 +328,9 @@ def test_llm_budget_exceeded_escalates(app_engine, case):
 @pytest.mark.parametrize("age_minutes, outcome", [(1, "skipped"), (60, "proposed")])
 def test_a_crashed_run_only_blocks_the_case_until_its_ttl(app_engine, case, age_minutes, outcome):
     with tenant_session(case["tid"], app_engine) as s:
+        started = datetime.now(UTC) - timedelta(minutes=age_minutes)  # at test time, not import
         s.add(WorkflowRun(tenant_id=case["tid"], case_id=case["case_id"], status="running",
-                          created_at=NOW - timedelta(minutes=age_minutes)))  # fmt: skip
+                          created_at=started))  # fmt: skip
     clf = FakeLLM({"Classification": [_classify()]})
     res = FakeLLM({"ResolutionDraft": [_refund(case)]})
     assert _run(app_engine, case, clf, res)["outcome"] == outcome
@@ -508,7 +510,8 @@ def test_an_auto_approved_voucher_is_issued_once_after_the_run(app_engine, case)
     clf = FakeLLM({"Classification": [_classify(category)]})
     res = FakeLLM({"ResolutionDraft": [_voucher(case, ceiling.params["value_paise"])]})
     out = _run(app_engine, case, clf, res)
-    assert out["outcome"] == "proposed" and out["auto_approved"], out
+    # the graph itself executed it (approve -> execute -> verify): a timeout is "processing"
+    assert out["outcome"] == "processing" and out["proposal_id"], out
     pid = uuid.UUID(out["proposal_id"])
     with tenant_session(case["tid"], app_engine) as s:
         assert s.get(Case, case["case_id"]).status == "executing"  # not resolved on a timeout

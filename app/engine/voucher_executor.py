@@ -123,6 +123,52 @@ def _start(engine, ctx, proposal_id, now) -> "_Job | VoucherResult":
         if constraint not in RESERVE_RACE_CONSTRAINTS:
             raise
         return _start_once(engine, ctx, proposal_id, now)  # another worker started it: resume
+    except ExecutionRefused as exc:
+        if exc.reason.startswith("not_eligible"):  # final: re-running won't fix it
+            _record_refusal(engine, ctx, proposal_id, exc.reason)
+        raise
+
+
+def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
+    """An approved voucher the executor refuses for a reason re-running won't fix is recorded
+    as a `failed` execution (never sent), like a refund: audit, domain event, and the caller
+    escalates the case. A lapsed approval is not recorded (nothing was decided about it)."""
+    with tenant_session(ctx.tenant_id, engine) as s:
+        proposal = s.get(ActionProposal, proposal_id)
+        approval = s.scalar(select(Approval).where(Approval.proposal_id == proposal_id))
+        if proposal is None or approval is None or approval.decision != "approved":
+            return
+        s.scalar(select(Case.id).where(Case.id == proposal.case_id).with_for_update())
+        if s.scalar(select(Execution.id).where(Execution.proposal_id == proposal_id)):
+            return  # another worker already owns the execution
+        s.add(
+            Execution(
+                tenant_id=ctx.tenant_id,
+                proposal_id=proposal_id,
+                approval_id=approval.id,
+                idempotency_key=voucher_key(proposal_id),
+                status="failed",
+                error=f"refused: {reason}"[:500],
+            )
+        )
+        audit.record(
+            s,
+            ctx.tenant_id,
+            actor_type="system",
+            actor_id=None,
+            event="voucher.refused",
+            entity_type="proposal",
+            entity_id=proposal_id,
+            payload={"reason": reason[:500], "sent": False},
+        )
+        s.add(
+            DomainEvent(
+                tenant_id=ctx.tenant_id,
+                event="voucher.failed",
+                entity_id=proposal_id,
+                payload={"idempotency_key": voucher_key(proposal_id), "sent": False},
+            )
+        )
 
 
 def _start_once(engine, ctx, proposal_id, now) -> "_Job | VoucherResult":

@@ -1,4 +1,4 @@
-"""Case lifecycle for the no-LLM path: open -> propose -> (auto)approve -> execute."""
+"""Case lifecycle for the no-LLM path: open -> propose -> (auto)approve -> execute -> verify."""
 
 import uuid
 from datetime import datetime
@@ -6,11 +6,11 @@ from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.core import audit
+from app.core import audit, events
 from app.core.models import Case, Customer, Ticket, TicketMessage, Transaction
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
-from app.engine.approvals import auto_decide
+from app.engine import lifecycle
 from app.engine.resolver import propose_for_case
 
 OPEN_STATUSES = ("open", "investigating", "awaiting_info", "awaiting_approval", "executing")
@@ -123,15 +123,18 @@ def open_case(
         entity_id=case.id,
         payload={"category": category, "message": message},
     )
+    events.emit(session, ctx.tenant_id, "case.opened", case.id, {"category": category})
 
     if category is None:  # free text: the agent pipeline classifies and proposes (graph)
         return case, None
     remedy, proposal_id = propose_for_case(session, ctx, case)
     if proposal_id is None:
         case.status = "escalated" if remedy.outcome == "escalate" else "resolved"
+        if case.status == "escalated":
+            events.emit(session, ctx.tenant_id, "case.escalated", case.id,
+                        {"reason": remedy.reason[:200]})  # fmt: skip
     else:
-        approval = auto_decide(session, ctx.tenant_id, proposal_id, now)
-        case.status = "executing" if approval is not None else "awaiting_approval"
+        lifecycle.proposal_made(session, ctx.tenant_id, case, proposal_id, now)
     audit.record(
         session,
         ctx.tenant_id,

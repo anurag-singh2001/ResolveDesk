@@ -20,7 +20,7 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, func, select, update
@@ -50,6 +50,7 @@ from app.engine.cases import OPEN_STATUSES
 from app.engine.eligibility import CAPTURED_STATUSES, HOLDING_STATUSES, order_facts
 from app.engine.executor import ExecutionRefused, execute_refund, refund_key
 from app.engine.proposals import create_proposal
+from app.engine.sweeper import sweep_tenant
 from mocks.base import Chaos
 from mocks.payment import RefundRequest
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
@@ -519,6 +520,11 @@ def test_chaos_run_keeps_money_safe(api, app_engine, world, monkeypatch):
         with _pool() as pool:
             assert set(pool.map(reconcile, todo * 2)) == {202}
         obs.checkpoint()
+    obs.checkpoint()
+
+    # --- 7. the sweeper verifies refunds the provider answered for but whose worker died ---
+    # before the verify step (phases 3c/4 call the executor alone): "confirmed" needs a verdict.
+    sweep_tenant(app_engine, w.tid, min_age=timedelta(0))
     obs.checkpoint()
 
     _assert_invariants(api, app_engine, w, obs, groups)

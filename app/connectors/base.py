@@ -22,6 +22,7 @@ class RefundOutcome:
     status: Literal["processing", "succeeded", "failed", "unknown", "unavailable"]
     provider_reference: str | None = None
     failure_reason: str | None = None
+    amount_paise: int | None = None  # what the provider holds for this key (the verifier checks)
 
 
 @dataclass(frozen=True)

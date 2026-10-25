@@ -20,6 +20,7 @@ from app.core.models import (
 )
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
+from app.engine.agent_runner import resume_after_decision
 from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
@@ -140,10 +141,30 @@ class DecisionOut(BaseModel):
 
 
 def run_execution(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID, action: str) -> None:
-    """Runs after the response, once the request's transaction has committed: the provider
-    is never called while a DB transaction is open (hard rule 5). Refusals are recorded in
-    the DB/audit; nothing is raised to anyone."""
-    run_approved(engine, ctx.tenant_id, proposal_id, action)
+    """Execute, then verify, through the single execution path (dispatch.run_approved ->
+    lifecycle). Runs after the response, once the request's transaction has committed: the
+    provider is never called while a DB transaction is open (hard rule 5). Refusals and
+    escalations are recorded in the DB/audit; nothing is raised to anyone."""
+    try:
+        run_approved(engine, ctx.tenant_id, proposal_id, action)
+    except Exception:
+        log.exception("%s %s: execute/verify failed", action, proposal_id)
+
+
+def _after_decision(
+    engine, ctx: TenantContext, case_id, proposal_id, action: str, approved: bool
+) -> None:
+    """Resume the case's paused graph thread (its execute node uses the same single path).
+    With no paused thread (deterministic path, or a checkpoint that can't be reached) fall
+    back to run_execution. Both firing for one approval is safe: one stable key, one
+    provider operation."""
+    try:
+        out = resume_after_decision(engine, ctx.tenant_id, case_id, proposal_id)
+    except Exception:
+        log.exception("case %s: resuming the workflow after the decision failed", case_id)
+        out = {"outcome": "skipped"}
+    if approved and out.get("outcome") == "skipped" and executable(action):
+        run_execution(engine, ctx, proposal_id, action)
 
 
 @router.post("/approvals/{proposal_id}/decision")
@@ -167,9 +188,13 @@ def post_decision(
     except NotEligible as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
     proposal = db.get(ActionProposal, proposal_id)
-    queued = body.decision == "approved" and executable(proposal.action)
-    if queued:
-        background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
+    approved = body.decision == "approved"
+    queued = approved and executable(proposal.action)
+    # Resume the case's paused workflow, or run the execution path: after this request
+    # commits (always queued: a rejection must finish a paused thread too).
+    background.add_task(
+        _after_decision, engine, ctx, proposal.case_id, proposal_id, proposal.action, approved
+    )
     return DecisionOut(
         proposal_id=proposal_id,
         decision=approval.decision,
@@ -179,7 +204,10 @@ def post_decision(
 
 
 def _run_reconcile(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID, action: str) -> None:
-    reconcile_execution(engine, ctx.tenant_id, proposal_id, action)
+    try:
+        reconcile_execution(engine, ctx.tenant_id, proposal_id, action)
+    except Exception:
+        log.exception("%s %s: reconcile/verify failed", action, proposal_id)
 
 
 @router.post("/approvals/{proposal_id}/reconcile", status_code=status.HTTP_202_ACCEPTED)

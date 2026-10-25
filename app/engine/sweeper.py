@@ -4,7 +4,9 @@
    decision and running the task): run them with the same executor and the same stable key.
 2. Executions left unfinished (`submitted`, `unknown`, `processing`): reconcile by key. This
    is also how a quarantined refund's late landing gets recorded.
-3. Cases stuck in `investigating` past the agent run TTL (the run died, or never started):
+3. Refunds the provider answered for but nobody verified (the process died between the
+   executor and the verify step): run the verifier, so the case is not left on "processing".
+4. Cases stuck in `investigating` past the agent run TTL (the run died, or never started):
    mark the dead run failed and escalate the case to a person. Escalating, not re-running:
    a maintenance job should not spend LLM budget, and a person sees the case at once.
 
@@ -19,14 +21,24 @@ from datetime import UTC, datetime, timedelta
 
 from sqlalchemy import Engine, select, update
 
-from app.core import audit
+from app.core import audit, events
 from app.core.db import tenant_session
-from app.core.models import ActionProposal, Approval, Case, Execution, WorkflowRun
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Execution,
+    Verification,
+    WorkflowRun,
+)
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
+from app.engine.agent_runner import resume_after_decision
 from app.engine.dispatch import EXECUTORS, reconcile, run_approved
 from app.engine.executor import TERMINAL
-from app.engine.graph import RUN_TTL
+from app.engine.graph import RUN_TTL, prune_finished
+from app.engine.lifecycle import verify_executed
+from app.engine.verifier import FINAL
 
 log = logging.getLogger(__name__)
 
@@ -39,6 +51,9 @@ class SweepReport:
     executed: list[str] = field(default_factory=list)
     reconciled: list[str] = field(default_factory=list)
     escalated_cases: list[str] = field(default_factory=list)
+    verified: list[str] = field(default_factory=list)
+    pruned_threads: int = 0
+    events_published: int = 0
 
 
 def sweep_tenant(
@@ -52,12 +67,15 @@ def sweep_tenant(
     report = SweepReport()
     with tenant_session(tenant_id, engine) as s:
         never_run = s.execute(
-            select(ActionProposal.id, ActionProposal.action)
+            select(ActionProposal.id, ActionProposal.action, ActionProposal.case_id)
             .join(Approval, Approval.proposal_id == ActionProposal.id)
+            .join(Case, Case.id == ActionProposal.case_id)
             .outerjoin(Execution, Execution.proposal_id == ActionProposal.id)
             .where(
                 Approval.decision == "approved",
-                Approval.expires_at > now,
+                # Usable approvals run; a lapsed one is refused (and escalated) once, while
+                # its case is still open - then it is no longer selected.
+                (Approval.expires_at > now) | Case.status.in_(("executing", "awaiting_approval")),
                 Approval.decided_at <= now - min_age,
                 Execution.id.is_(None),
                 ActionProposal.action.in_(list(EXECUTORS)),
@@ -74,15 +92,100 @@ def sweep_tenant(
             )
             .order_by(Execution.updated_at)
         ).all()
+        # A refund the provider answered for, but whose process died before the verify step:
+        # the customer would stay on "processing" for money that moved. Verify it (refunds
+        # only: vouchers have no verdict row, see lifecycle.verify_executed).
+        final = select(Verification.id).where(
+            Verification.execution_id == Execution.id, Verification.status.in_(FINAL)
+        )
+        unverified = s.scalars(
+            select(ActionProposal.id)
+            .join(Execution, Execution.proposal_id == ActionProposal.id)
+            .where(
+                ActionProposal.action == "refund",
+                Execution.status.in_(("succeeded", "failed")),
+                Execution.updated_at <= now - min_age,
+                ~final.exists(),
+            )
+            .order_by(Execution.updated_at)
+        ).all()
     # Provider calls happen here, with no transaction open (hard rule 5).
-    for proposal_id, action in never_run:
-        run_approved(engine, tenant_id, proposal_id, action)
+    # Each item is isolated: one bad proposal must not skip the rest of the sweep.
+    for proposal_id, action, case_id in never_run:
+        # A paused graph thread for this case resumes (its execute node is the same single
+        # path); with none claimable, run the path directly. Either way: one stable key.
+        # An approval that lapsed unexecuted is refused there and escalates the case.
+        try:
+            if _resume(engine, tenant_id, case_id, proposal_id).get("outcome") == "skipped":
+                run_approved(engine, tenant_id, proposal_id, action)
+        except Exception:
+            log.exception("sweeper: could not execute proposal %s", proposal_id)
         report.executed.append(str(proposal_id))
     for proposal_id, action in unfinished:
-        reconcile(engine, tenant_id, proposal_id, action)
+        try:
+            reconcile(engine, tenant_id, proposal_id, action)
+        except Exception:
+            log.exception("sweeper: could not reconcile proposal %s", proposal_id)
         report.reconciled.append(str(proposal_id))
-    report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
+    for proposal_id in unverified:
+        try:
+            verify_executed(engine, tenant_id, proposal_id)
+        except Exception:
+            log.exception("sweeper: could not verify proposal %s", proposal_id)
+        report.verified.append(str(proposal_id))
+    try:
+        report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
+    except Exception:
+        log.exception("could not escalate stuck cases for tenant %s", tenant_id)
+    # Housekeeping, each best effort: one failing must not stop the other or hide the work
+    # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
+    try:
+        _complete_decided_runs(engine, tenant_id)
+    except Exception:
+        log.exception("could not complete decided runs for tenant %s", tenant_id)
+    try:
+        report.pruned_threads = prune_finished(engine, tenant_id)
+    except Exception:
+        log.exception("could not prune checkpoints for tenant %s", tenant_id)
+    try:
+        report.events_published = events.publish_pending(engine, tenant_id)
+    except Exception:
+        log.exception("could not publish pending events for tenant %s", tenant_id)
     return report
+
+
+def _complete_decided_runs(engine, tenant_id) -> int:
+    """A run left 'paused' at approve whose proposal was decided and finished without the
+    graph (the sweeper or a fallback ran it): nothing will ever resume it, so mark it
+    completed. Then prune_finished may delete its checkpoint thread."""
+    finished = (
+        select(ActionProposal.id)
+        .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
+        .outerjoin(Execution, Execution.proposal_id == ActionProposal.id)
+        .where(
+            ActionProposal.case_id == WorkflowRun.case_id,
+            (Approval.decision == "rejected") | Execution.status.in_(TERMINAL),
+        )
+    )
+    with tenant_session(tenant_id, engine) as s:
+        waiting = select(Case.id).where(Case.status.in_(("awaiting_info", "awaiting_approval")))
+        return s.execute(
+            update(WorkflowRun)
+            .where(
+                WorkflowRun.status == "paused",
+                WorkflowRun.case_id.not_in(waiting),
+                finished.exists(),
+            )
+            .values(status="completed")
+        ).rowcount
+
+
+def _resume(engine, tenant_id, case_id, proposal_id) -> dict:
+    try:
+        return resume_after_decision(engine, tenant_id, case_id, proposal_id)
+    except Exception:
+        log.exception("could not resume the workflow of case %s", case_id)
+        return {"outcome": "skipped"}
 
 
 def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:

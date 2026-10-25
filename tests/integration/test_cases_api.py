@@ -260,11 +260,12 @@ def test_reopening_the_same_order_returns_the_open_case(api, app_engine, flow):
     assert len(pending) == 1  # no second proposal
     with tenant_session(f["tid"], app_engine) as s:
         thread = s.scalars(
-            select(TicketMessage.id)
+            select(TicketMessage.author)
             .join(Ticket, Ticket.id == TicketMessage.ticket_id)
             .where(Ticket.case_id == uuid.UUID(first["id"]))
         ).all()
-    assert len(thread) == 2  # the second report is kept on the same thread
+    assert thread.count("customer") == 2  # the second report is kept on the same thread
+    assert thread.count("system") == 1  # one code-templated update ("waiting for approval")
 
 
 def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engine, flow):

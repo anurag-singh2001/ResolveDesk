@@ -11,7 +11,7 @@ from app.api.routes_approvals import run_execution
 from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
 from app.core.tenancy import TenantContext
-from app.engine.agent_runner import run_agents
+from app.engine.agent_runner import resume_info, run_agents
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, open_case
@@ -111,6 +111,8 @@ def create_case(
     db.flush()
     if body.category is None and case.status == "investigating":
         background.add_task(run_agents, engine, ctx.tenant_id, case.id, body.message)
+    elif case.status == "awaiting_info":  # a reply on a case waiting for it: resume its thread
+        background.add_task(resume_info, engine, ctx.tenant_id, case.id, body.message)
     if proposal_id is not None:  # an auto-approved remedy must actually run
         proposal = db.get(ActionProposal, proposal_id)
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))
