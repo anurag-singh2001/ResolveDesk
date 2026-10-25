@@ -11,9 +11,11 @@ errors; scores below target don't fail the run, they are what is being measured.
 """
 
 import argparse
+import os
 import sys
 from datetime import UTC, datetime
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.config import get_settings
 from app.core.db import get_engine
@@ -55,6 +57,20 @@ def markdown(rows, failures: list[str], meta: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+def _db_name(url: str | None) -> str | None:
+    return urlparse(url).path.lstrip("/") if url else None
+
+
+def reseeds_default_db() -> bool:
+    """True when the effective database is the one the dotenv file names (the demo database):
+    `make eval` reseeds, which wipes cases, so it must not run there by accident."""
+    from dotenv import dotenv_values
+
+    default = dotenv_values(os.environ.get("ENV_FILE", ".env")).get("DATABASE_URL")
+    effective = os.environ.get("DATABASE_URL") or default
+    return _db_name(default) is not None and _db_name(default) == _db_name(effective)
+
+
 def main(argv: list[str]) -> int:
     if hasattr(sys.stdout, "reconfigure"):  # Windows consoles default to cp1252 (no ₹)
         sys.stdout.reconfigure(encoding="utf-8")
@@ -65,12 +81,22 @@ def main(argv: list[str]) -> int:
     group.add_argument("--all", action="store_true", help="tuning + held-out scenarios")
     ap.add_argument("--pipeline", choices=[*PIPELINES, "both"], default="both")
     ap.add_argument("--no-seed", action="store_true", help="skip the fresh reseed")
+    ap.add_argument("--i-know", action="store_true",
+                    help="allow the reseed on the app's default (demo) database")  # fmt: skip
     ap.add_argument("--scale", type=float, default=0.25, help="history scale for the reseed")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--only", help="comma-separated scenario ids")
     ap.add_argument("--pause", type=float, default=0.0, help="seconds between cases")
     args = ap.parse_args(argv)
 
+    if not args.no_seed and not args.i_know and reseeds_default_db():
+        print(
+            "refusing to reseed: DATABASE_URL points at the same database as the dotenv "
+            "default (the demo data). Point DATABASE_URL at a scratch database, or pass "
+            "--i-know / --no-seed.",
+            file=sys.stderr,
+        )
+        return 2
     folders = [TENANTS_DIR / args.tenant] if args.tenant else tenant_dirs()
     if not args.no_seed:
         from scripts import seed
