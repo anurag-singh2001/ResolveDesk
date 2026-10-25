@@ -81,7 +81,9 @@ def verify_refund(engine, ctx: TenantContext, proposal_id: uuid.UUID) -> VerifyR
             payload={"reason": detail, "execution_status": snap.status},
         )
         case = s.get(Case, snap.case_id)
-        if status == "verified" and snap.status == "succeeded":
+        if case.status != "executing":
+            pass  # a person (or another path) already closed or escalated it: never overwrite
+        elif status == "verified" and snap.status == "succeeded":
             case.status = "resolved"
             events.emit(s, ctx.tenant_id, "case.verified", case.id,
                         {"proposal_id": str(proposal_id), "status": status})  # fmt: skip

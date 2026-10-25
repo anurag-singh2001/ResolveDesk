@@ -13,6 +13,7 @@ from app.core.models import (
     MembershipLocation,
     Transaction,
 )
+from app.engine.checkpoint import open_checkpointer
 
 pytestmark = pytest.mark.isolation
 
@@ -134,18 +135,24 @@ def test_tenant_setting_does_not_outlive_transaction(app_engine, tenants):
     assert not value
 
 
+LG_TABLES = ("checkpoint_blobs", "checkpoint_migrations", "checkpoint_writes", "checkpoints")
+
+
 def test_app_role_cannot_bypass_rls(app_engine):
+    with open_checkpointer(app_engine):  # make sure the library's tables exist
+        pass
     with app_engine.connect() as conn:
         superuser, bypass = conn.execute(
             text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
         ).one()
         owned = conn.execute(
-            text(
-                "SELECT count(*) FROM pg_tables WHERE tableowner = current_user "
-                "AND schemaname <> 'lg'"  # the checkpointer's own schema (DECISIONS.md, E4.1)
-            )
-        ).scalar()
-    assert (superuser, bypass, owned) == (False, False, 0)
+            text("SELECT schemaname || '.' || tablename FROM pg_tables "
+                 "WHERE tableowner = current_user")
+        ).scalars().all()  # fmt: skip
+    assert (superuser, bypass) == (False, False)
+    # The only tables the app role may own are the checkpointer's, in schema lg
+    # (DECISIONS.md, E4.1): exactly these, nothing else.
+    assert sorted(owned) == sorted(f"lg.{t}" for t in LG_TABLES)
 
 
 def test_every_table_with_tenant_id_has_forced_rls_policy(app_engine):

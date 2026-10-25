@@ -439,6 +439,62 @@ def test_prune_finished_deletes_only_finished_threads(app_engine, case):  # noqa
     assert _lg_rows(app_engine, case) == 0
 
 
+def test_a_crash_after_execution_does_not_escalate_or_prune(app_engine, case, hq, monkeypatch):  # noqa: F811
+    pid, run_id = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+
+    def boom(*a, **k):
+        raise RuntimeError("verify crashed")
+
+    monkeypatch.setattr(lifecycle, "verify_executed", boom)
+    out = agent_runner.after_decision(app_engine, case["tid"], case["case_id"], pid, True)
+    assert out["outcome"] == "processing" and not out["paused"]
+    st = _state(app_engine, case, pid, run_id)
+    assert st["execution"] is not None  # the money step happened
+    assert st["status"] == "executing"  # left for reconcile/verify, not escalated
+    assert "case.escalated" not in st["events"]
+    assert _lg_rows(app_engine, case) > 0  # thread kept
+
+
+def test_verifying_never_overwrites_a_case_a_person_already_closed(app_engine, case, hq):  # noqa: F811
+    pid, _ = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+    assert lifecycle.execute_approved(app_engine, case["tid"], pid, NOW) == "executed"
+    with tenant_session(case["tid"], app_engine) as s:
+        s.get(Case, case["case_id"]).status = "closed"  # a person closed it meanwhile
+    assert lifecycle.verify_executed(app_engine, case["tid"], pid) == "resolved"
+    st = _state(app_engine, case, pid)
+    assert st["verifications"] == ["verified"]  # the verdict is recorded
+    assert st["status"] == "closed"  # but the case is left as the person set it
+
+
+def test_a_decision_that_lands_before_paused_is_recorded_completes_the_run(
+    app_engine,
+    case,
+    hq,
+    monkeypatch,  # noqa: F811
+):
+    real = graph._invoke
+
+    def racing(deps, saver, tid, cid, payload):
+        result = real(deps, saver, tid, cid, payload)
+        _decide(app_engine, case, hq, uuid.UUID(result[0]["proposal_id"]), "approved")
+        return result  # the first pass is about to record 'paused'
+
+    monkeypatch.setattr(graph, "_invoke", racing)
+    clf = FakeLLM({"Classification": [_classify()]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case)]})
+    out = graph.run_case(_deps(app_engine, clf, res), case["tid"], case["case_id"],
+                         "One item was missing.", FakeBudget([clf, res]))  # fmt: skip
+    pid, run_id = uuid.UUID(out["proposal_id"]), uuid.UUID(out["run_id"])
+    assert not out["paused"]
+    assert _state(app_engine, case, pid, run_id)["run"] == "completed"
+    assert _lg_rows(app_engine, case) == 0
+    monkeypatch.setattr(graph, "_invoke", real)
+    done = agent_runner.after_decision(app_engine, case["tid"], case["case_id"], pid, True)
+    assert done["outcome"] == "resolved" and len(_ops(case)) == 1  # the code path ran it once
+
+
 def test_no_api_route_exposes_checkpoint_data(monkeypatch):
     from app.main import create_app
 

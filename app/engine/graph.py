@@ -40,7 +40,15 @@ from app.agents.schemas import Classification, ResolutionDraft
 from app.core import audit, events
 from app.core.business_time import business_date
 from app.core.db import tenant_session
-from app.core.models import ActionProposal, Approval, Case, Ticket, TicketMessage, WorkflowRun
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Execution,
+    Ticket,
+    TicketMessage,
+    WorkflowRun,
+)
 from app.core.settings_resolver import tenant_pack
 from app.engine import lifecycle
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
@@ -528,12 +536,46 @@ def _guarded(deps: Deps, base: CaseState, work) -> tuple[dict, bool]:
         kind = "LLM" if isinstance(exc, LLMError) else "internal error"
         if not isinstance(exc, LLMError):
             log.exception("agent run %s failed", base.get("run_id"))
+        if _has_execution(deps, base):
+            # Money may be in flight: reconcile/verify own the case from here (it stays
+            # 'executing'); escalating would hide a refund that may still land.
+            return {**base, "outcome": "processing", "keep_checkpoint": True,
+                    "reason": f"{kind} after execution: {type(exc).__name__}"}, False  # fmt: skip
         final = {**base, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
         try:
             _finish(deps, final, "escalated", final["reason"])
         except Exception:
             log.exception("could not escalate case %s", base.get("case_id"))
         return final, False
+
+
+def _has_execution(deps: Deps, state: dict) -> bool:
+    """Did an execution row already exist for one of this case's proposals?"""
+    try:
+        with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+            return s.scalar(
+                select(Execution.id)
+                .join(ActionProposal, ActionProposal.id == Execution.proposal_id)
+                .where(ActionProposal.case_id == uuid.UUID(state["case_id"]))
+                .limit(1)
+            ) is not None  # fmt: skip
+    except Exception:
+        log.exception("could not look for executions of case %s", state.get("case_id"))
+        return False
+
+
+def _still_paused(deps: Deps, tenant_id, final: dict, paused: bool) -> bool:
+    """A graph paused at approve whose proposal already has a decision (it landed while the
+    first pass was still running) must not stay 'paused' forever: nobody would resume it, and
+    the decision task's code path already ran or will run (execute is idempotent)."""
+    proposal_id = final.get("proposal_id")
+    if not paused or not proposal_id:
+        return paused
+    with tenant_session(tenant_id, deps.engine) as s:
+        decided = s.scalar(
+            select(Approval.id).where(Approval.proposal_id == uuid.UUID(proposal_id))
+        )
+    return decided is None
 
 
 def _record(deps: Deps, tenant_id, run_id: uuid.UUID, final: dict, paused: bool, budget) -> dict:
@@ -604,8 +646,9 @@ def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str,
             return _invoke(deps, saver, tenant_id, case_id, state)
 
     final, paused = _guarded(deps, state, work)
+    paused = _still_paused(deps, tenant_id, final, paused)
     snapshot = _record(deps, tenant_id, run_id, final, paused, budget)
-    if not paused:
+    if not paused and not final.get("keep_checkpoint"):
         _prune(deps, tenant_id, case_id)
     return {
         **_returned(deps, str(run_id)),
@@ -667,8 +710,9 @@ def resume_case(
             escalate_now(deps.engine, tenant_id, case_id, final["reason"])
         except Exception:
             log.exception("could not escalate case %s", case_id)
+    paused = _still_paused(deps, tenant_id, final, paused)
     snapshot_llm = _record(deps, tenant_id, run_id, final, paused, budget)
-    if not paused:
+    if not paused and not final.get("keep_checkpoint"):
         _prune(deps, tenant_id, case_id)
     return {
         **_returned(deps, str(run_id)),
