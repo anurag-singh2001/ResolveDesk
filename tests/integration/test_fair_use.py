@@ -152,7 +152,8 @@ def test_below_the_threshold_a_voucher_is_still_auto_approved(api, app_engine, w
     opened = _open(api, w)
     assert opened["action"] == "free_item_voucher"
     status, approval = _status_and_approval(app_engine, w, opened["id"], opened["proposal_id"])
-    assert (status, approval) == ("executing", ("approved", "auto"))
+    # the voucher is issued right after approval (E4.6): executing, then resolved once confirmed
+    assert status in ("executing", "resolved") and approval == ("approved", "auto")
 
 
 def test_at_the_threshold_a_person_decides_and_sees_the_count(api, app_engine, world):
@@ -243,4 +244,5 @@ def test_agent_path_applies_the_same_rule(app_engine, world, at_threshold):
     if at_threshold:
         assert (status, approval) == ("awaiting_approval", None)
     else:
-        assert (status, approval) == ("executing", ("approved", "auto"))
+        # the voucher is issued right after approval (E4.6): executing, then resolved once confirmed
+        assert status in ("executing", "resolved") and approval == ("approved", "auto")
