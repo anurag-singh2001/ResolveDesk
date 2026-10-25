@@ -407,6 +407,8 @@ def run_case(
         kind = "LLM" if isinstance(exc, LLMError) else "internal error"
         if not isinstance(exc, LLMError):
             log.exception("agent run %s failed", run_id)
+        else:  # provider names and error classes only, never customer text
+            log.warning("agent run %s: %s: %s", run_id, type(exc).__name__, str(exc)[:200])
         final = {**state, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
         try:
             _finish(deps, final, "escalated", final["reason"])
