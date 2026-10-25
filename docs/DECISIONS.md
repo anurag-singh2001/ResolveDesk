@@ -167,3 +167,8 @@ Format:
 - Decision: the Streamlit UI (`ui/`) calls the API through a small httpx client and never touches the DB; httpx moves from dev to runtime dependencies. Tenant YAML is read only for the dev login picker.
 - Why: the UI exercises the same auth, scope and RLS checks a real client would, and holds no business logic to drift from the engine.
 - Alternative rejected: importing engine/DB code into Streamlit (faster to write, but bypasses the API's access checks).
+
+## 2026-10-25 · An approved refund the executor refuses is recorded as a failed execution
+- Decision: when `execute_refund` refuses an approved proposal for a reason re-running won't fix (`not_eligible`, e.g. another approved refund used the balance first, or `no_captured_payment`), it writes an `executions` row with status `failed`, error `refused: <reason>`, the stable key, and no ledger row (nothing held, nothing sent), plus a `refund.refused` audit event and a `refund.failed` domain event. If another worker already created the execution, theirs stands. Found by the E4.3 chaos suite.
+- Why: before, the refusal was only a log line: no audit trail, the proposal left the approval queue, and the customer was told "being processed" until the approval expired (hard rule 7). Now the case shows "escalated" at once and staff can see why.
+- Alternative rejected: leave it unrecorded and let a sweeper retry it later (the balance could free up if the other refund fails, but acting on a stale decision is a new decision a human should make: re-propose instead).

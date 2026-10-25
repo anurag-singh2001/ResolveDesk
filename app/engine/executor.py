@@ -106,7 +106,12 @@ def execute_refund(
     unavailable_retries: int = 2,
 ) -> RefundResult:
     now = now or datetime.now(UTC)
-    job = _reserve(engine, ctx, proposal_id, now)
+    try:
+        job = _reserve(engine, ctx, proposal_id, now)
+    except ExecutionRefused as exc:
+        if exc.reason.startswith(FINAL_REFUSALS):
+            _record_refusal(engine, ctx, proposal_id, exc.reason)
+        raise
     if isinstance(job, RefundResult):  # already finished earlier
         return job
     connector = connector_for(job.settings, "payment")
@@ -166,6 +171,60 @@ def _reserve(engine, ctx, proposal_id, now) -> "_Job | RefundResult":
         # Another worker reserved this proposal first (the order lock should prevent it):
         # resume theirs instead of creating a second one.
         return _reserve_once(engine, ctx, proposal_id, now)
+
+
+# Refusals of a usable approval that re-running won't fix (the order can't take the refund).
+# Raised before anything is reserved or sent, so nothing is held and no key reached the provider.
+FINAL_REFUSALS = ("not_eligible", "no_captured_payment")
+
+
+def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
+    """An approved refund the executor refuses must not vanish into a log line: record a
+    `failed` execution (never sent; no ledger row, so nothing is held) so the customer is told
+    it needs the team and staff see why. If another worker created the execution first (it
+    reserved, or recorded the same refusal), theirs stands."""
+    with tenant_session(ctx.tenant_id, engine) as s:
+        approval = s.scalar(select(Approval).where(Approval.proposal_id == proposal_id))
+        if approval is None or approval.decision != "approved":
+            return
+        nested = s.begin_nested()
+        try:
+            s.add(
+                Execution(
+                    tenant_id=ctx.tenant_id,
+                    proposal_id=proposal_id,
+                    approval_id=approval.id,
+                    idempotency_key=refund_key(proposal_id),
+                    status="failed",
+                    error=f"refused: {reason}",
+                )
+            )
+            s.flush()
+        except IntegrityError as exc:
+            nested.rollback()
+            constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+            if constraint in RESERVE_RACE_CONSTRAINTS:
+                return
+            raise
+        nested.commit()
+        audit.record(
+            s,
+            ctx.tenant_id,
+            actor_type="system",
+            actor_id=None,
+            event="refund.refused",
+            entity_type="proposal",
+            entity_id=proposal_id,
+            payload={"reason": reason, "sent": False},
+        )
+        s.add(
+            DomainEvent(
+                tenant_id=ctx.tenant_id,
+                event="refund.failed",
+                entity_id=proposal_id,
+                payload={"idempotency_key": refund_key(proposal_id), "sent": False},
+            )
+        )
 
 
 def _current(engine, ctx, proposal_id) -> RefundResult:

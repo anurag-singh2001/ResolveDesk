@@ -90,6 +90,7 @@ class Order:
     cap_paise: int
     line_id: uuid.UUID
     original_fulfilled: int
+    original_customer: uuid.UUID
     case_id: uuid.UUID | None = None
     proposal_ids: list[uuid.UUID] = field(default_factory=list)
 
@@ -136,11 +137,19 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
             .where(Case.transaction_id == Transaction.id, Case.status.in_(OPEN_STATUSES))
             .exists()
         )
+        # The demo customers' own orders first; a small seeded history may not have enough,
+        # so other customers' orders are lent to them for the run (restored afterwards).
         candidates = s.scalars(
             select(Transaction)
-            .where(Transaction.customer_id.in_(owner_of), ~has_open_case)
-            .order_by(Transaction.placed_at.desc(), Transaction.id)
+            .where(~has_open_case)
+            .order_by(
+                Transaction.customer_id.in_(owner_of).desc(),
+                Transaction.placed_at.desc(),
+                Transaction.id,
+            )
+            .limit(CASES * 3)
         ).all()
+        demo_ids = list(owner_of)
         for t in candidates:
             line = s.scalars(
                 select(LineItem)
@@ -155,11 +164,13 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
                 Order(
                     id=t.id,
                     location_id=t.location_id,
-                    owner_email=owner_of[t.customer_id],
+                    owner_email=owner_of.get(t.customer_id)
+                    or owner_of[demo_ids[len(orders) % len(demo_ids)]],
                     refundable_paise=facts.refundable_paise,
                     cap_paise=percent_of(t.total_paise, facts.settings["refund_max_percent"]),
                     line_id=line.id,
                     original_fulfilled=line.quantity_fulfilled,
+                    original_customer=t.customer_id,
                 )
             )
             # One unit of the priciest line missing: the pack's refund_missing remedy applies.
@@ -170,7 +181,16 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
             )
             if len(orders) == CASES:
                 break
-    assert len(orders) == CASES, "seeded history has too few demo-customer orders"
+    assert len(orders) == CASES, "seeded history has too few orders"
+    owner_id = {email: cid for cid, email in owner_of.items()}
+    lent = [o for o in orders if o.original_customer not in owner_of]
+    with tenant_session(tid, maint_engine) as s:
+        for o in lent:
+            s.execute(
+                update(Transaction)
+                .where(Transaction.id == o.id)
+                .values(customer_id=owner_id[o.owner_email])
+            )
     headers = {e: login(api, cfg.slug, e) for e in customers + staff}
     other_name = next(name for name in seeded_history if name != tenant.name)
     other_cfg = seeded_history[other_name]
@@ -203,6 +223,12 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
             )
         )
         s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id.in_(order_ids)))
+        for o in lent:
+            s.execute(
+                update(Transaction)
+                .where(Transaction.id == o.id)
+                .values(customer_id=o.original_customer)
+            )
 
 
 class Observer:
@@ -496,6 +522,10 @@ def _assert_invariants(api, app_engine, w: World, obs: Observer, groups):
         }
         s.expunge_all()  # keep the loaded values readable after the commit
     approved = {pid for pid, a in approvals.items() if a.decision == "approved"}
+
+    # The chaos actually bit: timeouts left refunds unknown, and some keys were re-sent.
+    assert any("unknown" in history for history in obs.exec_seen.values())
+    assert any(op.attempts > 1 for op in ops)
 
     # One decision per proposal, whatever raced.
     assert approval_rows == len(approvals)
