@@ -13,6 +13,7 @@ from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer
 from app.core.tenancy import TenantContext
 from app.engine.agent_runner import run_agents
 from app.engine.case_status import case_status
+from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, open_case
 from app.engine.dispatch import executable
 
@@ -29,19 +30,24 @@ class CaseIn(BaseModel):
 class CaseOut(BaseModel):
     id: uuid.UUID
     transaction_id: uuid.UUID | None
+    order_ref: str | None
     category: str | None
     stage: str
     message: str
     action: str | None = None
     amount_paise: int | None = None
     proposal_id: str | None = None
+    created_at: datetime
 
 
 def _out(db: Session, case: Case) -> CaseOut:
     st = case_status(db, case)
+    order = db.get(Transaction, case.transaction_id) if case.transaction_id else None
     return CaseOut(
         id=case.id,
         transaction_id=case.transaction_id,
+        order_ref=order.external_ref if order else None,
+        created_at=case.opened_at,
         category=case.category,
         stage=st.stage,
         message=st.message,
@@ -137,6 +143,27 @@ def get_case(
     db: Session = Depends(tenant_db),
 ) -> CaseOut:
     return _out(db, visible_case(db, ctx, case_id))
+
+
+class TimelineStepOut(BaseModel):
+    at: datetime
+    stage: str
+    title: str
+    text: str
+
+
+@router.get("/cases/{case_id}/timeline")
+def get_case_timeline(
+    case_id: uuid.UUID,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> list[TimelineStepOut]:
+    """Customer-safe steps, oldest first; same visibility as GET /cases/{id}."""
+    case = visible_case(db, ctx, case_id)
+    return [
+        TimelineStepOut(at=s.at, stage=s.stage, title=s.title, text=s.text)
+        for s in case_timeline(db, case)
+    ]
 
 
 class EventOut(BaseModel):

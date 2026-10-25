@@ -4,7 +4,7 @@ Multi-tenant AI support (+ growth, stretch) platform. Tenants: `spice_route` (cl
 Full spec: @docs/PROJECT.md. Read only the sections relevant to the current task.
 
 ## Stack
-Python 3.12, FastAPI, Pydantic v2, LangGraph, PostgreSQL 16 + pgvector on Neon (no Docker), SQLAlchemy 2, Alembic, pytest, Streamlit, ruff, uv.
+Python 3.12, FastAPI, Pydantic v2, LangGraph, PostgreSQL 16 + pgvector on Neon (no Docker), SQLAlchemy 2, Alembic, pytest, React + TypeScript + Tailwind (Vite, in `web/`), Streamlit (debug UI), ruff, uv.
 DB roles: runtime/tests use `resolvedesk_app` (non-owner, NOBYPASSRLS); migrations use the owner via `MIGRATION_DATABASE_URL` (direct endpoint). Set tenant with `set_config('app.tenant_id', x, true)` (transaction-local; pooled endpoint is PgBouncer).
 LLMs via provider factory in `app/llm/`: Gemini Flash (main), Groq (classifier + fallback), Ollama (offline). Local embeddings (bge-small, 384 dims).
 
@@ -15,7 +15,7 @@ LLMs via provider factory in `app/llm/`: Gemini Flash (main), Groq (classifier +
 - `make test` · `make test-tenant T=<slug>` · `make test-isolation` · `make test-chaos`
 - `make eval` — scenario evals, per-tenant report
 - `make lint` — ruff
-- `make ui` — Streamlit
+- `make web` — React web app (port 5173) · `make web-test` · `make ui` — Streamlit debug UI
 
 ## Map
 app/core (tenancy, auth, money, audit, events, settings_resolver) · app/engine (loop, proposals, approvals, executor, verifier) · app/modules/{support,growth} · app/actions · app/connectors · app/agents · app/rag · app/llm · app/api
