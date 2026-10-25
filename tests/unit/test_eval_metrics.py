@@ -75,3 +75,10 @@ def test_cost_is_integer_paise():
     cost = cost_paise([_result(sc)], "openai/gpt-oss-120b")
     assert isinstance(cost, int) and cost == 1_260  # 1M input tokens at the assumed price
     assert cost_paise([_result(sc)], "unknown-model") == 0
+
+
+def test_an_auto_approved_proposal_that_ran_on_still_counts_as_proposed():
+    for ran_on in ("resolved", "processing"):
+        assert score(_result(_scenario(), outcome=ran_on)).passed
+    esc = _scenario(outcome="escalated", action=None, amount=None)
+    assert not score(_result(esc, outcome="resolved", action=None, amount=None)).outcome_ok

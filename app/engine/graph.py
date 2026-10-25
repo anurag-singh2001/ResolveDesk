@@ -712,7 +712,7 @@ def run_case(
     final, paused = _guarded(deps, state, work)
     paused = _still_paused(deps, tenant_id, final, paused)
     snapshot = _record(deps, tenant_id, run_id, final, paused, budget)
-    _execute_if_graph_stopped_early(deps, tenant_id, final)
+    _execute_if_graph_stopped_early(deps, tenant_id, case_id, final)
     if not paused and not final.get("keep_checkpoint"):
         _prune(deps, tenant_id, case_id)
     return {
@@ -724,7 +724,9 @@ def run_case(
     }
 
 
-def _execute_if_graph_stopped_early(deps: Deps, tenant_id: uuid.UUID, final: dict) -> None:
+def _execute_if_graph_stopped_early(
+    deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, final: dict
+) -> None:
     """The single-call baseline graph ends at `propose` (it has no approve/execute nodes). If
     the tenant's rule auto-approved its proposal, run it through the same single execution
     path the agent graph's execute node uses, now that the propose step has committed (rule
@@ -733,7 +735,8 @@ def _execute_if_graph_stopped_early(deps: Deps, tenant_id: uuid.UUID, final: dic
     if final.get("outcome") != "proposed" or not proposal_id:
         return
     try:
-        if _decision(deps, {"tenant_id": str(tenant_id), "proposal_id": proposal_id}) == "approved":
+        ids = {"tenant_id": str(tenant_id), "case_id": str(case_id), "proposal_id": proposal_id}
+        if _decision(deps, ids) == "approved":
             run_approved(deps.engine, tenant_id, uuid.UUID(proposal_id))
     except Exception:
         log.exception("could not execute proposal %s", proposal_id)

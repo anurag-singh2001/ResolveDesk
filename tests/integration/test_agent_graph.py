@@ -544,3 +544,32 @@ def test_a_late_run_adds_nothing_to_a_case_a_person_took_over(app_engine, case, 
     assert _run(app_engine, case, clf, res)["outcome"] == "skipped"
     status, proposals = _case(app_engine, case)
     assert status == "escalated" and proposals == []
+
+
+def test_baseline_auto_approved_voucher_is_issued_after_the_run(app_engine, case):
+    """The baseline graph ends at propose; an auto-approved voucher still executes, once."""
+    from mocks.registry import get_mock, merchant_id_for, reset_mocks
+
+    reset_mocks()
+    category, ceiling = _voucher_ceiling(app_engine, case)
+
+    def reply(messages):
+        return BaselineDecision(
+            category=category,
+            confidence=0.9,
+            action="free_item_voucher",
+            params={"transaction_id": str(case["order_id"]),
+                    "value_paise": ceiling.params["value_paise"], "reason": "wrong order"},
+            reason="voucher per policy",
+            citations=REF.findall(messages[1].content)[:1],
+        )  # fmt: skip
+
+    try:
+        out = _run_baseline(app_engine, case, FakeLLM({"BaselineDecision": [reply]}))
+        assert out["outcome"] == "proposed", out
+        with tenant_session(case["tid"], app_engine) as s:
+            assert s.get(Case, case["case_id"]).status == "resolved"
+        (op,) = get_mock("vouchers").operations(merchant_id_for(case["tid"]))
+        assert op.request.value_paise == ceiling.params["value_paise"]
+    finally:
+        reset_mocks()

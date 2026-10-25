@@ -34,10 +34,17 @@ class Score:
     passed: bool
 
 
+RAN_ON_AFTER_PROPOSAL = ("resolved", "processing")
+
+
 def score(r: Result) -> Score:
     e = r.scenario.expect
     classified = r.category == e.category
-    outcome_ok = r.outcome == e.outcome
+    # A proposal the tenant's rule auto-approved runs on to execution in the same run; the
+    # scenario judges the proposal, so executed or processing still counts as proposed.
+    outcome_ok = r.outcome == e.outcome or (
+        e.outcome == "proposed" and r.outcome in RAN_ON_AFTER_PROPOSAL
+    )
     action_ok = r.action == e.action
     exact = within = None
     over = False
