@@ -67,6 +67,8 @@ def after_decision(
     second pass a no-op."""
     deps = graph.Deps(engine=engine, classifier=None, resolver=None, embedder=None)
     out = graph.resume_case(deps, tenant_id, case_id, "approval", {"proposal_id": str(proposal_id)})
-    if out.get("reason") == graph.NO_PAUSED_WORKFLOW and approved:
+    # Any skip (no paused thread, or the first pass hasn't marked its run paused yet) must
+    # not strand an approved refund: the code path is idempotent, so run it.
+    if out.get("outcome") == "skipped" and approved:
         return {"outcome": lifecycle.execute_and_verify(engine, tenant_id, proposal_id)}
     return out

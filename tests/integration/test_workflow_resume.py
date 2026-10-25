@@ -76,7 +76,7 @@ def _paused_refund(app_engine, case):  # noqa: F811
     res = FakeLLM({"ResolutionDraft": [_refund(case)]})
     out = graph.run_case(_deps(app_engine, clf, res), case["tid"], case["case_id"],
                          "One item was missing from my order.", FakeBudget([clf, res]))  # fmt: skip
-    assert out["outcome"] == "proposed" and out["paused"], out
+    assert out["outcome"] == "proposed" and out["paused"], out.get("reason")
     return uuid.UUID(out["proposal_id"]), uuid.UUID(out["run_id"])
 
 
@@ -293,3 +293,45 @@ def test_a_customer_reply_resumes_a_case_waiting_for_info(
     again = graph.resume_case(_deps(app_engine, clf, res), case["tid"], case["case_id"], "info",
                               {"message": "again"})  # fmt: skip
     assert again["outcome"] == "skipped"
+
+
+def test_a_decision_before_the_run_is_marked_paused_still_executes(app_engine, case, hq):
+    """Race: the decision lands while the first pass hasn't recorded 'paused' yet. The resume
+    is refused (run still 'running'), so the idempotent code path runs it instead."""
+    pid, run_id = _paused_refund(app_engine, case)
+    with tenant_session(case["tid"], app_engine) as s:
+        s.get(WorkflowRun, run_id).status = "running"
+    _decide(app_engine, case, hq, pid, "approved")
+    out = agent_runner.after_decision(app_engine, case["tid"], case["case_id"], pid, True)
+    assert out["outcome"] == "resolved"
+    assert _state(app_engine, case, pid)["stage"] == "confirmed" and len(_ops(case)) == 1
+
+
+def test_another_tenants_id_cannot_resume_the_thread(app_engine, case, hq):
+    pid, _ = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "approved")
+    other = uuid.uuid4()  # not this case's tenant: RLS hides the case, the thread id differs
+    out = graph.resume_case(_deps(app_engine), other, case["case_id"], "approval", {})
+    assert out["outcome"] == "skipped" and _ops(case) == []
+    assert _state(app_engine, case, pid)["execution"] is None
+
+
+def test_a_failed_subscriber_leaves_the_event_for_redelivery(app_engine, case, monkeypatch):
+    from app.core import events
+
+    calls = []
+
+    def flaky(session, event):
+        calls.append(event.id)
+        if len(calls) == 1:
+            raise RuntimeError("subscriber down")
+
+    monkeypatch.setitem(events._SUBSCRIBERS, "test.retry", [flaky])
+    with tenant_session(case["tid"], app_engine) as s:
+        event_id = events.emit(s, case["tid"], "test.retry", case["case_id"]).id
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(DomainEvent, event_id).published_at is None  # the state change committed
+    assert events.publish_pending(app_engine, case["tid"]) >= 1
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(DomainEvent, event_id).published_at is not None
+    assert calls.count(event_id) == 2

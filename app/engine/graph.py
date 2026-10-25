@@ -549,23 +549,34 @@ def resume_case(
     at a `kind` interrupt (callers may then fall back to the code path)."""
     if kind not in RESUME_KINDS:
         raise ValueError(f"unknown resume kind {kind!r}")
+    run_id = None
     try:
         with open_checkpointer(deps.engine) as saver:
             snapshot = build_graph(deps, saver).get_state(thread_config(tenant_id, case_id))
             values = dict(snapshot.values or {})
             if _pending(snapshot, kind) is None or values.get("tenant_id") != str(tenant_id):
                 return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
-            run_id = uuid.UUID(values["run_id"])
-            if not _claim_resume(deps.engine, tenant_id, case_id, run_id, kind):
+            claimed = uuid.UUID(values["run_id"])
+            if not _claim_resume(deps.engine, tenant_id, case_id, claimed, kind):
                 return {"outcome": "skipped", "reason": "workflow is busy or not waiting"}
+            run_id = claimed
             final, paused = _guarded(
                 deps,
                 values,
                 lambda: _invoke(deps, saver, tenant_id, case_id, Command(resume=value)),
             )
-    except Exception:  # the checkpointer could not be reached: nothing was resumed
+    except Exception as exc:
         log.exception("could not resume case %s", case_id)
-        return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+        if run_id is None:  # nothing was claimed or resumed
+            return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+        # Claimed, then failed (e.g. the connection dropped): a person takes over, so the
+        # case is never left in 'investigating' with the reply unread.
+        final, paused = {"outcome": "escalated", "reason": f"internal error: {type(exc).__name__}",
+                         "step_count": 0}, False  # fmt: skip
+        try:
+            escalate_now(deps.engine, tenant_id, case_id, final["reason"])
+        except Exception:
+            log.exception("could not escalate case %s", case_id)
     snapshot_llm = _record(deps, tenant_id, run_id, final, paused, budget)
     return {**final, "run_id": str(run_id), "llm": snapshot_llm, "paused": paused}
 

@@ -75,6 +75,8 @@ def execute_approved(
     except ExecutionRefused as exc:
         if exc.reason == "rejected":
             return "declined"
+        if exc.reason == "no_approval":  # ran before the decision committed: nothing to do
+            return "pending"
         log.info("refund %s not executed: %s", proposal_id, exc.reason)
         escalate(engine, tenant_id, case_id, f"execution refused: {exc.reason}")
         return "escalated"

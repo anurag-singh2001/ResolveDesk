@@ -47,6 +47,17 @@ def verify_refund(engine, ctx: TenantContext, proposal_id: uuid.UUID) -> VerifyR
     found = connector_for(snap.settings, "payment").find_refund(ctx, snap.key)  # no tx open
     status, detail = compare(snap.status, snap.reference, snap.amount_paise, found)
     with tenant_session(ctx.tenant_id, engine) as s:
+        # Serialize overlapping passes (decision task, reconcile, graph resume) on the
+        # execution row, then re-check: only the first records a final verdict.
+        s.scalar(select(Execution.id).where(Execution.id == snap.execution_id).with_for_update())
+        earlier = s.scalars(
+            select(Verification)
+            .where(Verification.execution_id == snap.execution_id)
+            .where(Verification.status.in_(FINAL))
+            .order_by(Verification.created_at.desc(), Verification.id)
+        ).first()
+        if earlier is not None:
+            return VerifyResult(earlier.status, snap.status, earlier.detail.get("reason", ""))
         s.add(
             Verification(
                 tenant_id=ctx.tenant_id,

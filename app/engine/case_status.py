@@ -108,6 +108,8 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
     if stuck:  # approved, but not moving: say so instead of "being processed"
         return CaseStatus("escalated", NEEDS_CHECK, **common)
     if execution is not None and execution.status == "failed":
+        if verification != "verified":
+            return CaseStatus("escalated", NEEDS_CHECK, **common)
         return CaseStatus(
             "escalated",
             "We could not complete the refund automatically. "
