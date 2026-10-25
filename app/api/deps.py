@@ -1,6 +1,7 @@
 """FastAPI dependencies: the tenant comes from the verified token, never from the request."""
 
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -19,6 +20,11 @@ _UNAUTHORIZED = HTTPException(
 
 def get_db_engine() -> Engine:
     return get_engine()
+
+
+def get_clock() -> datetime:
+    """Now, as a dependency so tests can move time (e.g. past the login lockout window)."""
+    return datetime.now(UTC)
 
 
 def _request_session(

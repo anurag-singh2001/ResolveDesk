@@ -64,9 +64,20 @@ class Settings(BaseSettings):
     jwt_ttl_minutes: int = 60
     jwt_issuer: str = "resolvedesk"
     jwt_audience: str = "resolvedesk-api"
-    # Demo login: every seeded user signs in with one password. Opt-in, never in prod.
+    # Demo accounts: seeded users get the demo password from their tenant folder, and
+    # GET /auth/demo-accounts lists them. Opt-in, never in prod. Login itself is always bcrypt.
     demo_auth: bool = False
-    demo_password: str = "demo"
+    # bcrypt work factor (2**rounds). Tests lower it; stored hashes keep their own cost.
+    bcrypt_rounds: int = Field(default=12, ge=4, le=16)
+    # Lockout: this many failed logins for one tenant+email within the window -> 429.
+    login_max_failures: int = Field(default=5, ge=1)
+    login_window_minutes: int = Field(default=15, ge=1)
+    # Browser origins allowed by CORS, comma-separated (the React app's dev server by default).
+    web_origins: str = "http://localhost:5173"
+
+    @property
+    def web_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.web_origins.split(",") if o.strip()]
 
     @model_validator(mode="after")
     def _no_dev_shortcuts_in_prod(self) -> "Settings":

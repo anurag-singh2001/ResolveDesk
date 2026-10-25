@@ -11,10 +11,8 @@ def test_categories_are_the_callers_pack_for_every_role(api, seeded, tenant):
     for user in cfg.users:
         resp = api.get("/meta/categories", headers=login(api, cfg.slug, user.email))
         assert resp.status_code == 200
-        assert resp.json() == {
-            "categories": expected,
-            "free_text": get_settings().engine_mode == "agents",
-        }
+        free_text = get_settings().engine_mode == "agents"
+        assert resp.json() == {"categories": expected, "free_text": free_text}
 
 
 @pytest.mark.parametrize("headers", [{}, {"Authorization": "Bearer not-a-token"}])

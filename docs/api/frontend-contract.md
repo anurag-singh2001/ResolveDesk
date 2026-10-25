@@ -5,14 +5,14 @@ frontend only displays what the API returns. Money is integer paise in JSON; the
 it as ₹ with 2 decimals. Times are ISO 8601 UTC; the frontend shows them in the browser's local
 time. Tokens are bearer JWTs, kept in memory and `sessionStorage` (never `localStorage`).
 
-`NEW` = to be added by the backend story E5.4; everything else exists today.
+`NEW` = added by the backend story E5.4 (implemented); everything else existed before.
 
 ## Auth
 | Method | Path | Who | Body / query | Response |
 | --- | --- | --- | --- | --- |
 | GET | `/auth/businesses` NEW | public | – | `[{slug, name, vertical}]` |
-| GET | `/auth/demo-accounts` NEW | public, **dev only** (404 when `APP_ENV=prod`) | – | `[{tenant, email, name, role, password}]` |
-| POST | `/auth/login` | public | `{tenant, email, password}` | `{access_token, token_type, expires_at}` (`expires_at` NEW). 401 `invalid credentials` (same for unknown user and wrong password). 429 NEW after 5 failures for one tenant+email in 15 min |
+| GET | `/auth/demo-accounts` NEW | public, **dev only** (404 when `APP_ENV=prod` or `DEMO_AUTH` is off) | – | `[{tenant, email, name, role, password}]` |
+| POST | `/auth/login` | public | `{tenant, email, password}` | `{access_token, token_type, expires_at}` (`expires_at` NEW). 401 `invalid credentials` (same for unknown user and wrong password). 429 NEW `too many failed logins, try again later` after 5 failures for one tenant+email in 15 min (even with the right password; unknown emails lock the same way). `expires_at` is ISO 8601 UTC |
 | GET | `/me` | any | – | `{user_id, name, email, role, location_ids, brand_ids, tenant: {slug, name, vertical}}` (`tenant` NEW) |
 
 Roles: `customer`, `location_manager`, `franchisee_owner`, `hq_owner`. 401 on any call → token is
@@ -29,10 +29,10 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 | POST | `/cases` | customer | `{transaction_id, category: slug or null, message}` | case (201). `category: null` only when `free_text` |
 | GET | `/cases?limit=` | any | – | `[case]` newest first |
 | GET | `/cases/{id}` | any | – | case. 404 if not visible |
-| GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps (received, investigating, question asked, proposed, approved/declined, refund confirmed, escalated). Text comes from code templates, never from a model |
+| GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
 | GET | `/cases/{id}/events` | staff | – | raw audit events (redacted) |
 
-`case` = `{id, transaction_id, order_ref, category, stage, message, action, amount_paise, proposal_id, created_at}` (`order_ref`, `created_at` NEW).
+`case` = `{id, transaction_id, order_ref, category, stage, message, action, amount_paise, proposal_id, created_at}` (`order_ref`, `created_at` NEW; `order_ref` is the order's `external_ref` or null; `created_at` is when the case was opened).
 
 Stages (show as a stepper; the happy path is received → investigating → awaiting_approval →
 processing → confirmed): `received`, `investigating`, `awaiting_info`, `awaiting_approval`,
@@ -43,7 +43,7 @@ customer for the current stage.
 | GET | `/approvals?limit=` | staff | – | `[pending]` |
 | POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |
 
-`pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false.
+`pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.
 
 ## CORS
 NEW: the API allows the origins in `WEB_ORIGINS` (default `http://localhost:5173`), methods GET/POST,

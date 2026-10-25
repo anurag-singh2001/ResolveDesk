@@ -1,4 +1,5 @@
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import (
     routes_admin,
@@ -14,6 +15,14 @@ from app.config import get_settings
 
 def create_app() -> FastAPI:
     app = FastAPI(title="ResolveDesk")
+    # Bearer tokens, not cookies: no credentials mode, only the listed origins (WEB_ORIGINS).
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=get_settings().web_origin_list,
+        allow_methods=["GET", "POST"],
+        allow_headers=["Authorization", "Content-Type"],
+        allow_credentials=False,
+    )
 
     @app.get("/health")
     def health() -> dict[str, str]:
