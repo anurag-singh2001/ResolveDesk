@@ -11,6 +11,7 @@ import app.api.routes_approvals as routes_approvals
 import app.api.routes_cases as routes_cases
 from app.core.db import tenant_session
 from app.core.models import (
+    Approval,
     Case,
     Customer,
     Execution,
@@ -225,7 +226,7 @@ def test_a_refund_the_provider_answered_but_nobody_verified_is_verified_by_the_s
     assert len(_ops("payment", w, executor.refund_key(pid))) == 1
 
 
-def test_an_expired_approval_is_not_executed_by_the_sweeper(app_engine, world):
+def test_an_expired_approval_is_not_executed_but_escalates_its_case(app_engine, world):
     w = world
     then = datetime.now(UTC) - timedelta(days=2)
     with tenant_session(w["tid"], app_engine) as s:
@@ -234,6 +235,7 @@ def test_an_expired_approval_is_not_executed_by_the_sweeper(app_engine, world):
                     opened_at=then)  # fmt: skip
         s.add(case)
         s.flush()
+        case_id = case.id
         pid = create_proposal(
             s,
             w["tid"],
@@ -243,8 +245,85 @@ def test_an_expired_approval_is_not_executed_by_the_sweeper(app_engine, world):
             params={"transaction_id": str(w["order_id"]), "value_paise": 100, "reason": "x"},
         ).id
         decide(s, w["hq_ctx"], pid, "approved", then)
-    assert str(pid) not in _sweep(app_engine, w).executed
+    assert str(pid) in _sweep(app_engine, w).executed  # looked at, and refused
     assert _ops("vouchers", w, voucher_key(pid)) == []
+    with tenant_session(w["tid"], app_engine) as s:
+        assert s.get(Case, case_id).status == "escalated"  # a person owns it now
+    assert str(pid) not in _sweep(app_engine, w).executed  # and it is not picked up again
+
+
+def _approved_proposal(app_engine, w, action, params, status="executing"):
+    now = datetime.now(UTC)
+    with tenant_session(w["tid"], app_engine) as s:
+        case = Case(id=uuid.uuid4(), tenant_id=w["tid"], customer_id=w["customer_id"],
+                    transaction_id=w["order_id"], status=status, channel="app",
+                    opened_at=now)  # fmt: skip
+        s.add(case)
+        s.flush()
+        case_id = case.id
+        pid = create_proposal(
+            s, w["tid"], case_id=case_id, action=action, reason="x",
+            params={"transaction_id": str(w["order_id"]), "reason": "x", **params},
+        ).id  # fmt: skip
+        decide(s, w["hq_ctx"], pid, "approved", now)
+    return case_id, pid
+
+
+def test_one_failing_proposal_does_not_stop_the_rest_of_the_sweep(app_engine, world, monkeypatch):
+    import app.engine.sweeper as sweeper
+
+    w = world
+    _, bad = _approved_proposal(app_engine, w, "refund", {"amount_paise": 100})
+    _, good = _approved_proposal(app_engine, w, "free_item_voucher", {"value_paise": 100})
+    stuck = _investigating_case(app_engine, w, RUN_TTL * 2)
+    real = sweeper.run_approved
+
+    def flaky(engine, tenant_id, proposal_id, action):
+        if proposal_id == bad:
+            raise RuntimeError("provider exploded")
+        return real(engine, tenant_id, proposal_id, action)
+
+    monkeypatch.setattr(sweeper, "run_approved", flaky)
+    called = []
+    monkeypatch.setattr(sweeper, "prune_finished", lambda *a: called.append("prune") or 0)
+    report = _sweep(app_engine, w, run_ttl=timedelta(seconds=1))
+    assert str(good) in report.executed and len(_ops("vouchers", w, voucher_key(good))) == 1
+    assert _ops("payment", w, executor.refund_key(bad)) == []
+    assert str(stuck) in report.escalated_cases and called == ["prune"]  # the rest still ran
+
+
+def test_a_refund_that_was_never_sent_gets_a_final_verdict_once(app_engine, world):
+    """Refused before sending: the provider has no record, which is the expected final state
+    (not "unknown" on every sweep forever)."""
+    from app.core.models import Verification
+
+    w = world
+    _, pid = _approved_proposal(app_engine, w, "refund", {"amount_paise": 100})
+    with tenant_session(w["tid"], app_engine) as s:
+        approval_id = s.scalar(select(Approval.id).where(Approval.proposal_id == pid))
+        s.add(Execution(tenant_id=w["tid"], proposal_id=pid, approval_id=approval_id,
+                        idempotency_key=executor.refund_key(pid), status="failed",
+                        error="refused: not_eligible: x"))  # fmt: skip
+    assert str(pid) in _sweep(app_engine, w).verified
+    assert str(pid) not in _sweep(app_engine, w).verified
+    with tenant_session(w["tid"], app_engine) as s:
+        verdicts = s.scalars(
+            select(Verification.status).join(Execution).where(Execution.proposal_id == pid)
+        ).all()
+    assert verdicts == ["verified"] and _ops("payment", w, executor.refund_key(pid)) == []
+
+
+def test_a_paused_run_whose_proposal_the_sweeper_finished_is_completed(app_engine, world):
+    w = world
+    case_id, pid = _approved_proposal(
+        app_engine, w, "free_item_voucher", {"value_paise": 100}, status="awaiting_approval"
+    )
+    with tenant_session(w["tid"], app_engine) as s:
+        s.add(WorkflowRun(tenant_id=w["tid"], case_id=case_id, status="paused"))
+    assert str(pid) in _sweep(app_engine, w).executed  # no checkpoint to resume: direct path
+    with tenant_session(w["tid"], app_engine) as s:
+        runs = s.scalars(select(WorkflowRun.status).where(WorkflowRun.case_id == case_id)).all()
+    assert runs == ["completed"]  # so it can be pruned, not left paused forever
 
 
 def _investigating_case(app_engine, w, run_age):

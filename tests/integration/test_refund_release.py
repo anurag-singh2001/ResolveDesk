@@ -169,3 +169,17 @@ def test_only_an_hq_owner_can_release_and_never_too_early(api, app_engine, world
     assert resp.status_code == 409 and resp.json()["detail"]["reason"] == "too_early"
     assert api.post(f"/approvals/{uuid.uuid4()}/release", headers=hq).status_code == 404
     assert [r.status for r in ledger(app_engine, w)] == ["pending_reconciliation"]
+
+
+@pytest.mark.parametrize("quarantined", [LIFETIME * 3], indirect=True, ids=["never_lands"])
+def test_a_released_refund_escalates_its_case(app_engine, quarantined):
+    from app.core.models import ActionProposal, Case
+
+    w, pid, clock = quarantined
+    clock.advance(LIFETIME + timedelta(seconds=1))
+    with tenant_session(w["tid"], app_engine) as s:
+        case_id = s.get(ActionProposal, pid).case_id
+        s.get(Case, case_id).status = "executing"  # the refund was in flight
+    assert release_refund(app_engine, w["hq"], pid, now=_ready(w)).outcome == "released"
+    with tenant_session(w["tid"], app_engine) as s:
+        assert s.get(Case, case_id).status == "escalated"

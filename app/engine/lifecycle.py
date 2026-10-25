@@ -22,7 +22,7 @@ from sqlalchemy.orm import Session
 
 from app.core import audit, events
 from app.core.db import tenant_session
-from app.core.models import ActionProposal, Approval, Case, Execution
+from app.core.models import ActionProposal, Approval, Case, DomainEvent, Execution
 from app.engine.approvals import auto_decide
 from app.engine.dispatch import EXECUTORS, system_context
 from app.engine.executor import ExecutionRefused
@@ -116,7 +116,15 @@ def verify_executed(engine: Engine, tenant_id: uuid.UUID, proposal_id: uuid.UUID
         return "processing"
     if status == "succeeded":
         with tenant_session(tenant_id, engine) as s:
-            if s.get(Case, case_id).status == "resolved":
+            case = s.scalar(select(Case).where(Case.id == case_id).with_for_update())
+            seen = s.scalar(
+                select(DomainEvent.id).where(
+                    DomainEvent.event == "case.verified",
+                    DomainEvent.entity_id == case_id,
+                    DomainEvent.payload["proposal_id"].as_string() == str(proposal_id),
+                )
+            )
+            if case.status == "resolved" and seen is None:  # only on the transition
                 events.emit(s, tenant_id, "case.verified", case_id,
                             {"proposal_id": str(proposal_id), "status": "confirmed"})  # fmt: skip
         return "resolved"

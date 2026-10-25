@@ -20,6 +20,9 @@ from app.core.tenancy import TenantContext
 from app.engine.eligibility import order_facts
 
 FINAL = ("verified", "mismatch")
+# Error prefixes of failed executions that never reached the provider (executor refusal,
+# operator release).
+NEVER_SENT = ("refused:", "released by operator")
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,7 @@ class _Snapshot:
     reference: str | None
     amount_paise: int
     settings: dict
+    never_sent: bool = False
 
 
 def verify_refund(engine, ctx: TenantContext, proposal_id: uuid.UUID) -> VerifyResult:
@@ -45,7 +49,9 @@ def verify_refund(engine, ctx: TenantContext, proposal_id: uuid.UUID) -> VerifyR
     if isinstance(snap, VerifyResult):
         return snap
     found = connector_for(snap.settings, "payment").find_refund(ctx, snap.key)  # no tx open
-    status, detail = compare(snap.status, snap.reference, snap.amount_paise, found)
+    status, detail = compare(
+        snap.status, snap.reference, snap.amount_paise, found, never_sent=snap.never_sent
+    )
     with tenant_session(ctx.tenant_id, engine) as s:
         # Serialize overlapping passes (decision task, reconcile, graph resume) on the
         # execution row, then re-check: only the first records a final verdict.
@@ -95,10 +101,19 @@ def verify_refund(engine, ctx: TenantContext, proposal_id: uuid.UUID) -> VerifyR
 
 
 def compare(
-    execution_status: str, reference: str | None, amount_paise: int, found: RefundOutcome | None
+    execution_status: str,
+    reference: str | None,
+    amount_paise: int,
+    found: RefundOutcome | None,
+    never_sent: bool = False,
 ) -> tuple[str, str]:
-    """(verified | mismatch | unknown, why). The provider is the source of truth."""
+    """(verified | mismatch | unknown, why). The provider is the source of truth.
+    `never_sent`: a failed execution recorded without any provider call (refused before
+    sending, or released by an operator after the provider's request lifetime): no provider
+    record is the expected, final state - not "unknown" forever."""
     if found is None:
+        if never_sent and execution_status == "failed":
+            return "verified", "never sent: provider has no record, as expected"
         if execution_status == "succeeded":
             return "mismatch", "provider has no record of this refund"
         return "unknown", "provider has no record yet"
@@ -141,4 +156,5 @@ def _snapshot(engine, ctx, proposal_id) -> "_Snapshot | VerifyResult":
             proposal.params["amount_paise"],  # the hashed, approved params
             # The same (brand/location-narrowed) settings the executor used to pick the connector.
             order_facts(s, uuid.UUID(proposal.params["transaction_id"]))[1].settings,
+            (execution.error or "").startswith(NEVER_SENT),
         )

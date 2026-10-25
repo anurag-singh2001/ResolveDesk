@@ -4,7 +4,7 @@ Distinct from `failed` (the provider declined): here the provider never reported
 and, after its request lifetime, can no longer apply the request (hard rule 7).
 
 Revision ID: 0014
-Revises: 0012 (the main session re-chains this after 0013 at merge)
+Revises: 0013
 Create Date: 2026-10-25
 """
 

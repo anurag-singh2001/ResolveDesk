@@ -30,6 +30,7 @@ from app.core import audit
 from app.core.db import tenant_session
 from app.core.models import ActionProposal, Approval, DomainEvent, Execution, RefundOperation
 from app.core.tenancy import TenantContext
+from app.engine import lifecycle
 from app.engine.approvals import check_usable
 from app.engine.eligibility import order_facts
 from app.engine.executor import TERMINAL, _persist
@@ -125,6 +126,11 @@ def release_refund(
                 payload={"idempotency_key": check.key},
             )
         )
+        case_id = s.get(ActionProposal, proposal_id).case_id
+    # The refund will not happen: a person owns the case (never overwrites a closed one).
+    lifecycle.escalate(
+        engine, ctx.tenant_id, case_id, "refund released by operator: provider has no record"
+    )
     return ReleaseResult("released", "released")
 
 

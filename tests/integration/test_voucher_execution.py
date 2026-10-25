@@ -218,3 +218,34 @@ def test_resume_after_expiry_sends_nothing_new(app_engine, flow):
     assert _vouchers(f) == []
     with tenant_session(f["tid"], app_engine) as s:
         assert s.scalar(select(Execution.status).where(Execution.proposal_id == pid)) == "unknown"
+
+
+def test_a_refused_voucher_is_a_failed_execution_and_escalates_the_case(
+    app_engine, flow, monkeypatch
+):
+    """Approved, but no longer eligible when executed (e.g. the fair-use count moved): never
+    sent, recorded as failed with a reason, the case goes to a person - and stays failed."""
+    from types import SimpleNamespace
+
+    from app.engine import lifecycle, voucher_executor
+
+    f = flow
+    case_id, pid = _staff_voucher(app_engine, f)
+    with tenant_session(f["tid"], app_engine) as s:
+        decide(s, f["hq_ctx"], pid, "approved", datetime.now(UTC))
+    real = voucher_executor.evaluate_proposal
+
+    def ineligible(*a, **k):
+        *head, _ = real(*a, **k)
+        return (*head, SimpleNamespace(ok=False, errors=["over the limit"], checks={}))
+
+    monkeypatch.setattr(voucher_executor, "evaluate_proposal", ineligible)
+    assert lifecycle.execute_approved(app_engine, f["tid"], pid) == "escalated"
+    monkeypatch.undo()
+    assert _vouchers(f) == []
+    with tenant_session(f["tid"], app_engine) as s:
+        execution = s.scalar(select(Execution).where(Execution.proposal_id == pid))
+        assert execution.status == "failed" and execution.error.startswith("refused:")
+        assert s.get(Case, case_id).status == "escalated"
+    again = execute_voucher(app_engine, f["hq_ctx"], pid)  # a retry or the sweeper
+    assert again.status == "failed" and _vouchers(f) == []

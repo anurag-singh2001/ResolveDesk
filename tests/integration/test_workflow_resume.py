@@ -529,6 +529,55 @@ def test_a_staff_approval_of_a_paused_case_executes_once_even_if_both_paths_fire
     assert st["verifications"] == ["verified"]
 
 
+def test_a_closed_case_survives_a_failed_resume_unchanged(app_engine, case, hq, monkeypatch):  # noqa: F811
+    """Staff rejected (case closed) and the resume then blew up: the failure handler must not
+    flip the closed case to escalated, nor add an audit row, event or customer message."""
+    pid, run_id = _paused_refund(app_engine, case)
+    _decide(app_engine, case, hq, pid, "rejected")
+    before = _state(app_engine, case, pid, run_id)
+    assert before["status"] == "closed"
+
+    def boom(*a, **k):
+        raise RuntimeError("connection dropped")
+
+    monkeypatch.setattr(graph, "_invoke", boom)
+    agent_runner.resume_after_decision(app_engine, case["tid"], case["case_id"], pid)
+    graph.escalate_now(app_engine, case["tid"], case["case_id"], "late escalation")
+    after = _state(app_engine, case, pid, run_id)
+    assert after["status"] == "closed" and "case.escalated" not in after["events"]
+    assert after["updates"] == before["updates"] and after["events"] == before["events"]
+
+
+def test_a_paused_voucher_resumes_through_execute_and_verify(app_engine, case, hq, monkeypatch):  # noqa: F811
+    """A voucher that waits for a person: the resume runs execute -> verify_executed; the case
+    is resolved after the provider confirms and `case.verified` is emitted once only."""
+    from app.core.models import DomainEvent
+    from tests.integration.test_agent_graph import _voucher, _voucher_ceiling
+
+    monkeypatch.setattr(lifecycle, "auto_decide", lambda *a, **k: None)  # never auto-approve
+    category, ceiling = _voucher_ceiling(app_engine, case)
+    clf = FakeLLM({"Classification": [_classify(category)]})
+    res = FakeLLM({"ResolutionDraft": [_voucher(case, ceiling.params["value_paise"])]})
+    out = graph.run_case(_deps(app_engine, clf, res), case["tid"], case["case_id"],
+                         "Wrong order.", FakeBudget([clf, res]))  # fmt: skip
+    assert out["outcome"] == "proposed" and out["paused"], out.get("reason")
+    pid = uuid.UUID(out["proposal_id"])
+    _decide(app_engine, case, hq, pid, "approved")
+    done = agent_runner.resume_after_decision(app_engine, case["tid"], case["case_id"], pid)
+    assert done["outcome"] == "resolved", done
+    assert lifecycle.verify_executed(app_engine, case["tid"], pid) == "resolved"  # again
+    st = _state(app_engine, case, pid)
+    assert (st["status"], st["stage"], st["execution"]) == ("resolved", "confirmed", "succeeded")
+    assert len(get_mock("vouchers").operations(merchant_id_for(case["tid"]))) == 1
+    with tenant_session(case["tid"], app_engine) as s:
+        verified = s.scalars(
+            select(DomainEvent.id).where(
+                DomainEvent.entity_id == case["case_id"], DomainEvent.event == "case.verified"
+            )
+        ).all()
+    assert len(verified) == 1
+
+
 def test_no_api_route_exposes_checkpoint_data(monkeypatch):
     from app.main import create_app
 

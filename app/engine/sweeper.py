@@ -69,10 +69,13 @@ def sweep_tenant(
         never_run = s.execute(
             select(ActionProposal.id, ActionProposal.action, ActionProposal.case_id)
             .join(Approval, Approval.proposal_id == ActionProposal.id)
+            .join(Case, Case.id == ActionProposal.case_id)
             .outerjoin(Execution, Execution.proposal_id == ActionProposal.id)
             .where(
                 Approval.decision == "approved",
-                Approval.expires_at > now,
+                # Usable approvals run; a lapsed one is refused (and escalated) once, while
+                # its case is still open - then it is no longer selected.
+                (Approval.expires_at > now) | Case.status.in_(("executing", "awaiting_approval")),
                 Approval.decided_at <= now - min_age,
                 Execution.id.is_(None),
                 ActionProposal.action.in_(list(EXECUTORS)),
@@ -107,21 +110,39 @@ def sweep_tenant(
             .order_by(Execution.updated_at)
         ).all()
     # Provider calls happen here, with no transaction open (hard rule 5).
+    # Each item is isolated: one bad proposal must not skip the rest of the sweep.
     for proposal_id, action, case_id in never_run:
         # A paused graph thread for this case resumes (its execute node is the same single
         # path); with none claimable, run the path directly. Either way: one stable key.
-        if _resume(engine, tenant_id, case_id, proposal_id).get("outcome") == "skipped":
-            run_approved(engine, tenant_id, proposal_id, action)
+        # An approval that lapsed unexecuted is refused there and escalates the case.
+        try:
+            if _resume(engine, tenant_id, case_id, proposal_id).get("outcome") == "skipped":
+                run_approved(engine, tenant_id, proposal_id, action)
+        except Exception:
+            log.exception("sweeper: could not execute proposal %s", proposal_id)
         report.executed.append(str(proposal_id))
     for proposal_id, action in unfinished:
-        reconcile(engine, tenant_id, proposal_id, action)
+        try:
+            reconcile(engine, tenant_id, proposal_id, action)
+        except Exception:
+            log.exception("sweeper: could not reconcile proposal %s", proposal_id)
         report.reconciled.append(str(proposal_id))
     for proposal_id in unverified:
-        verify_executed(engine, tenant_id, proposal_id)
+        try:
+            verify_executed(engine, tenant_id, proposal_id)
+        except Exception:
+            log.exception("sweeper: could not verify proposal %s", proposal_id)
         report.verified.append(str(proposal_id))
-    report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
+    try:
+        report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
+    except Exception:
+        log.exception("could not escalate stuck cases for tenant %s", tenant_id)
     # Housekeeping, each best effort: one failing must not stop the other or hide the work
     # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
+    try:
+        _complete_decided_runs(engine, tenant_id)
+    except Exception:
+        log.exception("could not complete decided runs for tenant %s", tenant_id)
     try:
         report.pruned_threads = prune_finished(engine, tenant_id)
     except Exception:
@@ -131,6 +152,32 @@ def sweep_tenant(
     except Exception:
         log.exception("could not publish pending events for tenant %s", tenant_id)
     return report
+
+
+def _complete_decided_runs(engine, tenant_id) -> int:
+    """A run left 'paused' at approve whose proposal was decided and finished without the
+    graph (the sweeper or a fallback ran it): nothing will ever resume it, so mark it
+    completed. Then prune_finished may delete its checkpoint thread."""
+    finished = (
+        select(ActionProposal.id)
+        .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
+        .outerjoin(Execution, Execution.proposal_id == ActionProposal.id)
+        .where(
+            ActionProposal.case_id == WorkflowRun.case_id,
+            (Approval.decision == "rejected") | Execution.status.in_(TERMINAL),
+        )
+    )
+    with tenant_session(tenant_id, engine) as s:
+        waiting = select(Case.id).where(Case.status.in_(("awaiting_info", "awaiting_approval")))
+        return s.execute(
+            update(WorkflowRun)
+            .where(
+                WorkflowRun.status == "paused",
+                WorkflowRun.case_id.not_in(waiting),
+                finished.exists(),
+            )
+            .values(status="completed")
+        ).rowcount
 
 
 def _resume(engine, tenant_id, case_id, proposal_id) -> dict:

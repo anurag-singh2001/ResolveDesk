@@ -479,13 +479,25 @@ def _check_draft(
     return errors
 
 
+FINISHABLE_FROM = {
+    "awaiting_info": ("investigating",),
+    "escalated": lifecycle.ESCALATABLE,
+}
+
+
 def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "") -> None:
     """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
     the customer. The event payload carries no reason text (it may quote the model)."""
     tid = uuid.UUID(state["tenant_id"])
     now = deps.now or datetime.now(UTC)
     with tenant_session(tid, deps.engine) as s:
-        case = s.get(Case, uuid.UUID(state["case_id"]))
+        case = s.scalar(
+            select(Case).where(Case.id == uuid.UUID(state["case_id"])).with_for_update()
+        )
+        # Only from a status this transition may leave: a case a person closed, or that is
+        # resolved or already escalated, is never moved (no status, audit, event or message).
+        if case is None or case.status not in FINISHABLE_FROM[status]:
+            return
         case.status = status
         if ticket:
             ticket_id = s.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
