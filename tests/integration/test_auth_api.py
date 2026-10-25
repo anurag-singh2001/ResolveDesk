@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi import Depends
 from fastapi.testclient import TestClient
-from sqlalchemy import delete, select, text, update
+from sqlalchemy import func, select, text, update
 
 from app.api.deps import get_clock, get_db_engine, get_tenant_context, tenant_db
 from app.config import get_settings
@@ -15,7 +15,7 @@ from app.core.tenancy import tenant_id_for
 from app.core.tenant_loader import load_tenant_into_db
 from app.core.verticals import load_pack
 from app.main import create_app
-from tests.helpers import demo_password, login
+from tests.helpers import clear_login_failures, demo_password, login
 
 UNKNOWN = "<unknown email>"  # replaced per test by a fresh address (lockout counts persist)
 
@@ -33,12 +33,13 @@ def _body(cfg, **overrides):
 
 
 @pytest.fixture(autouse=True)
-def clear_login_failures(app_engine, seeded):
-    """Failed logins in this module must not lock demo users out for the rest of the run."""
+def no_login_failures(app_engine, seeded):
+    """Failed logins in this module must not lock demo users out for other tests."""
+    for cfg in seeded.values():
+        clear_login_failures(app_engine, cfg.slug)
     yield
     for cfg in seeded.values():
-        with tenant_session(tenant_id_for(cfg.slug), app_engine) as s:
-            s.execute(delete(LoginFailure))
+        clear_login_failures(app_engine, cfg.slug)
 
 
 def test_every_seeded_user_can_log_in(api, seeded, tenant):
@@ -261,6 +262,30 @@ def demo_off(monkeypatch, app_engine, seeded, tenant):
     yield cfg
     monkeypatch.undo()
     load_tenant_into_db(app_engine, cfg, load_pack(cfg.vertical_pack))
+
+
+def test_seeded_demo_hash_is_refused_once_demo_auth_is_off(api, seeded, tenant, monkeypatch):
+    """A DB seeded in dev, then served with DEMO_AUTH off: the stored demo hashes still match,
+    but login refuses them."""
+    import app.core.auth as auth
+
+    cfg = seeded[tenant.name]
+    assert api.post("/auth/login", json=_body(cfg)).status_code == 200
+    off = get_settings().model_copy(update={"demo_auth": False})
+    monkeypatch.setattr(auth, "get_settings", lambda: off)
+    resp = api.post("/auth/login", json=_body(cfg))
+    assert resp.status_code == 401
+    assert resp.json() == {"detail": "invalid credentials"}
+
+
+def test_expired_failures_of_any_email_are_pruned(clock_api, app_engine, seeded, tenant):
+    client, clock = clock_api
+    cfg = seeded[tenant.name]
+    client.post("/auth/login", json=_body(cfg, email=UNKNOWN, password="wrong-password"))
+    clock["now"] += timedelta(minutes=get_settings().login_window_minutes, seconds=1)
+    client.post("/auth/login", json=_body(cfg, email=UNKNOWN, password="wrong-password"))
+    with tenant_session(tenant_id_for(cfg.slug), app_engine) as s:
+        assert s.scalar(select(func.count()).select_from(LoginFailure)) == 1
 
 
 def test_demo_passwords_stop_working_when_demo_auth_is_off(api, app_engine, demo_off):

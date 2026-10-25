@@ -234,25 +234,32 @@ def _sync_demo_passwords(session: Session, cfg: TenantConfig, tid: uuid.UUID) ->
     s = get_settings()
     demo_on = s.demo_auth and s.app_env != "prod"
     ids = {u.email: _id(tid, "user", u.email) for u in cfg.users}
-    stored = dict(
-        session.execute(
-            select(User.id, User.password_hash).where(User.id.in_(list(ids.values())))
-        ).all()
-    )
+    stored = {
+        uid: (hashed, is_demo)
+        for uid, hashed, is_demo in session.execute(
+            select(User.id, User.password_hash, User.password_is_demo).where(
+                User.id.in_(list(ids.values()))
+            )
+        )
+    }
     for user in cfg.users:
         password = cfg.demo_password_for(user)
         if password is None:
             continue
         uid = ids[user.email]
-        current = stored.get(uid)
+        current = stored.get(uid, (None, False))
         if not demo_on:
-            new_hash = None
-        elif current is not None and verify_password(password, current):
-            continue
+            wanted = (None, False)
+        elif current[0] is not None and verify_password(password, current[0]):
+            wanted = (current[0], True)
         else:
-            new_hash = hash_password(password)
-        if new_hash != current:
-            session.execute(update(User).where(User.id == uid).values(password_hash=new_hash))
+            wanted = (hash_password(password), True)
+        if wanted != current:
+            session.execute(
+                update(User)
+                .where(User.id == uid)
+                .values(password_hash=wanted[0], password_is_demo=wanted[1])
+            )
 
 
 class TenantLoadError(ValueError):

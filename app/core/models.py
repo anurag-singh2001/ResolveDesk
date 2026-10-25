@@ -120,6 +120,9 @@ class User(TenantOwned, Base):
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
     # bcrypt hash; NULL = this user can't log in with a password (migration 0013).
     password_hash: Mapped[str | None] = mapped_column(Text)
+    # The hash is of a demo password from the tenant folder: only accepted while demo
+    # accounts are enabled (DEMO_AUTH on, not prod), even if the hash is still stored.
+    password_is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class LoginFailure(TenantOwned, Base):

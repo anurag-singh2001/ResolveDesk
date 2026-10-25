@@ -21,7 +21,7 @@ from app.core.tenant_loader import load_pack_into_db, load_tenant_into_db
 from app.core.verticals import load_pack
 from app.main import create_app
 from simulator.load import load_history
-from tests.helpers import HISTORY_SCALE
+from tests.helpers import HISTORY_SCALE, clear_login_failures
 
 
 @pytest.fixture
@@ -78,6 +78,7 @@ def seeded(app_engine, owner_engine) -> dict[str, TenantConfig]:
         pack = load_pack(cfg.vertical_pack)
         load_pack_into_db(owner_engine, pack)
         load_tenant_into_db(app_engine, cfg, pack)
+        clear_login_failures(app_engine, cfg.slug)  # an interrupted earlier run may have left some
         configs[folder.name] = cfg
     return configs
 

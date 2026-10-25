@@ -7,7 +7,7 @@ once the provider reported success; a decision is not money having moved.
 """
 
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -58,8 +58,9 @@ def _remedy(proposal: ActionProposal) -> str:
     return f"a {label} of {format_inr(amount)}" if amount else f"a {label}"
 
 
-def case_timeline(session: Session, case: Case) -> list[TimelineStep]:
+def case_timeline(session: Session, case: Case, now: datetime | None = None) -> list[TimelineStep]:
     """Oldest first. The caller has already checked the case is visible to them."""
+    now = now or datetime.now(UTC)
     steps = [
         TimelineStep(case.opened_at, "received", "Report received", "We received your report."),
         TimelineStep(
@@ -86,7 +87,7 @@ def case_timeline(session: Session, case: Case) -> list[TimelineStep]:
         .order_by(ActionProposal.created_at, ActionProposal.id)
     )
     for proposal in proposals:
-        steps += _proposal_steps(session, proposal)
+        steps += _proposal_steps(session, proposal, now)
     # Server-default stamps (transaction start) can be a hair before opened_at (set in Python
     # in the same transaction): nothing is shown before "received". The sort is stable, so
     # steps with the same time keep the order they were built in.
@@ -94,7 +95,9 @@ def case_timeline(session: Session, case: Case) -> list[TimelineStep]:
     return sorted(clamped, key=lambda s: s.at)
 
 
-def _proposal_steps(session: Session, proposal: ActionProposal) -> list[TimelineStep]:
+def _proposal_steps(
+    session: Session, proposal: ActionProposal, now: datetime
+) -> list[TimelineStep]:
     steps = [
         TimelineStep(
             proposal.created_at,
@@ -150,6 +153,15 @@ def _proposal_steps(session: Session, proposal: ActionProposal) -> list[Timeline
                 "Passed to our team",
                 "We could not complete the refund automatically. "
                 "A member of our team will contact you.",
+            )
+        )
+    elif execution is None and now >= approval.expires_at:  # same rule as case_status
+        steps.append(
+            TimelineStep(
+                approval.expires_at,
+                "escalated",
+                "Passed to our team",
+                "Your refund needs a check by our team before it can continue.",
             )
         )
     elif ledger is not None and ledger.status == "pending_reconciliation":

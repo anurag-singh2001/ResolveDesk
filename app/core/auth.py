@@ -107,21 +107,25 @@ def authenticate(
         org_exists = session.get(Organization, tenant_id) is not None
         failures = session.scalar(select(func.count()).select_from(LoginFailure).where(recent))
         row = session.execute(
-            select(User.id, User.password_hash).where(User.email == email)
+            select(User.id, User.password_hash, User.password_is_demo).where(User.email == email)
         ).first()
-        user_id, stored_hash = row if row else (None, None)
+        user_id, stored_hash, is_demo = row if row else (None, None, False)
         ctx = load_context(session, tenant_id, user_id or uuid.UUID(int=0))
     if failures >= s.login_max_failures:
         raise LockedOut()
     # bcrypt is CPU only; run it with no transaction (and no pooled connection) held open.
     password_ok = verify_password(password, stored_hash)
-    ok = bool(password_ok and org_exists and user_id and ctx)
+    # A known demo password is only accepted while demo accounts are on (never in prod), even
+    # if a dev-seeded hash is still in the DB.
+    demo_ok = not is_demo or (s.demo_auth and s.app_env != "prod")
+    ok = bool(password_ok and demo_ok and org_exists and user_id and ctx)
     with tenant_session(tenant_id, engine) as session:
         mine = LoginFailure.email_hash == key
         if ok:
             session.execute(delete(LoginFailure).where(mine))
         elif org_exists:  # no organization row to attach a failure to otherwise (FK)
-            session.execute(delete(LoginFailure).where(mine, LoginFailure.failed_at <= since))
+            # Prune the tenant's expired rows (every key), so one-off emails can't grow the table.
+            session.execute(delete(LoginFailure).where(LoginFailure.failed_at <= since))
             session.add(LoginFailure(tenant_id=tenant_id, email_hash=key, failed_at=now))
     if not ok:
         raise InvalidCredentials()

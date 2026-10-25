@@ -1,7 +1,11 @@
 from functools import lru_cache
 
 from fastapi.testclient import TestClient
+from sqlalchemy import Engine, delete
 
+from app.core.db import tenant_session
+from app.core.models import LoginFailure
+from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import TENANTS_DIR, TenantConfig, load_tenant
 
 
@@ -31,3 +35,9 @@ def login(api: TestClient, tenant_slug: str, email: str) -> dict[str, str]:
 
 # ~5% of configured history volumes: enough rows for scope tests, quick on Neon.
 HISTORY_SCALE = 0.05
+
+
+def clear_login_failures(engine: Engine, tenant_slug: str) -> None:
+    """Forget failed logins (lockout counters) for one tenant."""
+    with tenant_session(tenant_id_for(tenant_slug), engine) as s:
+        s.execute(delete(LoginFailure))

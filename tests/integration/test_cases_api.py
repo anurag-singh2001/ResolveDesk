@@ -288,6 +288,7 @@ def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engin
         )
     stage = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()["stage"]
     assert stage == "escalated"
+    assert _stages(api, opened["id"], f["customer"])[-1] == "escalated"  # timeline agrees
 
 
 def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):

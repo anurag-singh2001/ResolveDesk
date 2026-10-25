@@ -5,6 +5,8 @@ Revises: 0012
 Create Date: 2026-10-25
 
 - users.password_hash: bcrypt hash, NULL = no password login for that user.
+- users.password_is_demo: the hash is of a known demo password; login refuses it unless demo
+  accounts are enabled, so a dev-seeded DB served in prod has no known-password logins.
 - login_failures: tenant-owned (RLS) counter rows for the lockout window. The app may insert,
   read and delete them (success clears them; old rows are pruned), never update.
 - public_businesses(): the login screen's business picker needs slug/name/vertical of every
@@ -41,6 +43,10 @@ def _grants(sql: str) -> None:
 
 def upgrade() -> None:
     op.add_column("users", sa.Column("password_hash", sa.Text(), nullable=True))
+    op.add_column(
+        "users",
+        sa.Column("password_is_demo", sa.Boolean(), server_default="false", nullable=False),
+    )
 
     op.create_table(
         "login_failures",
@@ -84,7 +90,7 @@ def upgrade() -> None:
         CREATE FUNCTION public_businesses()
         RETURNS TABLE (slug text, name text, vertical_pack text)
         LANGUAGE sql STABLE SECURITY DEFINER
-        SET search_path = pg_catalog, public
+        SET search_path = pg_catalog, pg_temp
         AS $$
             SELECT o.slug::text, o.name::text, o.vertical_pack::text
             FROM public.organizations o
@@ -106,4 +112,5 @@ def downgrade() -> None:
     op.drop_index("ix_login_failures_key_time", table_name="login_failures")
     op.drop_index(op.f("ix_login_failures_tenant_id"), table_name="login_failures")
     op.drop_table("login_failures")
+    op.drop_column("users", "password_is_demo")
     op.drop_column("users", "password_hash")
