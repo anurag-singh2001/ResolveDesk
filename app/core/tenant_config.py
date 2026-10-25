@@ -36,6 +36,8 @@ class UserCfg(BaseModel):
     role: Role
     brands: list[str] = Field(default_factory=list)
     locations: list[str] = Field(default_factory=list)
+    # Dev/demo only: overrides the tenant's demo_password for this user.
+    demo_password: str | None = Field(default=None, min_length=8, max_length=72)
 
 
 class SettingsCfg(BaseModel):
@@ -105,8 +107,14 @@ class TenantConfig(BaseModel):
     feature_flags: dict[str, bool] = Field(default_factory=dict)
     settings: SettingsCfg = Field(default_factory=SettingsCfg)
     users: list[UserCfg] = Field(default_factory=list)
+    # Dev/demo only: plaintext password for the seeded users (hashed into the DB only when
+    # DEMO_AUTH is on; listed by GET /auth/demo-accounts outside prod). Never real credentials.
+    demo_password: str | None = Field(default=None, min_length=8, max_length=72)
     catalogue: list[CatalogueItemCfg] = Field(default_factory=list)
     simulation: SimulationCfg | None = None
+
+    def demo_password_for(self, user: UserCfg) -> str | None:
+        return user.demo_password or self.demo_password
 
 
 def tenant_dirs(root: Path = TENANTS_DIR) -> list[Path]:

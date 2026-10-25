@@ -26,6 +26,7 @@ from app.core.models import (
     LineItem,
     Location,
     LocationBrand,
+    LoginFailure,
     Membership,
     MembershipBrand,
     MembershipLocation,
@@ -96,6 +97,7 @@ def _seed(engine: Engine) -> SeededTenant:
             )
         )
         s.add(TenantSetting(tenant_id=t.tenant_id, key="voucher_max_paise", value=1000))
+        s.add(LoginFailure(tenant_id=t.tenant_id, email_hash="0" * 64, failed_at=datetime.now(UTC)))
         s.add(FeatureFlag(tenant_id=t.tenant_id, key="growth", enabled=False))
         s.add(
             CatalogueItem(

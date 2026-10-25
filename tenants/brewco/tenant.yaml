@@ -24,8 +24,12 @@ settings:
     baner:
       refund_without_escalation_paise: 30000
 
+# Dev/demo login password for the users below (a user may override it with its own
+# demo_password). Hashed into the DB only with DEMO_AUTH=true; never a real credential.
+demo_password: brewco-demo-2026
+
 users:
-  - {email: owner@brewco.test, name: Meera Iyer, role: hq_owner}
+  - {email: owner@brewco.test, name: Meera Iyer, role: hq_owner, demo_password: brewco-hq-demo}
   - {email: franchisee.a@brewco.test, name: Vikram Rao, role: franchisee_owner, locations: [baner, viman_nagar]}
   - {email: franchisee.b@brewco.test, name: Sana Shaikh, role: franchisee_owner, locations: [aundh, kothrud]}
   - {email: kp.manager@brewco.test, name: Arjun Mehta, role: location_manager, locations: [koregaon_park]}

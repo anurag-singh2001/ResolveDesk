@@ -118,6 +118,28 @@ class User(TenantOwned, Base):
     )
     email: Mapped[str] = mapped_column(String(320), nullable=False)
     display_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    # bcrypt hash; NULL = this user can't log in with a password (migration 0013).
+    password_hash: Mapped[str | None] = mapped_column(Text)
+    # The hash is of a demo password from the tenant folder: only accepted while demo
+    # accounts are enabled (DEMO_AUTH on, not prod), even if the hash is still stored.
+    password_is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+
+
+class LoginFailure(TenantOwned, Base):
+    """One failed login for (tenant, email), for the lockout window (migration 0013).
+
+    The email is stored as a sha256 of its normalised form: attackers type arbitrary
+    strings here, and the table only needs to count them. Insert/select/delete for the app.
+    """
+
+    __tablename__ = "login_failures"
+    __table_args__ = (Index("ix_login_failures_key_time", "tenant_id", "email_hash", "failed_at"),)
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id"), nullable=False, index=True
+    )
+    email_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    failed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 class Membership(TenantOwned, Base):
@@ -754,10 +776,19 @@ ENGINE_MODELS = [
     RefundOperation,
     DomainEvent,
 ]
+# Auth bookkeeping (lockout counters); not config, not history.
+AUTH_MODELS = [LoginFailure]
 # Append-only; never deleted by reseed or the loader (no app-role DELETE privilege).
 APPEND_ONLY_MODELS = [AuditEvent]
 # Policy documents + chunks (written by app/rag/ingest.py, not the tenant loader).
 POLICY_MODELS = [PolicyDocument, PolicyChunk]
 # Parents before children: cleanup code deletes in reverse order.
-TENANT_MODELS = CONFIG_MODELS + POLICY_MODELS + COMMERCE_MODELS + ENGINE_MODELS + APPEND_ONLY_MODELS
+TENANT_MODELS = (
+    CONFIG_MODELS
+    + AUTH_MODELS
+    + POLICY_MODELS
+    + COMMERCE_MODELS
+    + ENGINE_MODELS
+    + APPEND_ONLY_MODELS
+)
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]
