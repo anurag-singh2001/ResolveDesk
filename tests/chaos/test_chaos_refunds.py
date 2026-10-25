@@ -523,9 +523,11 @@ def _assert_invariants(api, app_engine, w: World, obs: Observer, groups):
         s.expunge_all()  # keep the loaded values readable after the commit
     approved = {pid for pid, a in approvals.items() if a.decision == "approved"}
 
-    # The chaos actually bit: timeouts left refunds unknown, and some keys were re-sent.
-    assert any("unknown" in history for history in obs.exec_seen.values())
-    assert any(op.attempts > 1 for op in ops)
+    # The chaos actually bit: timeouts left refunds unknown, and some of those were later
+    # found or re-sent (same key) and completed at the provider.
+    timed_out = {pid for pid, history in obs.exec_seen.items() if "unknown" in history}
+    assert timed_out
+    assert any(op.idempotency_key in {refund_key(p) for p in timed_out} for op in ops)
 
     # One decision per proposal, whatever raced.
     assert approval_rows == len(approvals)
