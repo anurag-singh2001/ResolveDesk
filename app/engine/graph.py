@@ -132,61 +132,15 @@ def build_graph(deps: Deps):
         step = _step(state)
         tid = uuid.UUID(state["tenant_id"])
         with tenant_session(tid, deps.engine) as s:
-            case = s.get(Case, uuid.UUID(state["case_id"]))
-            scope = tools.Scope(tid, case.id, case.customer_id)
-            if case.transaction_id is None:
-                return {"need": NEED_ORDER, "step_count": step}
-            order_ref = str(case.transaction_id)
-            order = tools.get_transaction(s, scope, order_ref)
-            if not order["ok"]:
-                return {"need": NEED_ORDER, "step_count": step}
-            order_row, facts = order_facts(s, case.transaction_id)
-            evidence = {
-                "order": order["data"],
-                "fulfilment": tools.get_fulfilment(s, scope, order_ref),
-                "payments": tools.get_payment(s, scope, order_ref),
-                "customer": tools.get_customer(s, scope),
-                "previous_cases": tools.get_case_history(s, scope),
-                "refundable_paise": facts.refundable_paise,
-                # Dated policies are judged on the tenant's calendar date of the order.
-                "order_business_date": business_date(
-                    order_row.placed_at, facts.settings
-                ).isoformat(),
-                "missing_items_value_paise": sum(
-                    i["unit_price_paise"] * (i["quantity"] - i["quantity_fulfilled"])
-                    for i in order["data"]["items"]
-                ),
-            }
+            evidence = gather_evidence(s, tid, s.get(Case, uuid.UUID(state["case_id"])))
+        if evidence is None:
+            return {"need": NEED_ORDER, "step_count": step}
         return {"evidence": evidence, "step_count": step}
 
     def policy(state: CaseState) -> CaseState:
-        step = _step(state)
-        tid = uuid.UUID(state["tenant_id"])
-        order = state["evidence"]["order"]
         query = f"{state['category'].replace('_', ' ')}: {state['message']}"
-        vector = _QueryVector(deps.embedder.embed_query(query))  # before the transaction
-        with tenant_session(tid, deps.engine) as s:
-            findings = search_policies(
-                s,
-                vector,
-                query,
-                as_of=date.fromisoformat(state["evidence"]["order_business_date"]),  # order date
-                brand_id=uuid.UUID(order["brand_id"]),
-                location_id=uuid.UUID(order["location_id"]),
-                k=POLICY_K,
-            )
-        citations = [
-            {"section_ref": c.section_ref, "version": c.version, "scope": c.scope,
-             "heading": c.heading, "text": c.text, "doc_key": c.doc_key, "topic": c.topic}
-            for c in findings.citations
-        ]  # fmt: skip
-        update: CaseState = {"citations": citations, "step_count": step}
-        if findings.missing:
-            update.update(outcome="escalated", reason="no policy in effect covers this case")
-        elif findings.conflicts:
-            update.update(outcome="escalated", reason="conflicting policies: "
-                          + "; ".join(findings.conflicts))  # fmt: skip
-        return update
+        update = retrieve_policies(deps, uuid.UUID(state["tenant_id"]), query, state["evidence"])
+        return {**update, "step_count": _step(state)}
 
     def resolve(state: CaseState) -> CaseState:
         step = _step(state)
@@ -225,44 +179,13 @@ def build_graph(deps: Deps):
                 + "; ".join(errors), "step_count": step}  # fmt: skip
 
     def propose(state: CaseState) -> CaseState:
-        step = _step(state)
-        draft = ResolutionDraft.model_validate(state["draft"])
-        tid = uuid.UUID(state["tenant_id"])
-        now = deps.now or datetime.now(UTC)
-        cited = set(draft.citations)
-        citations = [
-            {"section_ref": c["section_ref"], "doc_key": c["doc_key"], "version": c["version"]}
-            for c in state["citations"]
-            if c["section_ref"] in cited
-        ]
-        try:
-            with tenant_session(tid, deps.engine) as s:
-                proposal = create_proposal(
-                    s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
-                    params=draft.params, reason=draft.reason, citations=citations,
-                    run_id=uuid.UUID(state["run_id"]),
-                )  # fmt: skip
-                # Same as the deterministic path: auto-approval only where settings allow.
-                approval = auto_decide(s, tid, proposal.id, now)
-                case = s.get(Case, uuid.UUID(state["case_id"]))
-                case.status = "executing" if approval is not None else "awaiting_approval"
-                proposal_id = str(proposal.id)
-        except ProposalError as exc:
-            return {"outcome": "escalated", "reason": f"proposal refused: {exc}",
-                    "step_count": step}  # fmt: skip
-        return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
+        return store_proposal(deps, state)
 
     def ask(state: CaseState) -> CaseState:
-        question = QUESTIONS[state.get("need") or NEED_DETAILS]
-        _finish(deps, state, "awaiting_info", state.get("reason") or question, ticket=question)
-        return {"outcome": "awaiting_info", "step_count": _step(state)}
+        return ask_customer(deps, state)
 
     def escalate(state: CaseState) -> CaseState:
-        reason = state.get("reason") or (
-            "step limit reached" if state.get("step_count", 0) >= MAX_STEPS else "needs a person"
-        )
-        _finish(deps, state, "escalated", reason)
-        return {"outcome": "escalated", "reason": reason, "step_count": _step(state)}
+        return escalate_case(deps, state)
 
     def route_after(node: str):
         def route(state: CaseState) -> str:
@@ -286,6 +209,107 @@ def build_graph(deps: Deps):
     for terminal in ("propose", "ask", "escalate"):
         g.add_edge(terminal, END)
     return g.compile()
+
+
+def gather_evidence(s, tid: uuid.UUID, case: Case) -> dict | None:
+    """What the read tools return for the case's own order, or None if the case has no order
+    the customer owns (then the customer is asked which order)."""
+    if case.transaction_id is None:
+        return None
+    scope = tools.Scope(tid, case.id, case.customer_id)
+    order_ref = str(case.transaction_id)
+    order = tools.get_transaction(s, scope, order_ref)
+    if not order["ok"]:
+        return None
+    order_row, facts = order_facts(s, case.transaction_id)
+    return {
+        "order": order["data"],
+        "fulfilment": tools.get_fulfilment(s, scope, order_ref),
+        "payments": tools.get_payment(s, scope, order_ref),
+        "customer": tools.get_customer(s, scope),
+        "previous_cases": tools.get_case_history(s, scope),
+        "refundable_paise": facts.refundable_paise,
+        # Dated policies are judged on the tenant's calendar date of the order.
+        "order_business_date": business_date(order_row.placed_at, facts.settings).isoformat(),
+        "missing_items_value_paise": sum(
+            i["unit_price_paise"] * (i["quantity"] - i["quantity_fulfilled"])
+            for i in order["data"]["items"]
+        ),
+    }
+
+
+def retrieve_policies(deps: Deps, tid: uuid.UUID, query: str, evidence: dict) -> CaseState:
+    """Policies in force for the order (its date, brand, location), as citations; escalates
+    when none apply or they conflict. The query is embedded before the transaction opens."""
+    order = evidence["order"]
+    vector = _QueryVector(deps.embedder.embed_query(query))
+    with tenant_session(tid, deps.engine) as s:
+        findings = search_policies(
+            s,
+            vector,
+            query,
+            as_of=date.fromisoformat(evidence["order_business_date"]),  # order date
+            brand_id=uuid.UUID(order["brand_id"]),
+            location_id=uuid.UUID(order["location_id"]),
+            k=POLICY_K,
+        )
+    citations = [
+        {"section_ref": c.section_ref, "version": c.version, "scope": c.scope,
+         "heading": c.heading, "text": c.text, "doc_key": c.doc_key, "topic": c.topic}
+        for c in findings.citations
+    ]  # fmt: skip
+    update: CaseState = {"citations": citations}
+    if findings.missing:
+        update.update(outcome="escalated", reason="no policy in effect covers this case")
+    elif findings.conflicts:
+        update.update(outcome="escalated", reason="conflicting policies: "
+                      + "; ".join(findings.conflicts))  # fmt: skip
+    return update
+
+
+def store_proposal(deps: Deps, state: CaseState) -> CaseState:
+    """Code creates the proposal from a checked draft (state["draft"]), with the citations
+    the draft relied on, and applies the tenant's auto-approval rules."""
+    step = _step(state)
+    draft = ResolutionDraft.model_validate(state["draft"])
+    tid = uuid.UUID(state["tenant_id"])
+    now = deps.now or datetime.now(UTC)
+    cited = set(draft.citations)
+    citations = [
+        {"section_ref": c["section_ref"], "doc_key": c["doc_key"], "version": c["version"]}
+        for c in state["citations"]
+        if c["section_ref"] in cited
+    ]
+    try:
+        with tenant_session(tid, deps.engine) as s:
+            proposal = create_proposal(
+                s, tid, case_id=uuid.UUID(state["case_id"]), action=draft.action,
+                params=draft.params, reason=draft.reason, citations=citations,
+                run_id=uuid.UUID(state["run_id"]),
+            )  # fmt: skip
+            # Same as the deterministic path: auto-approval only where settings allow.
+            approval = auto_decide(s, tid, proposal.id, now)
+            case = s.get(Case, uuid.UUID(state["case_id"]))
+            case.status = "executing" if approval is not None else "awaiting_approval"
+            proposal_id = str(proposal.id)
+    except ProposalError as exc:
+        return {"outcome": "escalated", "reason": f"proposal refused: {exc}",
+                "step_count": step}  # fmt: skip
+    return {"outcome": "proposed", "proposal_id": proposal_id, "step_count": step}
+
+
+def ask_customer(deps: Deps, state: CaseState) -> CaseState:
+    question = QUESTIONS[state.get("need") or NEED_DETAILS]
+    _finish(deps, state, "awaiting_info", state.get("reason") or question, ticket=question)
+    return {"outcome": "awaiting_info", "step_count": _step(state)}
+
+
+def escalate_case(deps: Deps, state: CaseState) -> CaseState:
+    reason = state.get("reason") or (
+        "step limit reached" if state.get("step_count", 0) >= MAX_STEPS else "needs a person"
+    )
+    _finish(deps, state, "escalated", reason)
+    return {"outcome": "escalated", "reason": reason, "step_count": _step(state)}
 
 
 def _check_draft(
@@ -360,8 +384,16 @@ def _claim(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID) -> uuid.UUI
         return run_id
 
 
-def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str, budget) -> dict:
+def run_case(
+    deps: Deps,
+    tenant_id: uuid.UUID,
+    case_id: uuid.UUID,
+    message: str,
+    budget,
+    build=build_graph,
+) -> dict:
     """Run the graph for one case and record a workflow_runs row with step/LLM counters.
+    `build` makes the graph: the specialist pipeline, or the single-call baseline (evals).
     Any failure - LLM (budget, rate limits, invalid output after repair) or not - escalates
     the case to a person; a case is never left in 'investigating'."""
     run_id = _claim(deps.engine, tenant_id, case_id)
@@ -370,11 +402,13 @@ def run_case(deps: Deps, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str,
     state: CaseState = {"tenant_id": str(tenant_id), "case_id": str(case_id),
                         "run_id": str(run_id), "message": message, "step_count": 0}  # fmt: skip
     try:
-        final = build_graph(deps).invoke(state, {"recursion_limit": MAX_STEPS + 4})
+        final = build(deps).invoke(state, {"recursion_limit": MAX_STEPS + 4})
     except Exception as exc:
         kind = "LLM" if isinstance(exc, LLMError) else "internal error"
         if not isinstance(exc, LLMError):
             log.exception("agent run %s failed", run_id)
+        else:  # provider names and error classes only, never customer text
+            log.warning("agent run %s: %s: %s", run_id, type(exc).__name__, str(exc)[:200])
         final = {**state, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
         try:
             _finish(deps, final, "escalated", final["reason"])

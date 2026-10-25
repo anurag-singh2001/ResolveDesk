@@ -20,3 +20,15 @@ class ResolutionDraft(BaseModel):
     params: dict[str, Any] = Field(default_factory=dict)
     reason: str = Field(min_length=1, max_length=500)
     citations: list[str] = Field(default_factory=list)  # section_refs it relied on
+
+
+class BaselineDecision(BaseModel):
+    """The single-call baseline (evals): classification and remedy in one reply."""
+
+    category: str
+    confidence: float = Field(ge=0, le=1)
+    needs_info: list[str] = Field(default_factory=list, max_length=3)
+    action: str
+    params: dict[str, Any] = Field(default_factory=dict)
+    reason: str = Field(min_length=1, max_length=500)
+    citations: list[str] = Field(default_factory=list)

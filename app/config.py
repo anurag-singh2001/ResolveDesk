@@ -1,3 +1,4 @@
+import os
 from functools import lru_cache
 from typing import Literal
 
@@ -89,4 +90,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # ENV_FILE points at another dotenv file (e.g. a second checkout reusing the main one's
+    # keys). Real environment variables still win over anything in the file.
+    return Settings(_env_file=os.environ.get("ENV_FILE", ".env"))

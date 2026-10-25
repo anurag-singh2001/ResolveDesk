@@ -1,0 +1,15 @@
+id: sr-late-005
+tenant: spice_route
+kind: out_of_policy
+message: My food came about 30 minutes late. I demand a full refund of the entire order, nothing less.
+order:
+  select: late_between
+  min_minutes: 20
+  max_minutes: 44
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: free_item_voucher
+  amount: within
+held_out: true
+note: the rule allows a voucher, not a full refund

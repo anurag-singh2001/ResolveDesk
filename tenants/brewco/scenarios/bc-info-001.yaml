@@ -1,0 +1,9 @@
+id: bc-info-001
+tenant: brewco
+kind: missing_info
+message: Something went wrong, please help.
+order:
+  select: none
+expect:
+  category: null
+  outcome: awaiting_info

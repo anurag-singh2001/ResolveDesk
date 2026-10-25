@@ -1,0 +1,11 @@
+id: sr-wrong-001
+tenant: spice_route
+kind: plain
+message: The food I received is not what I ordered. It is a completely different dish from my order.
+order:
+  select: latest
+expect:
+  category: wrong_item
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

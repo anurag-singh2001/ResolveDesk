@@ -9,7 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 import app.engine.graph as graph
-from app.agents.schemas import Classification, ResolutionDraft
+from app.agents.schemas import BaselineDecision, Classification, ResolutionDraft
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
@@ -26,6 +26,7 @@ from app.core.models import (
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import tenant_dirs
+from app.engine.baseline import build_baseline_graph
 from app.llm.providers import BudgetExceeded
 from app.rag.embeddings import HashEmbedder
 from app.rag.ingest import ingest_policies
@@ -394,3 +395,72 @@ def test_non_integer_amounts_never_crash_or_pass_the_ceiling(app_engine, case, a
     out = _run(app_engine, case, clf, res)
     assert out["outcome"] == "escalated" and "internal error" not in out["reason"]
     assert _case(app_engine, case)[1] == []
+
+
+# --- Single-call baseline (evals' comparison point): same checks, one LLM call ----------
+
+
+def _pack_categories(app_engine, case):
+    with tenant_session(case["tid"], app_engine) as s:
+        pack = tenant_pack(s)
+        missing = next(c for c, rule in pack.remedies.items() if rule == "refund_missing")
+        no_rule = next(c for c in pack.issue_categories if c not in pack.remedies)
+    return missing, no_rule
+
+
+def _decision(case, category, amount=None, action="refund", confidence=0.9):
+    def reply(messages):
+        refs = REF.findall(messages[1].content)
+        return BaselineDecision(
+            category=category,
+            confidence=confidence,
+            action=action,
+            params={"transaction_id": str(case["order_id"]),
+                    "amount_paise": amount or case["missing"], "reason": "missing item"},
+            reason="item missing from the order",
+            citations=refs[:1],
+        )  # fmt: skip
+
+    return reply
+
+
+def _run_baseline(app_engine, case, resolver):
+    deps = graph.Deps(app_engine, FakeLLM({}), resolver, EMBEDDER, now=NOW)
+    return graph.run_case(deps, case["tid"], case["case_id"], "One item was missing.",
+                          FakeBudget([resolver]), build_baseline_graph)  # fmt: skip
+
+
+def test_baseline_classifies_and_proposes_in_one_call(app_engine, case):
+    missing, _ = _pack_categories(app_engine, case)
+    res = FakeLLM({"BaselineDecision": [_decision(case, missing)]})
+    out = _run_baseline(app_engine, case, res)
+    assert out["outcome"] == "proposed", out
+    assert len(res.calls) == 1
+    status, (p,) = _case(app_engine, case)
+    assert status == "awaiting_approval" and p.amount_paise == case["missing"]
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(Case, case["case_id"]).category == missing
+
+
+def test_baseline_over_the_rule_escalates_without_a_repair(app_engine, case):
+    missing, _ = _pack_categories(app_engine, case)
+    res = FakeLLM({"BaselineDecision": [_decision(case, missing, amount=10**9)]})
+    out = _run_baseline(app_engine, case, res)
+    assert out["outcome"] == "escalated" and len(res.calls) == 1
+    assert _case(app_engine, case) == ("escalated", [])
+
+
+def test_baseline_category_without_a_rule_escalates(app_engine, case):
+    _, no_rule = _pack_categories(app_engine, case)
+    res = FakeLLM({"BaselineDecision": [_decision(case, no_rule)]})
+    assert _run_baseline(app_engine, case, res)["outcome"] == "escalated"
+    assert _case(app_engine, case) == ("escalated", [])
+
+
+@pytest.mark.parametrize("category, confidence", [("not_a_category", 0.9), (None, 0.1)])
+def test_baseline_unsure_asks_the_customer(app_engine, case, category, confidence):
+    missing, _ = _pack_categories(app_engine, case)
+    res = FakeLLM({"BaselineDecision": [_decision(case, category or missing,
+                                                  confidence=confidence)]})  # fmt: skip
+    assert _run_baseline(app_engine, case, res)["outcome"] == "awaiting_info"
+    assert _case(app_engine, case) == ("awaiting_info", [])

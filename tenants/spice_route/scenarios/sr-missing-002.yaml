@@ -1,0 +1,12 @@
+id: sr-missing-002
+tenant: spice_route
+kind: hinglish
+message: Mera ek item packet mein tha hi nahi, uske paise wapas karo please.
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact
+held_out: true

@@ -1,0 +1,11 @@
+id: bc-quality-001
+tenant: brewco
+kind: plain
+message: The coffee was lukewarm and tasted burnt.
+order:
+  select: latest
+expect:
+  category: quality
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
