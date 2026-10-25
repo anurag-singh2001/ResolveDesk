@@ -17,6 +17,15 @@ feature_flags:
 settings:
   org:
     refund_channel: tenant_gateway
+    # Mirrors policies late_delivery_v3 (orders before 2026-10-26) and _v4 (from 2026-10-26).
+    # Dates are quoted ISO strings; an order is judged by the tiers in force when placed.
+    # Percents are requests: refund_max_percent stays the ceiling.
+    late_delivery_tiers:
+      - {min_minutes_late: 0, remedy: apology}
+      - {min_minutes_late: 20, remedy: voucher}
+      - {min_minutes_late: 45, remedy: refund_percent, percent: 50, effective_to: "2026-10-26"}
+      - {min_minutes_late: 45, remedy: refund_percent, percent: 25, effective_from: "2026-10-26"}
+      - {min_minutes_late: 60, remedy: refund_percent, percent: 50, effective_from: "2026-10-26"}
   brands:
     bowl_theory:
       voucher_auto_approve_max_paise: 10000

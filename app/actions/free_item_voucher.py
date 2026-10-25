@@ -28,6 +28,7 @@ class FreeItemVoucher(NotYetExecutable, Action):
     Input = VoucherInput
     amount_field = "value_paise"
     auto_approvable = True
+    counts_as_grant = True
 
     def validate(self, ctx, inp: VoucherInput, facts: Facts) -> ValidationResult:
         cap = facts.settings["voucher_max_paise"]

@@ -4,12 +4,13 @@ title: Late delivery policy
 topic: late_delivery
 version: 3
 effective_from: 2026-09-01
+effective_to: 2026-10-26
 scope: org
 ---
 # Late delivery policy (v3)
 
 ## 1. Scope
-Applies to delivery orders from all Spice Route Foods brands placed on or after 1 September 2026. Lateness is measured from the promised delivery time shown to the customer.
+Applies to delivery orders from all Spice Route Foods brands placed from 1 September 2026 up to 25 October 2026. Lateness is measured from the promised delivery time shown to the customer.
 
 ## 2. Remedies
 ### 2.1 More than 45 minutes late

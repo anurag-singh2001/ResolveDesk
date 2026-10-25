@@ -14,6 +14,11 @@ __pycache__/
 build/
 dist/
 
+# Web app
+web/node_modules
+web/dist
+web/*.tsbuildinfo
+
 # Generated
 evals/reports/
 .llm_cache/
