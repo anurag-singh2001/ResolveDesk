@@ -140,7 +140,10 @@ def test_app_role_cannot_bypass_rls(app_engine):
             text("SELECT rolsuper, rolbypassrls FROM pg_roles WHERE rolname = current_user")
         ).one()
         owned = conn.execute(
-            text("SELECT count(*) FROM pg_tables WHERE tableowner = current_user")
+            text(
+                "SELECT count(*) FROM pg_tables WHERE tableowner = current_user "
+                "AND schemaname <> 'lg'"  # the checkpointer's own schema (DECISIONS.md, E4.1)
+            )
         ).scalar()
     assert (superuser, bypass, owned) == (False, False, 0)
 

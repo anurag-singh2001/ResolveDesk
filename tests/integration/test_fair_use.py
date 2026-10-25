@@ -238,7 +238,8 @@ def test_agent_path_applies_the_same_rule(app_engine, world, at_threshold):
     _fill_to(app_engine, w, w["max"] if at_threshold else w["max"] - 1)
     case_id = _agent_case(app_engine, w)
     out = _run_agents(app_engine, w, case_id)
-    assert out["outcome"] == "proposed", out
+    # Below the threshold the graph continues past approve (auto); at it, the run pauses.
+    assert out["outcome"] == ("proposed" if at_threshold else "approved"), out
     status, approval = _status_and_approval(app_engine, w, case_id, out["proposal_id"])
     if at_threshold:
         assert (status, approval) == ("awaiting_approval", None)
