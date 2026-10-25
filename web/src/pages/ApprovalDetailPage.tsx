@@ -119,7 +119,15 @@ export function ApprovalDetailPage() {
       </EmptyState>
     );
   }
-  const checks = Object.entries(p.checks ?? {});
+  // `checks` mixes pass/fail booleans with values (amounts, counts) and flags (needs_*):
+  // only real checks get a tick or a cross; the rest are facts shown as values.
+  const entries = Object.entries(p.checks ?? {});
+  const checks = entries.filter(([k, v]) => typeof v === "boolean" && !k.startsWith("needs_"));
+  const facts = entries.filter(([k, v]) => typeof v !== "boolean" || k.startsWith("needs_"));
+  const factValue = (k: string, v: unknown): string =>
+    typeof v === "boolean" ? (v ? "Yes" : "No")
+    : typeof v === "number" && k.endsWith("_paise") ? formatPaise(v)
+    : String(v);
 
   return (
     <>
@@ -188,6 +196,16 @@ export function ApprovalDetailPage() {
                   </li>
                 ))}
               </ul>
+            )}
+            {facts.length > 0 && (
+              <dl className="mt-4 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2" aria-label="Details">
+                {facts.map(([name, value]) => (
+                  <div key={name} className="flex justify-between gap-2 border-b border-slate-100 py-1">
+                    <dt className="text-slate-500">{humanize(name.replace(/_paise$/, ""))}</dt>
+                    <dd className="font-medium text-slate-800">{factValue(name, value)}</dd>
+                  </div>
+                ))}
+              </dl>
             )}
             {p.errors.length > 0 && (
               <div className="mt-4">

@@ -88,6 +88,21 @@ describe("approval detail", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 
+  it("shows amounts, counts and needs_* flags as values, not as passed/failed", async () => {
+    setup({ body: {} }, {
+      ...proposal,
+      checks: { within_cap: true, amount_paise: 24450, fair_use_grants_30d: 0, needs_hq: false },
+    });
+    const details = await screen.findByRole("list", { name: "Checks" });
+    expect(details).toHaveTextContent("Within cap");
+    expect(details).not.toHaveTextContent("Amount");
+    const facts = screen.getByLabelText("Details");
+    expect(facts).toHaveTextContent("₹244.50");
+    expect(facts).toHaveTextContent("Fair use grants 30d");
+    expect(facts).toHaveTextContent("0");
+    expect(facts).toHaveTextContent("No");
+  });
+
   it("disables Approve when the checks failed but allows Reject", async () => {
     setup({ body: {} }, { ...proposal, eligible: false, errors: ["amount exceeds cap"], checks: { within_cap: false } });
     await screen.findByText("My fries never came.");
