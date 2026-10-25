@@ -60,11 +60,12 @@ def flow(api, app_engine, maint_engine, seeded_history, tenant):
     info["customer"] = login(api, cfg.slug, customer.email)
     info["hq"] = login(api, cfg.slug, hq_email)
     info["merchant"] = merchant_id_for(tid)
+    w_order = info["order_id"]
     yield info
     with tenant_session(tid, maint_engine) as s:
-        case_ids = select(Case.id).where(Case.tenant_id == tid, Case.transaction_id == order.id)
+        case_ids = select(Case.id).where(Case.tenant_id == tid, Case.transaction_id == w_order)
         s.execute(delete(Ticket).where(Ticket.tenant_id == tid, Ticket.case_id.in_(case_ids)))
-        s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id == order.id))
+        s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id == w_order))
 
 
 def _open(api, f):
@@ -95,7 +96,7 @@ def test_auto_approved_voucher_is_issued_once_and_then_confirmed(api, app_engine
     opened = _open(api, f)
     assert opened["action"] == "free_item_voucher"
     # The response is built before the background task runs: approved, not yet issued.
-    assert opened["stage"] == "processing" and "has been issued" not in opened["message"]
+    assert opened["stage"] == "processing" and "is approved" in opened["message"]
     final = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()
     assert final["stage"] == "confirmed" and "has been issued" in final["message"]
     assert _case_status(app_engine, f, opened["id"]) == "resolved"

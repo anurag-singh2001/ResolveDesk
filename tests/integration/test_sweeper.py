@@ -28,6 +28,7 @@ from app.engine.approvals import decide
 from app.engine.graph import RUN_TTL
 from app.engine.proposals import create_proposal
 from app.engine.sweeper import sweep_tenant
+from app.engine.voucher_executor import voucher_key
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
 from tests.helpers import login
 
@@ -85,19 +86,20 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
         }
     w["customer"] = login(api, cfg.slug, customer.email)
     w["hq"] = login(api, cfg.slug, hq_email)
+    w_order = w["order_id"]
     yield w
     with tenant_session(tid, app_engine) as s:
         line = s.get(LineItem, w["line_id"])
         line.quantity_fulfilled = w["qty"]
     with tenant_session(tid, maint_engine) as s:
-        case_ids = select(Case.id).where(Case.tenant_id == tid, Case.transaction_id == order.id)
+        case_ids = select(Case.id).where(Case.tenant_id == tid, Case.transaction_id == w_order)
         s.execute(delete(Ticket).where(Ticket.tenant_id == tid, Ticket.case_id.in_(case_ids)))
         s.execute(
             delete(RefundOperation).where(
-                RefundOperation.tenant_id == tid, RefundOperation.transaction_id == order.id
+                RefundOperation.tenant_id == tid, RefundOperation.transaction_id == w_order
             )
         )
-        s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id == order.id))
+        s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id == w_order))
 
 
 def _open(api, w, category):
@@ -110,8 +112,15 @@ def _open(api, w, category):
     return resp.json()
 
 
-def _sweep(app_engine, w, **kw):
-    return sweep_tenant(app_engine, w["tid"], min_age=timedelta(0), **kw)
+def _sweep(app_engine, w, now=None, **kw):
+    # A little ahead of local time: DB timestamps (now()) may be ahead of this machine's clock.
+    now = now or datetime.now(UTC) + timedelta(seconds=30)
+    return sweep_tenant(app_engine, w["tid"], now=now, min_age=timedelta(0), **kw)
+
+
+def _ops(kind, w, key):
+    """Provider operations for one key (a sweep is tenant-wide; count only ours)."""
+    return [op for op in get_mock(kind).operations(w["merchant"]) if op.idempotency_key == key]
 
 
 def test_a_voucher_killed_after_commit_is_issued_once_by_the_sweeper(
@@ -120,14 +129,14 @@ def test_a_voucher_killed_after_commit_is_issued_once_by_the_sweeper(
     w = world
     opened = _open(api, w, w["voucher_category"])
     assert len(crash_after_commit) == 1  # the task was scheduled, then the process died
-    assert get_mock("vouchers").operations(w["merchant"]) == []
+    key = voucher_key(uuid.UUID(opened["proposal_id"]))
+    assert _ops("vouchers", w, key) == []
     assert api.get(f"/cases/{opened['id']}", headers=w["customer"]).json()["stage"] == (
         "processing"
     )
-    report = _sweep(app_engine, w)
-    assert report.executed == [opened["proposal_id"]]
-    assert _sweep(app_engine, w).executed == []  # a second sweep finds nothing to do
-    assert len(get_mock("vouchers").operations(w["merchant"])) == 1
+    assert opened["proposal_id"] in _sweep(app_engine, w).executed
+    assert opened["proposal_id"] not in _sweep(app_engine, w).executed  # nothing left to do
+    assert len(_ops("vouchers", w, key)) == 1
     assert api.get(f"/cases/{opened['id']}", headers=w["customer"]).json()["stage"] == ("confirmed")
 
 
@@ -145,12 +154,11 @@ def test_a_refund_killed_after_approval_is_refunded_once_by_the_sweeper(
         json={"decision": "approved"},
     )
     assert resp.status_code == 200 and len(crash_after_commit) == 1
-    assert get_mock("payment").operations(w["merchant"]) == []
     pid = uuid.UUID(opened["proposal_id"])
-    assert _sweep(app_engine, w).executed == [str(pid)]
+    assert _ops("payment", w, executor.refund_key(pid)) == []
+    assert str(pid) in _sweep(app_engine, w).executed
     _sweep(app_engine, w)
-    (op,) = get_mock("payment").operations(w["merchant"])
-    assert op.idempotency_key == executor.refund_key(pid)
+    assert len(_ops("payment", w, executor.refund_key(pid))) == 1
     assert api.get(f"/cases/{opened['id']}", headers=w["customer"]).json()["stage"] == ("confirmed")
 
 
@@ -174,11 +182,11 @@ def test_a_crash_between_reserve_and_send_is_resumed_with_the_same_key(app_engin
         ).id
         decide(s, w["hq_ctx"], pid, "approved", now)
     job = executor._reserve(app_engine, w["hq_ctx"], pid, now)  # step 2 commits, then: crash
-    assert job.fresh and get_mock("payment").operations(w["merchant"]) == []
+    assert job.fresh and _ops("payment", w, job.key) == []
     report = _sweep(app_engine, w)
-    assert report.executed == [] and report.reconciled == [str(pid)]
+    assert str(pid) not in report.executed and str(pid) in report.reconciled
     _sweep(app_engine, w)
-    assert len(get_mock("payment").operations(w["merchant"])) == 1
+    assert len(_ops("payment", w, job.key)) == 1
     with tenant_session(w["tid"], app_engine) as s:
         assert s.scalar(select(Execution.status).where(Execution.proposal_id == pid)) == (
             "succeeded"
@@ -203,8 +211,8 @@ def test_an_expired_approval_is_not_executed_by_the_sweeper(app_engine, world):
             params={"transaction_id": str(w["order_id"]), "value_paise": 100, "reason": "x"},
         ).id
         decide(s, w["hq_ctx"], pid, "approved", then)
-    assert _sweep(app_engine, w).executed == []
-    assert get_mock("vouchers").operations(w["merchant"]) == []
+    assert str(pid) not in _sweep(app_engine, w).executed
+    assert _ops("vouchers", w, voucher_key(pid)) == []
 
 
 def _investigating_case(app_engine, w, run_age):
@@ -224,14 +232,14 @@ def _investigating_case(app_engine, w, run_age):
 def test_a_case_whose_agent_run_died_is_escalated(app_engine, world, run_age):
     w = world
     case_id = _investigating_case(app_engine, w, run_age)
-    assert _sweep(app_engine, w).escalated_cases == []  # within the TTL: leave it alone
+    assert str(case_id) not in _sweep(app_engine, w).escalated_cases  # within the TTL
     later = datetime.now(UTC) + RUN_TTL + timedelta(minutes=1)
-    assert _sweep(app_engine, w, now=later).escalated_cases == [str(case_id)]
+    assert str(case_id) in _sweep(app_engine, w, now=later).escalated_cases
     with tenant_session(w["tid"], app_engine) as s:
         assert s.get(Case, case_id).status == "escalated"
         runs = s.scalars(select(WorkflowRun.status).where(WorkflowRun.case_id == case_id)).all()
         assert "running" not in runs
-    assert _sweep(app_engine, w, now=later).escalated_cases == []
+    assert str(case_id) not in _sweep(app_engine, w, now=later).escalated_cases
 
 
 def test_a_live_run_is_left_alone(app_engine, world):
@@ -239,6 +247,7 @@ def test_a_live_run_is_left_alone(app_engine, world):
     # Seen from `later`: the case row is older than the TTL, but its run started within it.
     case_id = _investigating_case(app_engine, w, -timedelta(minutes=2))
     later = datetime.now(UTC) + timedelta(minutes=3)
-    assert _sweep(app_engine, w, now=later, run_ttl=timedelta(minutes=2)).escalated_cases == []
+    report = _sweep(app_engine, w, now=later, run_ttl=timedelta(minutes=2))
+    assert str(case_id) not in report.escalated_cases
     with tenant_session(w["tid"], app_engine) as s:
         assert s.get(Case, case_id).status == "investigating"

@@ -621,7 +621,7 @@ class RefundOperation(TenantOwned, Base):
         CheckConstraint("amount_paise > 0", name="ck_refund_operations_amount"),
         CheckConstraint(
             "status IN ('reserved', 'submitted', 'succeeded', 'failed', 'unknown', "
-            "'pending_reconciliation')",
+            "'pending_reconciliation', 'released')",
             name="ck_refund_operations_status",
         ),
     )

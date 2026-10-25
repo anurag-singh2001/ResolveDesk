@@ -15,6 +15,7 @@ from app.engine import approvals as engine_approvals
 from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
+from app.engine.release import check_release, release_refund
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
@@ -151,4 +152,35 @@ def reconcile(
     if ctx.role != "hq_owner" and (location is None or not ctx.can_see_location(location)):
         raise not_found()
     background.add_task(_run_reconcile, engine, ctx, proposal_id, proposal.action)
+    return {"status": "queued"}
+
+
+def _run_release(engine: Engine, ctx: TenantContext, proposal_id: uuid.UUID) -> None:
+    result = release_refund(engine, ctx, proposal_id)
+    log.info("release of %s: %s (%s)", proposal_id, result.outcome, result.reason)
+
+
+@router.post("/approvals/{proposal_id}/release", status_code=status.HTTP_202_ACCEPTED)
+def release(
+    proposal_id: uuid.UUID,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> dict[str, str]:
+    """hq_owner only: free a quarantined refund's held balance once the provider can no
+    longer apply it. Checked here (DB only), then queued: the provider lookup by key runs
+    after this request's transaction has ended (hard rule 5). If the provider has the
+    refund, it is recorded instead of released. See GET /cases/{id}/events."""
+    if ctx.role != "hq_owner":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "hq_owner only")
+    check = check_release(db, proposal_id, datetime.now(UTC))
+    if check.reason == "not_found":
+        raise not_found()
+    if not check.ok:
+        detail = {"reason": check.reason, "ledger_status": check.ledger_status}
+        if check.ready_at is not None:
+            detail["ready_at"] = check.ready_at.isoformat()
+        raise HTTPException(status.HTTP_409_CONFLICT, detail)
+    background.add_task(_run_release, engine, ctx, proposal_id)
     return {"status": "queued"}
