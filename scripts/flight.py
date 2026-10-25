@@ -6,8 +6,8 @@
 Per tenant: each demo customer opens one case per remedy category (on an order with no case
 yet), the hq_owner approves every eligible pending proposal from this run, then each case is
 read back as its customer. Checks:
-  - "confirmed" only for a refund that was approved;
-  - an approved refund ends confirmed or processing (never silently lost);
+  - "confirmed" only for a remedy that was approved (by staff, or auto-approved on open);
+  - an approved remedy ends confirmed or processing (never silently lost);
   - no customer can see another customer's case;
   - every stage is a known, customer-safe stage.
 Exit code 1 if any check fails. Prints a summary table.
@@ -186,18 +186,21 @@ def _pick(category: str, orders: list[dict]) -> dict | None:
     return orders[0]
 
 
+PAYOUT_ACTIONS = ("refund", "free_item_voucher")
+AUTO_APPROVED_STAGES = ("processing", "confirmed")
+
+
 def _check(row: Row, failures: list[str]) -> None:
     where = f"{row.tenant}/{row.customer}/{row.category}"
     if row.stage_final not in STAGES:
         failures.append(f"{where}: unknown stage {row.stage_final!r}")
-    if row.stage_final == "confirmed" and not (row.action == "refund" and row.approved):
-        failures.append(f"{where}: confirmed without an approved refund")
-    if (
-        row.action == "refund"
-        and row.approved
-        and row.stage_final not in ("confirmed", "processing")
-    ):
-        failures.append(f"{where}: approved refund ended {row.stage_final}")
+    # Auto-approved remedies (a voucher under the cap) are already approved when opened.
+    approved = row.approved or row.stage_opened in AUTO_APPROVED_STAGES
+    paid = row.action in PAYOUT_ACTIONS
+    if row.stage_final == "confirmed" and not (paid and approved):
+        failures.append(f"{where}: confirmed without an approved remedy")
+    if paid and approved and row.stage_final not in ("confirmed", "processing"):
+        failures.append(f"{where}: approved {row.action} ended {row.stage_final}")
 
 
 def main(argv: list[str]) -> int:
@@ -228,7 +231,7 @@ def main(argv: list[str]) -> int:
         )
     print(
         f"\n{len(rows)} cases, {sum(r.approved for r in rows)} approved, "
-        f"{sum(r.stage_final == 'confirmed' for r in rows)} confirmed refunds"
+        f"{sum(r.stage_final == 'confirmed' for r in rows)} confirmed"
     )
     if failures:
         print("\nFAILED CHECKS:")
