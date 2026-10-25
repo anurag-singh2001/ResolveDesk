@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.actions.base import Facts, get_action
 from app.core import audit
-from app.core.models import ActionProposal, Approval, Case, Transaction
+from app.core.models import ActionProposal, Approval, Case, Customer, Transaction
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import fair_use, order_facts
@@ -184,6 +184,10 @@ def auto_decide(
     action_cls = get_action(proposal.action)
     if not action_cls.auto_approvable:  # refunds: never (PROJECT.md section 2)
         return None
+    # Serialise auto-approvals per customer, so two concurrent ones can't both read the same
+    # fair-use count and both pass (the lock is held until this transaction commits).
+    customer_id = session.scalar(select(Case.customer_id).where(Case.id == proposal.case_id))
+    session.scalar(select(Customer.id).where(Customer.id == customer_id).with_for_update())
     system = TenantContext(
         tenant_id, uuid.UUID(int=0), uuid.UUID(int=0), "hq_owner", frozenset(), frozenset()
     )

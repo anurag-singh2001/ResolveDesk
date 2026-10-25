@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.business_time import business_date
 from app.core.models import Case, Fulfilment, LineItem
 from app.core.money import percent_of
 from app.core.settings_resolver import tenant_pack
@@ -48,7 +49,8 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         cause = (f.attributes or {}).get("delay_cause")
         if cause is not None and cause in s["late_delivery_excluded_causes"]:
             return Remedy(None, {}, f"{why}; delay cause on record: {cause}", "apology")
-        tier = late_tier(s["late_delivery_tiers"], minutes, order.placed_at.date())
+        placed_on = business_date(order.placed_at, s)  # the tenant's calendar, not UTC
+        tier = late_tier(s["late_delivery_tiers"], minutes, placed_on)
         if tier is None or tier["remedy"] == "apology":
             return Remedy(None, {}, f"{why}: apology tier", "apology")
         if tier["remedy"] == "voucher":

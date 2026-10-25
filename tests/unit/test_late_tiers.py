@@ -104,7 +104,7 @@ def test_fair_use_policy_states_the_configured_threshold(tenant):
         if f.meta.topic != "fair_use":
             continue
         text = " ".join(sec.content for sec in f.sections)
-        for word in re.findall(r"granted (\w+) or more refunds or vouchers", text):
+        for word in re.findall(r"had (\w+) or more refunds or vouchers approved", text):
             assert WORDS[word] == s["fair_use_max_grants_30d"], (f.meta.id, word)
             checked += 1
     assert checked, "each tenant's fair-use policy states its threshold"
@@ -116,3 +116,27 @@ def test_voucher_auto_approve_cap_is_a_lowerable_pack_default(tenant):
     assert spec.kind == "limit" and spec.default == 15000  # Rs 150 (decision 2026-10-26)
     assert s["voucher_auto_approve_max_paise"] <= spec.default
     assert pack.settings["fair_use_max_grants_30d"].kind == "limit"
+
+
+def test_every_auto_approvable_action_counts_toward_fair_use():
+    """Fair use only guards what it counts: an auto-approvable action that gives the customer
+    something of value (it has an amount) but skipped the count would bypass the check."""
+    import app.actions  # noqa: F401  (registers every action)
+    from app.actions.base import registered_actions
+
+    actions = registered_actions()
+    valued = {n: c for n, c in actions.items() if c.auto_approvable and c.amount_field}
+    assert valued  # the check is not vacuous
+    for name, cls in valued.items():
+        if cls.auto_approvable:
+            assert cls.counts_as_grant, name
+
+
+def test_business_date_uses_the_tenant_calendar():
+    from datetime import UTC, datetime
+
+    from app.core.business_time import business_date
+
+    just_after_midnight_ist = datetime(2026, 10, 25, 19, 30, tzinfo=UTC)  # 01:00 IST on 26th
+    assert business_date(just_after_midnight_ist, {"business_timezone": "Asia/Kolkata"}).day == 26
+    assert business_date(just_after_midnight_ist, {"business_timezone": "UTC"}).day == 25

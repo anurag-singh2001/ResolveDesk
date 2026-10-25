@@ -22,6 +22,8 @@ features:
 # kind=limit: integer ceiling; a lower level may only lower it (effective = min(parent, override)).
 # kind=value: a lower level replaces it.
 settings:
+  # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
+  business_timezone: {kind: value, default: "Asia/Kolkata"}
   refund_max_percent: {kind: limit, default: 50}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}
