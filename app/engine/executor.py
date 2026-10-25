@@ -106,12 +106,16 @@ def execute_refund(
     unavailable_retries: int = 2,
 ) -> RefundResult:
     now = now or datetime.now(UTC)
-    try:
-        job = _reserve(engine, ctx, proposal_id, now)
-    except ExecutionRefused as exc:
-        if exc.reason.startswith(FINAL_REFUSALS):
-            _record_refusal(engine, ctx, proposal_id, exc.reason)
-        raise
+    for attempt in range(2):
+        try:
+            job = _reserve(engine, ctx, proposal_id, now)
+            break
+        except ExecutionRefused as exc:
+            if not exc.reason.startswith(FINAL_REFUSALS) or attempt:
+                raise
+            if _record_refusal(engine, ctx, proposal_id, exc.reason):
+                raise
+            # The balance came back between the refusal and the lock: try to reserve again.
     if isinstance(job, RefundResult):  # already finished earlier
         return job
     connector = connector_for(job.settings, "payment")
@@ -178,15 +182,39 @@ def _reserve(engine, ctx, proposal_id, now) -> "_Job | RefundResult":
 FINAL_REFUSALS = ("not_eligible", "no_captured_payment")
 
 
-def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
+def _record_refusal(engine, ctx, proposal_id, reason: str) -> bool:
     """An approved refund the executor refuses must not vanish into a log line: record a
     `failed` execution (never sent; no ledger row, so nothing is held) so the customer is told
-    it needs the team and staff see why. If another worker created the execution first (it
-    reserved, or recorded the same refusal), theirs stands."""
+    it needs the team and staff see why.
+
+    Serialised like a reservation: under the same order lock, re-check that the refund still
+    can't be reserved. Returns False (nothing recorded) when it can again, e.g. a competing
+    refund failed and freed the balance, so the caller retries the reservation. Returns True
+    when the refusal stands: recorded now, or another worker already owns the execution (it
+    reserved, or recorded the same refusal) and theirs stands."""
     with tenant_session(ctx.tenant_id, engine) as s:
+        proposal = s.get(ActionProposal, proposal_id)
         approval = s.scalar(select(Approval).where(Approval.proposal_id == proposal_id))
-        if approval is None or approval.decision != "approved":
-            return
+        if proposal is None or approval is None or approval.decision != "approved":
+            return True
+        order_id = uuid.UUID(proposal.params["transaction_id"])
+        try:
+            order, facts = order_facts(s, order_id, lock=True, exclude_proposal=proposal.id)
+        except LookupError:
+            order = None
+        if s.scalar(select(Execution.id).where(Execution.proposal_id == proposal_id)):
+            return True
+        if order is not None:
+            action = get_action("refund")()
+            inp = action.Input.model_validate_json(json.dumps(proposal.params))
+            fits = action.validate(ctx, inp, facts).ok
+            has_payment = s.scalar(
+                select(Payment.id)
+                .where(Payment.transaction_id == order.id, Payment.status.in_(CAPTURED_STATUSES))
+                .limit(1)
+            )
+            if fits and has_payment is not None:
+                return False
         nested = s.begin_nested()
         try:
             s.add(
@@ -204,7 +232,7 @@ def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
             nested.rollback()
             constraint = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
             if constraint in RESERVE_RACE_CONSTRAINTS:
-                return
+                return True
             raise
         nested.commit()
         audit.record(
@@ -225,6 +253,7 @@ def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
                 payload={"idempotency_key": refund_key(proposal_id), "sent": False},
             )
         )
+        return True
 
 
 def _current(engine, ctx, proposal_id) -> RefundResult:

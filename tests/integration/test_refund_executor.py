@@ -554,3 +554,28 @@ def test_an_approved_refund_refused_at_execution_is_recorded_not_lost(app_engine
     # Re-running it is a no-op that reports the recorded outcome.
     assert execute_refund(app_engine, w["hq"], late).status == "failed"
     assert len(provider_ops(w)) == len(used)
+
+
+def test_a_refusal_is_not_recorded_once_the_balance_is_back(app_engine, world, monkeypatch):
+    """The refusal is re-checked under the order lock. If the money is available by then (a
+    competing refund failed meanwhile), nothing is recorded and the reservation is retried."""
+    from app.engine import executor
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    assert executor._record_refusal(app_engine, w["hq"], pid, "not_eligible: stale") is False
+    with tenant_session(w["tid"], app_engine) as s:
+        assert s.scalar(select(Execution.id).where(Execution.proposal_id == pid)) is None
+
+    real, calls = executor._reserve, []
+
+    def stale_then_real(*args):
+        calls.append(1)
+        if len(calls) == 1:  # refused on a balance that frees up before the lock is re-taken
+            raise ExecutionRefused("not_eligible: refund exceeds the refundable balance")
+        return real(*args)
+
+    monkeypatch.setattr(executor, "_reserve", stale_then_real)
+    assert execute_refund(app_engine, w["hq"], pid).status == "succeeded"
+    assert len(calls) == 2 and len(provider_ops(w)) == 1

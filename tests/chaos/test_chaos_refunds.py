@@ -20,6 +20,7 @@ import uuid
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 import pytest
 from sqlalchemy import delete, func, select, update
@@ -30,8 +31,10 @@ from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
     Approval,
+    AuditEvent,
     Case,
     Customer,
+    DomainEvent,
     Execution,
     LineItem,
     Payment,
@@ -113,7 +116,7 @@ def _pool():
 
 
 @pytest.fixture
-def world(api, app_engine, maint_engine, seeded_history, tenant):
+def world(request, api, app_engine, maint_engine, seeded_history, tenant):
     reset_mocks()
     cfg = seeded_history[tenant.name]
     tid = tenant_id_for(cfg.slug)
@@ -122,7 +125,13 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
     customers = [u.email for u in cfg.users if u.role == "customer"]
     staff = [u.email for u in cfg.users if u.role != "customer"]
     hq_email = next(u.email for u in cfg.users if u.role == "hq_owner")
-    orders: list[Order] = []
+    others = [name for name in seeded_history if name != tenant.name]
+    if not others:
+        pytest.skip("cross-tenant checks need a second seeded tenant")
+    orders: list[Order] = []  # filled as rows are changed; the finalizer restores them
+    lent: list[Order] = []
+    started = datetime.now(UTC)
+    request.addfinalizer(lambda: _cleanup(app_engine, maint_engine, tid, orders, lent, started))
     with tenant_session(tid, app_engine) as s:
         owner_of = {}
         for email in customers:
@@ -183,7 +192,7 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
                 break
     assert len(orders) == CASES, "seeded history has too few orders"
     owner_id = {email: cid for cid, email in owner_of.items()}
-    lent = [o for o in orders if o.original_customer not in owner_of]
+    lent.extend(o for o in orders if o.original_customer not in owner_of)
     with tenant_session(tid, maint_engine) as s:
         for o in lent:
             s.execute(
@@ -192,8 +201,7 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
                 .values(customer_id=owner_id[o.owner_email])
             )
     headers = {e: login(api, cfg.slug, e) for e in customers + staff}
-    other_name = next(name for name in seeded_history if name != tenant.name)
-    other_cfg = seeded_history[other_name]
+    other_cfg = seeded_history[others[0]]
     other = {
         "hq": login(
             api, other_cfg.slug, next(u.email for u in other_cfg.users if u.role == "hq_owner")
@@ -205,6 +213,10 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
     }
     w = World(cfg, tid, merchant_id_for(tid), category, orders, headers, hq_email, staff_ctx, other)
     yield w
+
+
+def _cleanup(app_engine, maint_engine, tid, orders, lent, started):
+    """Undo everything the run changed or created, even if setup failed half way."""
     reset_mocks()
     order_ids = [o.id for o in orders]
     with tenant_session(tid, app_engine) as s:
@@ -215,14 +227,28 @@ def world(api, app_engine, maint_engine, seeded_history, tenant):
                 .values(quantity_fulfilled=o.original_fulfilled)
             )
     with tenant_session(tid, maint_engine) as s:
-        case_ids = select(Case.id).where(Case.tenant_id == tid, Case.transaction_id.in_(order_ids))
+        case_ids = s.scalars(
+            select(Case.id).where(
+                Case.tenant_id == tid,
+                Case.transaction_id.in_(order_ids),
+                Case.opened_at >= started,
+            )
+        ).all()
+        proposal_ids = s.scalars(
+            select(ActionProposal.id).where(
+                ActionProposal.tenant_id == tid, ActionProposal.case_id.in_(case_ids)
+            )
+        ).all()
+        entity_ids = [*case_ids, *proposal_ids]
+        for model in (AuditEvent, DomainEvent):
+            s.execute(delete(model).where(model.tenant_id == tid, model.entity_id.in_(entity_ids)))
         s.execute(delete(Ticket).where(Ticket.tenant_id == tid, Ticket.case_id.in_(case_ids)))
         s.execute(
             delete(RefundOperation).where(
-                RefundOperation.tenant_id == tid, RefundOperation.transaction_id.in_(order_ids)
+                RefundOperation.tenant_id == tid, RefundOperation.proposal_id.in_(proposal_ids)
             )
         )
-        s.execute(delete(Case).where(Case.tenant_id == tid, Case.transaction_id.in_(order_ids)))
+        s.execute(delete(Case).where(Case.tenant_id == tid, Case.id.in_(case_ids)))
         for o in lent:
             s.execute(
                 update(Transaction)
