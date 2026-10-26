@@ -46,6 +46,7 @@ class SignalOut(BaseModel):
     diagnosis: dict
     diagnosis_source: str
     recent_end: datetime
+    campaign_id: uuid.UUID | None = None
 
 
 class CampaignOut(BaseModel):
@@ -65,8 +66,11 @@ class CampaignOut(BaseModel):
     playbook: dict | None
 
 
-def _signal_out(s: Signal) -> SignalOut:
-    return SignalOut.model_validate(s, from_attributes=True)
+def _signal_out(db: Session, s: Signal) -> SignalOut:
+    out = SignalOut.model_validate(s, from_attributes=True)
+    # One campaign per signal: lets the UI reopen a proposed campaign after a reload.
+    out.campaign_id = db.scalar(select(Campaign.id).where(Campaign.signal_id == s.id))
+    return out
 
 
 def _campaign_out(db: Session, c: Campaign, now: datetime) -> CampaignOut:
@@ -112,7 +116,7 @@ def list_signals(
     ctx: TenantContext = Depends(require_growth), db: Session = Depends(tenant_db)
 ) -> list[SignalOut]:
     rows = db.scalars(select(Signal).order_by(Signal.recent_end.desc(), Signal.id))
-    return [_signal_out(s) for s in rows if camp.in_scope(ctx, s.location_id)]
+    return [_signal_out(db, s) for s in rows if camp.in_scope(ctx, s.location_id)]
 
 
 @router.post("/signals/refresh")
@@ -124,7 +128,7 @@ def refresh_signals(
     """Run the signal job now (it also runs nightly). hq_owner only: it reads every location."""
     if ctx.role != "hq_owner":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "hq_owner only")
-    return [_signal_out(s) for s in sig.run_signal_job(db, ctx.tenant_id, now)]
+    return [_signal_out(db, s) for s in sig.run_signal_job(db, ctx.tenant_id, now)]
 
 
 class ProposeIn(BaseModel):

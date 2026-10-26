@@ -3,13 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
-from sqlalchemy import Engine, text
+from sqlalchemy import Engine, select, text
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clock, get_db_engine, get_tenant_context, not_found, tenant_db
 from app.config import get_settings
 from app.core.auth import InvalidCredentials, LockedOut, authenticate
-from app.core.models import Organization, User
+from app.core.models import FeatureFlag, Organization, User
 from app.core.tenancy import TenantContext
 from app.core.tenant_config import load_tenant, tenant_dirs
 
@@ -42,6 +42,7 @@ class MeOut(BaseModel):
     location_ids: list[uuid.UUID]
     brand_ids: list[uuid.UUID]
     tenant: TenantOut
+    growth_enabled: bool  # the tenant's `growth` flag: the UI shows Growth only when it is on
 
 
 class DemoAccountOut(BaseModel):
@@ -121,4 +122,7 @@ def me(ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(t
         location_ids=sorted(ctx.location_ids),
         brand_ids=sorted(ctx.brand_ids),
         tenant=TenantOut(slug=org.slug, name=org.name, vertical=org.vertical_pack),
+        growth_enabled=bool(
+            db.scalar(select(FeatureFlag.enabled).where(FeatureFlag.key == "growth"))
+        ),
     )

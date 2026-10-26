@@ -25,8 +25,13 @@ describe("role-based navigation", () => {
     expect(await screen.findByRole("heading", { name: "My orders" })).toBeInTheDocument();
   });
 
-  it.each<Role>(["location_manager", "franchisee_owner", "hq_owner"])("%s sees approvals and cases", async (role) => {
-    expect(await navLabels(role)).toEqual(["Approvals", "Cases", "Help"]);
+  it("location managers see approvals and cases", async () => {
+    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases", "Help"]);
+    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+  });
+
+  it.each<Role>(["franchisee_owner", "hq_owner"])("%s also sees insights", async (role) => {
+    expect(await navLabels(role)).toEqual(["Approvals", "Cases", "Insights", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 

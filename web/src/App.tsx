@@ -3,7 +3,9 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/session";
 import { AppShell } from "./components/AppShell";
 import { EmptyState, Loading } from "./components/ui";
-import { homePath, isStaff } from "./lib/roles";
+import { canSeeGrowth, canSeeInsights, homePath, isStaff } from "./lib/roles";
+import { GrowthPage } from "./pages/GrowthPage";
+import { InsightsPage } from "./pages/InsightsPage";
 import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CasePage } from "./pages/CasePage";
@@ -57,7 +59,9 @@ export function App() {
         <Route path="/cases/:caseId" element={<CasePage />} />
         <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
-        <Route path="/dev" element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
+        <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
+        <Route path="/growth" element={<Only when={canSeeGrowth(me.role, me.growth_enabled)}><GrowthPage /></Only>} />
+        <Route path="/dev"element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>

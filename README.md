@@ -32,12 +32,13 @@ approves, and code executes.
   decides refunds; the policy packs say so, and the remedy there is a voucher on the
   tenant's own channel or an escalation — never a refund we can't execute. Background:
   [docs/research/market.md](docs/research/market.md) (F7–F10).
-- **Growth (stretch, API only):** for tenants with the `growth` flag (BrewCo in the demo), a
+- **Growth (stretch):** for tenants with the `growth` flag (BrewCo in the demo), a
   nightly-style job spots a drop in an outlet's repeat-customer rate, proposes a win-back
   campaign with a holdout group, needs two staff approvals (one HQ), sends once per customer
   to consented customers only, and reports an honest verdict (worked / did not work /
-  inconclusive). Endpoints under `/growth` (see http://localhost:8000/docs); no web screens yet.
-- **Out:** real integrations, billing, multi-channel inbox, a web UI for growth.
+  inconclusive). Endpoints under `/growth` (see http://localhost:8000/docs); the web app has a **Growth** page
+  (staff, flag on) and an **Insights** page (HQ and franchisee owners: per-outlet metrics).
+- **Out:** real integrations, billing, multi-channel inbox.
 
 ## How it works
 
