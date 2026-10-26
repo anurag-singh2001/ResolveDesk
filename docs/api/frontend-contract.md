@@ -41,7 +41,7 @@ processing → confirmed): `received`, `investigating`, `awaiting_info`, `awaiti
 customer for the current stage.
 
 ## Approvals (staff)
-| GET | `/approvals?limit=` | staff | – | `[pending]` |
+| GET | `/approvals?limit=&location_id=&action=&sort=` | staff | – | `[pending]`. `sort` is `oldest` (default), `newest` or `amount_desc`; unknown sort or action gives 422; a `location_id` the caller cannot see (or another tenant's) gives 404 |
 | POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |
 
 `pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.

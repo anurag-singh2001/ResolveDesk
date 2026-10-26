@@ -1,4 +1,4 @@
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { RiskBadge } from "../components/badges";
 import { Badge, Card, EmptyState, ErrorState, Loading, PageHeader } from "../components/ui";
@@ -6,8 +6,33 @@ import { age, categoryLabel, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 
+const ACTIONS = ["refund", "free_item_voucher", "loyalty_credit", "send_status_update"];
+const SORTS: [string, string][] = [
+  ["oldest", "Oldest first"],
+  ["newest", "Newest first"],
+  ["amount_desc", "Highest amount"],
+];
+const SELECT = "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm";
+
 export function ApprovalsPage() {
-  const { data, error, loading, reload } = useApi(() => api.approvals(200), []);
+  // Filters live in the URL so a reload (or a shared link) keeps them.
+  const [params, setParams] = useSearchParams();
+  const location_id = params.get("location_id") ?? "";
+  const action = params.get("action") ?? "";
+  const sort = params.get("sort") ?? "oldest";
+  const filtered = Boolean(location_id || action);
+  // /locations already returns only the outlets in the caller's scope.
+  const locations = useApi(() => api.locations(), []);
+  const { data, error, loading, reload } = useApi(
+    () => api.approvals(200, { location_id, action, sort }),
+    [location_id, action, sort],
+  );
+  const setFilter = (key: string, value: string) => {
+    const next = new URLSearchParams(params);
+    if (value && !(key === "sort" && value === "oldest")) next.set(key, value);
+    else next.delete(key);
+    setParams(next, { replace: true });
+  };
   // HQ sees every outlet, so the outlet column matters most there; show it whenever the API sends it.
   const showOutlet = (data ?? []).some((p) => p.location_name);
 
@@ -15,19 +40,57 @@ export function ApprovalsPage() {
     <>
       <PageHeader
         title="Approvals"
-        subtitle="Remedies the system proposed that need a person's decision. Oldest first."
+        subtitle="Remedies the system proposed that need a person's decision. Oldest first unless you sort differently."
         actions={
           <button type="button" onClick={() => void reload()} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
             Refresh
           </button>
         }
       />
+      <div className="mb-4 flex flex-wrap gap-3" role="group" aria-label="Filter approvals">
+        <label className="text-sm text-slate-600">
+          <span className="mr-2">Outlet</span>
+          <select className={SELECT} value={location_id} onChange={(e) => setFilter("location_id", e.target.value)}>
+            <option value="">All outlets</option>
+            {(locations.data ?? []).map((l) => (
+              <option key={l.id} value={l.id}>
+                {l.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-slate-600">
+          <span className="mr-2">Action</span>
+          <select className={SELECT} value={action} onChange={(e) => setFilter("action", e.target.value)}>
+            <option value="">All actions</option>
+            {ACTIONS.map((a) => (
+              <option key={a} value={a}>
+                {humanize(a)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm text-slate-600">
+          <span className="mr-2">Sort</span>
+          <select className={SELECT} value={sort} onChange={(e) => setFilter("sort", e.target.value)}>
+            {SORTS.map(([v, label]) => (
+              <option key={v} value={v}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
       {loading ? (
         <Loading label="Loading approvals…" />
       ) : error ? (
         <ErrorState error={error} onRetry={reload} />
       ) : !data || data.length === 0 ? (
-        <EmptyState title="Nothing to approve">You're all caught up. New proposals appear here as customers report problems.</EmptyState>
+        filtered ? (
+          <EmptyState title="No approvals match these filters">Try a different outlet or action, or clear the filters.</EmptyState>
+        ) : (
+          <EmptyState title="Nothing to approve">You're all caught up. New proposals appear here as customers report problems.</EmptyState>
+        )
       ) : (
         <>
           {/* Phone: cards */}

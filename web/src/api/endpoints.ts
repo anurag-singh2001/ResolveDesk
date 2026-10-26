@@ -24,6 +24,12 @@ import type {
 
 const enc = encodeURIComponent;
 
+export interface ApprovalFilters {
+  location_id?: string;
+  action?: string;
+  sort?: string;
+}
+
 export const api = {
   // Dev panel (APP_ENV dev/test only; 404 elsewhere).
   chaos: () => request<ChaosState>("/admin/chaos"),
@@ -54,7 +60,13 @@ export const api = {
     request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
-  approvals: (limit = 200) => request<PendingApproval[]>(`/approvals?limit=${limit}`),
+  approvals: (limit = 200, filters: ApprovalFilters = {}) => {
+    const q = new URLSearchParams({ limit: String(limit) });
+    if (filters.location_id) q.set("location_id", filters.location_id);
+    if (filters.action) q.set("action", filters.action);
+    if (filters.sort && filters.sort !== "oldest") q.set("sort", filters.sort);
+    return request<PendingApproval[]>(`/approvals?${q.toString()}`);
+  },
   locations: () => request<LocationRef[]>("/locations"),
   outletInsights: () => request<OutletInsight[]>("/insights/outlets"),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),

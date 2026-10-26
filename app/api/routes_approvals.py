@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
+from app.actions.base import registered_actions
 from app.api.deps import get_clock, get_db_engine, not_found, require_staff, tenant_db
 from app.core.models import (
     ActionProposal,
@@ -80,16 +81,38 @@ def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
         .order_by(TicketMessage.sent_at, TicketMessage.id)
         .limit(1)
     )
+# Sorts over stored columns only: a pending proposal has no expiry yet (an approval's 4-hour
+# clock starts when someone decides), so there is deliberately no "expiring soon" sort.
+
+# A pending proposal has no stored expiry (an approval's expiry starts when someone decides), so
+_SORTS = {
+    "oldest": (ActionProposal.created_at,),
+    "newest": (ActionProposal.created_at.desc(),),
+    "amount_desc": (ActionProposal.amount_paise.desc().nulls_last(), ActionProposal.created_at),
+}
 
 
 @router.get("/approvals")
 def pending_approvals(
     limit: int = Query(100, ge=1, le=500),
+    location_id: uuid.UUID | None = Query(None),
+    action: str | None = Query(None, max_length=64),
+    sort: Literal["oldest", "newest", "amount_desc"] = "oldest",
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
     now: datetime = Depends(get_clock),
 ) -> list[PendingOut]:
-    """Undecided proposals in the caller's scope, with the code checks the approver needs."""
+    """Undecided proposals in the caller's scope, with the code checks the approver needs.
+
+    Optional filters: location_id (404 unless the caller may see it, so other tenants' and
+    out-of-scope ids look the same) and action (any registered action name, else 422).
+    """
+    if action is not None and action not in registered_actions():
+        raise HTTPException(422, "unknown action")
+    if location_id is not None:
+        exists = db.scalar(select(Location.id).where(Location.id == location_id))
+        if exists is None or not ctx.can_see_location(location_id):
+            raise not_found()
     query = (
         select(ActionProposal, Case, Transaction, Location.name)
         .join(Case, Case.id == ActionProposal.case_id)
@@ -97,9 +120,12 @@ def pending_approvals(
         .outerjoin(Location, Location.id == Transaction.location_id)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
         .where(Approval.id.is_(None))
-        .order_by(ActionProposal.created_at)
-        .limit(limit)
     )
+    if location_id is not None:
+        query = query.where(Transaction.location_id == location_id)
+    if action is not None:
+        query = query.where(ActionProposal.action == action)
+    query = query.order_by(*_SORTS[sort], ActionProposal.id).limit(limit)
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
