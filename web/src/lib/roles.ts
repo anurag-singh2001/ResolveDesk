@@ -18,7 +18,7 @@ export function isStaff(role: string | undefined): boolean {
 export interface NavItem {
   to: string;
   label: string;
-  icon: "orders" | "cases" | "approvals" | "help";
+  icon: "orders" | "cases" | "approvals" | "help" | "dev";
 }
 
 /** Which screens a role sees. The API still enforces access on every call. */

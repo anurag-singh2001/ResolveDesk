@@ -45,6 +45,16 @@ customer for the current stage.
 
 `pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.
 
+## Dev panel (demo only)
+Mounted only when `APP_ENV` is `dev` or `test`; **404 in prod**. `hq_owner` only (403 otherwise), and
+always the caller's own tenant, taken from the token. The frontend shows the "Dev panel" nav item
+only for an hq_owner whose `GET /admin/chaos` succeeds; a 404 hides it.
+| GET | `/admin/chaos` | hq_owner | – | `{service: {timeout_rate, transient_error_rate, accept_then_timeout_rate, error_rate, processing_rate, settle_after_polls, delay_ms, seed}}` |
+| POST | `/admin/chaos` | hq_owner | `{service, timeout_rate?, accept_then_timeout_rate?, transient_error_rate?, error_rate?, processing_rate?, settle_after_polls?, delay_ms?, seed?}` (rates 0..1; omitted = default, so `{service}` alone resets it) | the full chaos state, as GET. 422 for an unknown service or a rate outside 0..1 |
+| POST | `/admin/sweep` | hq_owner | – | `{executed, reconciled, escalated_cases, verified: [id], pruned_threads, events_published}`. Runs the crash-recovery sweeper for the caller's tenant, outside any open DB transaction |
+
+There is deliberately no reseed or clock endpoint: use `make seed` and `make sweep`.
+
 ## CORS
 NEW: the API allows the origins in `WEB_ORIGINS` (default `http://localhost:5173`), methods GET/POST,
 header `Authorization`, `Content-Type`.
