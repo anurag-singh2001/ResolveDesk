@@ -32,7 +32,14 @@ Risks and mitigations
 - Demo API restarted on the fixed code.
 
 ## Stand-ups
-(none yet)
+### 2026-10-26 evening
+- S4.1 done: f9dd2fa / 6177d9b; browser bug (every reply 500 after S4.3 merge, _out signature) fixed 59a711e. Next: F2. Blocked: none.
+- S4.2 done: b357f71 / 23376a5; walkthrough fixes eb51a70 (data_as_of), 02e25d4 (rupees). Next: none.
+- S4.3 done: e25679b / 26e6e3d; rework 8f1b28b + 040081e after safety HIGH (simulated clock leaked into approval/growth timestamps).
+- S4.4 [~]: chaos x3 green (2/2 each); targeted 77 passed, 3 skipped; full suite before reply fix 1077 passed, 4 failed (all test_case_reply_api, fixed 59a711e); full re-run on 02e0ade in progress.
+- S4.4 evals (eval-20261026-161051.md): agents 100% both; baseline brewco 100%, spice_route 92% (sr-wrong-001); over-rule 0; injections held 2/2, 1/1.
+- S4.5 [~]: README demo steps 6-7 (02e0ade); test to main needs user re-confirm.
+- Follow-ups (not ticked): F1 explicit never-sent flag in verifier; F2 sweeper net for skipped reply resume + concurrent-reply test; F3 done (ea2103e); F4 polish (needed-info templates, growth rounding 76.4 vs 76.5, mock persistence O(n^2), 154 msgs ~2 min).
 
 ## Review
 (pending)
