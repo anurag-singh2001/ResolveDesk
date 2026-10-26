@@ -69,8 +69,8 @@ If it takes more than two minutes, click **Refresh** to check again.
 | **Investigating** | We are checking your order's records: items, times and payment. |
 | **Waiting for your reply** | We need one more detail from you. The message says what. |
 | **Awaiting approval** | We have proposed a remedy and a member of staff is reviewing it. |
-| **Processing** | Staff approved it and it is being carried out, for example the refund has been sent to the payment provider. |
-| **Confirmed** | Done. For a refund, the payment provider has confirmed it. |
+| **Processing** | It was approved (by staff, or automatically for a small voucher) and is being carried out, for example the refund has been sent to the payment provider. |
+| **Confirmed** | Done. For a refund, the payment provider has confirmed it; for a voucher, it has been issued. |
 | **Declined** | Staff reviewed it and no remedy was approved. The message explains. |
 | **With our team** | A person is handling your case directly. |
 | **Closed** | The case is finished. |
