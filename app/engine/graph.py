@@ -70,6 +70,8 @@ MAX_MESSAGE = 4000
 # Graph supersteps per invoke: the step budget plus code-only nodes and approve re-checks.
 RECURSION_LIMIT = MAX_STEPS + 12
 NO_PAUSED_WORKFLOW = "no paused workflow"
+# A failure before the claim (e.g. the database blipped): nothing changed, try again later.
+RESUME_ERROR = "resume failed before the claim"
 
 # What we may need from the customer -> the question code sends (no model-written text).
 NEED_ORDER = "order"
@@ -785,8 +787,8 @@ def resume_case(
             )
     except Exception as exc:
         log.exception("could not resume case %s", case_id)
-        if run_id is None:  # nothing was claimed or resumed
-            return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+        if run_id is None:  # nothing was claimed or resumed: the thread may well be fine
+            return {"outcome": "skipped", "reason": RESUME_ERROR}
         # Claimed, then failed (e.g. the connection dropped): a person takes over, so the
         # case is never left in 'investigating' with the reply unread.
         final, paused = {"outcome": "escalated", "reason": f"internal error: {type(exc).__name__}",

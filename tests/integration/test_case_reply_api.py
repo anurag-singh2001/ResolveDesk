@@ -227,6 +227,27 @@ def test_the_sweeper_escalates_a_reply_with_no_thread_to_resume(
     assert _proposals(app_engine, case) == 0
 
 
+def test_an_error_before_the_claim_is_retried_not_escalated(
+    api, app_engine, case, waiting, monkeypatch
+):
+    """Safety review of F2: a transient error (say the database blipped while reading the
+    checkpoint) must not hand a healthy case to a person; the next sweep resumes it."""
+    _lose_the_resume(monkeypatch)
+    api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    with monkeypatch.context() as m:
+
+        def blip(*a, **k):
+            raise ConnectionError("database blip")
+
+        m.setattr(graph, "open_checkpointer", blip)
+        assert sweep_tenant(app_engine, case["tid"], now=_later()).replies_resumed == []
+    assert _status(app_engine, case) == "awaiting_info"  # not escalated, nothing lost
+    assert sweep_tenant(app_engine, case["tid"], now=_later()).replies_resumed == [
+        str(case["case_id"])
+    ]
+    assert _proposals(app_engine, case) == 1
+
+
 def test_a_skipped_resume_is_logged(api, case, waiting, monkeypatch):
     _lose_the_resume(monkeypatch)
     warned = []

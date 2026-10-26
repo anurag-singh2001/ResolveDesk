@@ -202,12 +202,16 @@ def _unanswered_replies(engine, tenant_id, now, min_age) -> list[uuid.UUID]:
     every run of the case: a taken-up reply moves the run (claim, then pause or finish)."""
     reply_at = (
         select(func.max(AuditEvent.occurred_at))
-        .where(AuditEvent.event == "case.info_added", AuditEvent.entity_id == Case.id)
+        .where(
+            AuditEvent.tenant_id == tenant_id,
+            AuditEvent.event == "case.info_added",
+            AuditEvent.entity_id == Case.id,
+        )
         .scalar_subquery()
     )
     last_run = (
         select(func.max(WorkflowRun.updated_at))
-        .where(WorkflowRun.case_id == Case.id)
+        .where(WorkflowRun.tenant_id == tenant_id, WorkflowRun.case_id == Case.id)
         .scalar_subquery()
     )
     with tenant_session(tenant_id, engine) as s:
@@ -215,6 +219,7 @@ def _unanswered_replies(engine, tenant_id, now, min_age) -> list[uuid.UUID]:
             s.scalars(
                 select(Case.id)
                 .where(
+                    Case.tenant_id == tenant_id,
                     Case.status == "awaiting_info",
                     reply_at <= now - min_age,
                     (last_run.is_(None)) | (last_run < reply_at),
@@ -227,7 +232,9 @@ def _unanswered_replies(engine, tenant_id, now, min_age) -> list[uuid.UUID]:
 def _recover_replies(engine, tenant_id, now, min_age) -> list[str]:
     """Re-drive replies whose resume never claimed the run. No transaction is open while the
     graph runs (it may call the LLM). Per case: a reply with no paused thread to continue
-    (checkpoint pruned, agents off) goes to a person; a busy claim is left for the next pass."""
+    (checkpoint pruned; or ENGINE_MODE is not "agents", where replies are never resumed, so a
+    replied case reaches a person after min_age) goes to a person; a busy claim or an error
+    before the claim is left for the next pass. Returns only the cases actually resumed."""
     recovered = []
     for case_id in _unanswered_replies(engine, tenant_id, now, min_age):
         try:
@@ -239,9 +246,10 @@ def _recover_replies(engine, tenant_id, now, min_age) -> list[str]:
                     case_id,
                     "customer replied but the workflow could not be resumed",
                 )
+            elif out.get("outcome") != "skipped":
+                recovered.append(str(case_id))
         except Exception:
             log.exception("sweeper: could not recover the reply on case %s", case_id)
-        recovered.append(str(case_id))
     return recovered
 
 
