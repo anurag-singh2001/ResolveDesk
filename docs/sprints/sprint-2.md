@@ -131,11 +131,49 @@ Status: AMBER, trending better thanks to parallelism, with new risks:
 
 - Update (same day): E7.1 README done (fc7bb5f), ticked. E7.2 clean clone at fc7bb5f mostly passes (make flight fixed in 90fd4a1 after it rejected confirmed auto-approved vouchers); stays [~] until API+web are started from the clone and clicked through.
 
-## Review
-_to fill at sprint end_
+## Review (2026-10-26, scrum-master; Sprint 2 CLOSED 2026-10-26, five days ahead of the 2026-10-31 end)
+Method: no suite re-run. Evidence cited from the main session's runs (full suite on an isolated DB at ec2a80a: 930 passed, 9 skipped; chaos 2 passed; ruff clean), commits verified present with `git cat-file` (71592bd, 0fed2d1, ee96fa0, a4773b2, d20c8a6, edd25e5, ec2a80a), test files verified to exist, and the browser click-through of 2026-10-26.
+
+Demo summary
+- Spice Route: Kabir writes free text, the agent classifies late delivery, proposes Rs 264.00 (50% of Rs 528, 89 min late) citing late_delivery_v3#2.1; Asha sees message, reason, citation and checks, approves, case shows Confirmed with the full timeline.
+- BrewCo: Ananya (Baner order O0012189) reports Quality, a Rs 100 voucher is auto-approved and Confirmed in about 20 s; Neha (Baner manager) sees only that case. HQ Dev panel: Run sweeper -> "verified 1".
+- Fair use: approval page shows "Fair use grants 30d 1 / max 3"; vouchers go to awaiting_approval once a customer has 3+ grants.
+
+Planned vs done (planning table, 8 stories)
+- E3.1, E3.2, E4.1, E4.4, E4.5: done (ticked earlier today). E3.3 and E4.3: done, ticked now. E4.2: done, ticked now (verifier, event bus, tickets, rejection/expiry tests, negative test d20c8a6).
+- Added beyond plan and done: E2.5, E3.4, E3.5, E4.6, E5.1-E5.6, E6.1-E6.3, E7.1 (all from Sprint 3 or new).
+- Not met at close: E7.2 (API + web not started from the clean clone, 5 minute check) and E0.3 (human: rotate Neon owner password). E8.1-E8.3 not merged, moved to Sprint 3.
+
+Evidence links
+- Safety reviews clean: 71592bd, 0fed2d1, ee96fa0, a4773b2. Chaos: tests/chaos/test_chaos_refunds.py (CASES=50, p=0.3, zero duplicate provider refunds, per tenant).
+- Evals: evals/reports/eval-20261025-222049.md (100% both tenants and both pipelines, 0 proposals over the rule; tuning set, cache on). Caveat: earlier run edd25e5 had spice_route 91%, baseline 91%/75%; the 100% is on the tuning set with cache on, not the held-out six.
+- Screenshot: D:ackup\python\PR Summarizer	mp\claude-chrome-screenshots-7CZm0u\screenshot-1792986766355-0.jpg
+
+Follow-ups carried: replace error-prefix "never sent" detection in app/engine/verifier.py with an explicit flag; rerun make eval including sr-quality-002 on the held-out set; test -> main release review (human).
 
 ## Retro
-_to fill at sprint end_
+Went well
+- Parallel worktrees with one-at-a-time merges and a safety review per merge; no duplicate-money defect reached test. Chaos suite as a real per-tenant proof.
+- Browser click-through found real bugs (sign-out return page, auto-approved proposals not executing in-run in 0fed2d1, make flight rejecting vouchers) that unit tests missed.
+- Sprint 3 scope (UI, evals) was pulled forward; closed 5 days early.
+Did not go well
+- Account rate limits stopped every agent on 2026-10-25: about one working day lost.
+- Memory pressure and slow Neon suites (~18 min) forced narrow runs and reruns.
+- Demo packs went stale (policy packs and history drifted from code): click-through needed seed --no-history plus scripts.sweep.
+- Mock providers are in memory, so a restart loses provider state (documented in README).
+- Scenario expectations drifted once vouchers began executing (E4.6): evals and make flight needed fixes (90fd4a1, 0fed2d1).
+- Story text and EPICS status lagged reality (E4.2 and E4.3 sat at [~] with gaps unstated).
+Action for next sprint
+- Before any demo or release check, run one scripted "fresh DB + seed + start api/web + sign in" smoke so packs, mocks and scenario expectations are checked together (finish E7.2 this way).
 
 ## Scorecard
-_to fill at sprint end_
+Evidence: git log (126 commits total; 98 since 2026-10-24; 119 carry the Opus 5.5 trailer), pasted test counts, safety outputs summarized by the main session.
+| Agent (model) | Tasks done | First-try test pass rate | Rework commits | Safety findings raised/missed | Eval delta | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| main session (Claude Opus 5.5 per trailer) | about 25 stories ticked in the sprint | no data (only final 930 passed / 9 skipped, chaos 2 passed) | about 19 of 98 sprint commits mention fix/review (approximate keyword count, not per-story) | n/a | see eval row | Merge conflicts on migrations and executor resolved by ordered merges (1a771bc, 82fc11b). |
+| test-runner (haiku) | no per-run data in files | no data | no data | n/a | n/a | Counts above come from the main session. |
+| safety-reviewer (sonnet) | multi-pass reviews on E4 branches, E4 mediums fixed; clean on 71592bd, 0fed2d1, ee96fa0, a4773b2 | n/a | fixes seen in 7510611, d9384c7, 4ff444b, b6c7d21, ec2a80a | raised: several (exact per-pass counts no data for Sprint 2); missed: none known, but 0fed2d1 (auto-approved proposals not executing in-run) was found by click-through/flight, not review | n/a | Was the merge bottleneck (see risk update). |
+| eval-runner (haiku) | evals run 2026-10-26 | n/a | 1 scenario added after (sr-quality-002, unevaluated) | n/a | brewco 100%, spice_route 91% -> 100% (tuning set), baseline 91%/75% at edd25e5; 0 over-rule proposals | Held-out result not shown. |
+| business-analyst (sonnet) | E0.6 market.md rev 2 (950facd), R1-R13 mapped | n/a | 1 revision (rev 2) | n/a | n/a | Drove E2.5, E3.4, E3.5, E5.5 R5. |
+
+Sprint 2 status: CLOSED. Open items moved to docs/sprints/sprint-3.md.
