@@ -128,7 +128,8 @@ def refresh_signals(
     """Run the signal job now (it also runs nightly). hq_owner only: it reads every location."""
     if ctx.role != "hq_owner":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "hq_owner only")
-    return [_signal_out(db, s) for s in sig.run_signal_job(db, ctx.tenant_id, now)]
+    as_of = sig.data_as_of(db, ctx.tenant_id, now)
+    return [_signal_out(db, s) for s in sig.run_signal_job(db, ctx.tenant_id, as_of)]
 
 
 class ProposeIn(BaseModel):

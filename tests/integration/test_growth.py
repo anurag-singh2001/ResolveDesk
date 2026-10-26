@@ -579,3 +579,23 @@ def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
         assert abs(campaign.expires_at - (now + camp.PROPOSAL_TTL)) < timedelta(minutes=2)
         assert abs(now - approval.decided_at) < timedelta(minutes=2)
         assert approval.expires_at <= now + camp.APPROVAL_TTL + timedelta(minutes=2)
+
+
+def test_the_signal_job_measures_up_to_the_latest_data_not_an_empty_window(api, app_engine, gt):
+    """The demo history ends weeks before today: "the 4 weeks before now" would be empty and
+    no drop could ever show. The job measures up to the local midnight after the newest order,
+    never past now."""
+    cfg, tid, as_of = gt
+    with tenant_session(tid, app_engine) as s:
+        assert sig.data_as_of(s, tid, as_of + timedelta(days=90)) == as_of
+        earlier = as_of - timedelta(days=3)
+        assert sig.data_as_of(s, tid, earlier) == earlier  # never later than now
+    if not cfg.feature_flags.get("growth"):
+        return
+    planted = {p.location for p in cfg.simulation.problems if p.kind == "repeat_drop"}
+    hq = login(api, cfg.slug, next(u.email for u in cfg.users if u.role == "hq_owner"))
+    found = api.post("/growth/signals/refresh", headers=hq)  # real clock, no override
+    assert found.status_code == 200, found.text
+    with tenant_session(tid, app_engine) as s:
+        slugs = {s.get(Location, uuid.UUID(x["location_id"])).slug for x in found.json()}
+    assert slugs == planted
