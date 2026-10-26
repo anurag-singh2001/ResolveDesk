@@ -18,7 +18,7 @@ export function isStaff(role: string | undefined): boolean {
 export interface NavItem {
   to: string;
   label: string;
-  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "growth";
+  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "growth" | "privacy";
 }
 
 /** Which screens a role sees. The API still enforces access on every call. */
@@ -36,6 +36,7 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
     return [
       { to: "/orders", label: "My orders", icon: "orders" },
       { to: "/cases", label: "My cases", icon: "cases" },
+      { to: "/privacy", label: "Privacy & data", icon: "privacy" },
       { to: "/help", label: "Help", icon: "help" },
     ];
   }

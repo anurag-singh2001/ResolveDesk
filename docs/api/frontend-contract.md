@@ -40,6 +40,17 @@ processing → confirmed): `received`, `investigating`, `awaiting_info`, `awaiti
 `processing`, `confirmed`, `declined`, `escalated`, `closed`. `message` is the text to show the
 customer for the current stage.
 
+## Privacy and data rights (S5.2)
+| GET | `/me/consents` | customer | – | `{notice_version, consents: [{purpose, channel, granted, updated_at}], history: [{purpose, channel, granted, source, notice_version, at}]}`. No row means `granted: false`. Staff get 403 |
+| POST | `/me/consents/{purpose}` | customer | `{granted: bool, channel?}` (`purpose` is `marketing`; unknown purpose or channel 404) | same shape as GET. Granting and withdrawing are the same call; withdrawal applies to the next send |
+| GET | `/me/data-export` | customer | – | `{generated_at, profile: {name, phone, email, reference}, orders: [{order_ref, placed_at, brand, location, total_paise, status}], cases: [{id, order_ref, category, opened_at, stage, message}], consents: {as above}, processors: [{name, role, data}]}`. Own data only |
+| POST | `/me/erasure-request` | customer | – | `request` (201). One active request per customer: a second call returns it |
+| GET | `/me/erasure-request` | customer | – | the latest `request`, or `null` |
+| GET | `/data-requests` | hq_owner | – | `[request + customer_ref]`, newest first |
+| POST | `/data-requests/{id}/approve` | hq_owner | – | `request`. The server re-checks the guards: `completed`, or `deferred` with a reason. Unknown id 404 |
+
+`request` = `{id, kind: "erasure", status: pending_approval | deferred | completed, reason, deferred_until, requested_at, completed_at}`. `reason` is server template text, set when `deferred` (open case, refund in flight, legal hold, or inside the one-year minimum); show it as given.
+
 ## Approvals (staff)
 | GET | `/approvals?limit=&location_id=&action=&sort=` | staff | – | `[pending]`. `sort` is `oldest` (default), `newest` or `amount_desc`; unknown sort or action gives 422; a `location_id` the caller cannot see (or another tenant's) gives 404 |
 | POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |

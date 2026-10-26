@@ -96,3 +96,20 @@ timeline shows "You replied".
 - It **never promises money** before the payment provider confirms it. If the case says
   *Processing*, the refund is on its way but not yet confirmed.
 - It only ever looks at **your** orders.
+
+## Privacy and data
+
+Open **Privacy & data** in the menu.
+
+- **Offers and promotions.** Help with an order never needs your permission for offers. If you
+  want offers on WhatsApp, turn the switch on; to stop them, turn it off. One click either way,
+  and it applies to the next message we would send. **History of your choices** lists each
+  change with its date.
+- **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
+  companies that process data for us (such as the AI providers and the database host).
+- **Erase my data.** Click **Request erasure**. A person reviews it, and then your name, contact
+  details and message text are removed. Records of payments and refunds are kept. The page shows
+  the request's status: **Waiting for review**, **Completed**, or **Deferred** with the reason
+  (for example a case or refund of yours is still open, or we must keep records for one year after
+  your last activity). A deferred request is not dropped; ask the business to review it again
+  once the reason has passed.

@@ -76,7 +76,7 @@ def retention_days(settings: dict) -> int:
     return max(value, MIN_DAYS)
 
 
-def _unsettled_case_ids(tenant_id: uuid.UUID):
+def unsettled_case_ids(tenant_id: uuid.UUID):
     """Cases with money-flow work in progress: an undecided proposal, an unsettled execution,
     or a refund still in flight."""
     p = ActionProposal
@@ -112,7 +112,7 @@ def purge_tenant(
     report = RetentionReport(applied=apply)
     with tenant_session(tenant_id, engine) as s:
         cutoff = now - timedelta(days=retention_days(effective_settings(s)))
-        unsettled = _unsettled_case_ids(tenant_id)
+        unsettled = unsettled_case_ids(tenant_id)
         eligible = select(Case.id).where(
             Case.tenant_id == tenant_id,
             Case.status.in_(FINISHED),

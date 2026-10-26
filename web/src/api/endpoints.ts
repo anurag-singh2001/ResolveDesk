@@ -19,6 +19,8 @@ import type {
   OrderDetail,
   PendingApproval,
   SweepReport,
+  Consents,
+  ErasureRequest,
   TimelineEntry,
 } from "./types";
 
@@ -49,6 +51,12 @@ export const api = {
       anonymous: true,
     }),
   me: () => request<Me>("/me"),
+  myConsents: () => request<Consents>("/me/consents"),
+  setConsent: (purpose: string, granted: boolean) =>
+    request<Consents>(`/me/consents/${enc(purpose)}`, { method: "POST", body: { granted } }),
+  dataExport: () => request<unknown>("/me/data-export"),
+  myErasureRequest: () => request<ErasureRequest | null>("/me/erasure-request"),
+  requestErasure: () => request<ErasureRequest>("/me/erasure-request", { method: "POST" }),
   categories: () => request<Categories>("/meta/categories"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
