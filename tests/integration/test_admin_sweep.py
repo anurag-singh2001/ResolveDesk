@@ -14,6 +14,7 @@ REPORT_KEYS = {
     "reconciled",
     "escalated_cases",
     "verified",
+    "replies_resumed",
     "pruned_threads",
     "events_published",
 }
