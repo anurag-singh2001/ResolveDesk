@@ -16,6 +16,7 @@ from app.core.db import tenant_session
 from app.core.models import (
     GROWTH_MODELS,
     Campaign,
+    CampaignMember,
     Consent,
     Customer,
     Location,
@@ -421,3 +422,120 @@ def test_growth_api_end_to_end(api, app_engine, gt):
         assert final.json()["playbook"]["verdict"] in {"worked", "did_not_work", "inconclusive"}
     finally:
         api.app.dependency_overrides.pop(get_clock, None)
+
+
+# -- hardening: locking, consent at send time, resumable sends ---------------------------------
+
+
+def approved_campaign(engine, cfg, tid, as_of, approve_both=True):
+    """(campaign_id, hq, other) with a proposal; both approvals recorded if approve_both."""
+    signal_id = make_signal(engine, tid, as_of)
+    with tenant_session(tid, engine) as s:
+        loc = s.get(Signal, signal_id).location_id
+    hq, other = approvers(engine, cfg, tid, loc)
+    try:
+        cid, _ = propose_for(engine, tid, signal_id, hq)
+    except ProposalError:
+        pytest.skip("history too small for an audience at this scale")
+    decide_as(engine, tid, hq, cid)
+    if approve_both:
+        decide_as(engine, tid, other, cid)
+    return cid, hq, other
+
+
+def test_decision_waits_for_the_campaign_lock_and_sees_a_rejection(app_engine, gt):
+    """A decision re-reads the status under a row lock, so an approval racing a rejection can't
+    both pass the pending check: a rejected campaign is never approved, hence never sent."""
+    cfg, tid, as_of = gt
+    cid, hq, other = approved_campaign(app_engine, cfg, tid, as_of, approve_both=False)
+    holding, release, outcome = threading.Event(), threading.Event(), []
+
+    def rejecter():  # another request that has locked the campaign and is rejecting it
+        with tenant_session(tid, app_engine) as s:
+            s.execute(select(Campaign).where(Campaign.id == cid).with_for_update()).one()
+            holding.set()
+            release.wait(10)
+            s.execute(update(Campaign).where(Campaign.id == cid).values(status="rejected"))
+
+    def approver():
+        try:
+            decide_as(app_engine, tid, other, cid)
+            outcome.append("approved")
+        except camp.AlreadyDecided:
+            outcome.append("refused")
+
+    t1 = threading.Thread(target=rejecter)
+    t1.start()
+    assert holding.wait(10)
+    t2 = threading.Thread(target=approver)
+    t2.start()
+    t2.join(1.5)
+    assert t2.is_alive()  # blocked on the lock, not racing past the status check
+    release.set()
+    t1.join()
+    t2.join()
+    assert outcome == ["refused"]
+    assert execute_campaign(app_engine, tid, cid).outcome == "refused"
+    assert outbox(tid) == []
+
+
+def test_consent_withdrawn_after_approval_is_not_messaged(app_engine, maint_engine, gt):
+    cfg, tid, as_of = gt
+    cid, _, _ = approved_campaign(app_engine, cfg, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        members = [m for m in camp.members_of(s, s.get(Campaign, cid)) if m.arm == "treatment"]
+        withdrawn = members[0].customer_id
+        phones = {i: p for i, p in s.execute(select(Customer.id, Customer.phone))}
+    with tenant_session(tid, maint_engine) as s:
+        s.execute(
+            update(Consent)
+            .where(Consent.customer_id == withdrawn, Consent.purpose == "marketing")
+            .values(granted=False)
+        )
+    run = execute_campaign(app_engine, tid, cid)
+    assert run.failed == 1 and run.outstanding == 0
+    sent_to = [r.to for r in outbox(tid)]
+    assert phones[withdrawn] not in sent_to
+    assert len(sent_to) == len(members) - 1
+    with tenant_session(tid, app_engine) as s:
+        status = s.scalar(
+            select(CampaignMember.send_status).where(CampaignMember.customer_id == withdrawn)
+        )
+    assert status == "failed"
+
+
+def test_a_provider_error_marks_unknown_and_a_later_run_finishes_even_after_expiry(
+    app_engine, gt, monkeypatch
+):
+    cfg, tid, as_of = gt
+    cid, _, _ = approved_campaign(app_engine, cfg, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        treated = sum(1 for m in camp.members_of(s, s.get(Campaign, cid)) if m.arm == "treatment")
+    mock = get_mock("messaging")
+    real_send, calls = mock.send, []
+
+    def flaky(merchant_id, key, request):
+        calls.append(key)
+        if len(calls) == 1:
+            raise RuntimeError("provider blew up")
+        return real_send(merchant_id, key, request)
+
+    monkeypatch.setattr(mock, "send", flaky)
+    first = execute_campaign(app_engine, tid, cid)  # the error doesn't stop the others
+    assert first.outcome == "in_progress" and first.outstanding == 1
+    assert len(outbox(tid)) == treated - 1
+    monkeypatch.setattr(mock, "send", real_send)
+    # Long after the proposal and approvals expired: an `executing` campaign still finishes,
+    # with the same key for the member that was unknown.
+    later = execute_campaign(app_engine, tid, cid, now=datetime.now(UTC) + timedelta(days=10))
+    assert later.outcome == "sent" and later.outstanding == 0
+    assert len(outbox(tid)) == treated and len({r.to for r in outbox(tid)}) == treated
+
+
+def test_expired_approvals_cannot_be_renewed_by_the_same_approver(app_engine, gt):
+    """Intended: an approver's decision is final (one row per user). Once it has expired the
+    proposer re-proposes rather than the approver approving again."""
+    cfg, tid, as_of = gt
+    cid, hq, _ = approved_campaign(app_engine, cfg, tid, as_of, approve_both=False)
+    with pytest.raises(camp.AlreadyDecided):
+        decide_as(app_engine, tid, hq, cid, now=datetime.now(UTC) + timedelta(hours=30))

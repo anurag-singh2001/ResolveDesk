@@ -15,6 +15,7 @@ Same recipe as the support executors (app/engine/voucher_executor.py):
 Holdout members are never contacted.
 """
 
+import logging
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -25,7 +26,7 @@ from sqlalchemy.engine import Engine
 from app.connectors.base import connector_for
 from app.core import audit
 from app.core.db import tenant_session
-from app.core.models import Campaign, CampaignMember, Customer, Location
+from app.core.models import Campaign, CampaignMember, Consent, Customer, Location
 from app.core.settings_resolver import effective_settings
 from app.engine.dispatch import system_context
 from app.modules.growth.campaigns import (
@@ -34,6 +35,8 @@ from app.modules.growth.campaigns import (
     hash_is_intact,
     valid_approvals,
 )
+
+log = logging.getLogger(__name__)
 
 # Connector outcome -> member send_status. "unavailable" means nothing was applied: the member
 # stays as it was and the same key is retried on the next run.
@@ -69,11 +72,13 @@ def execute_campaign(
             return CampaignRun("refused", "campaign not found")
         if campaign.status not in ("approved", "executing", "sent"):
             return CampaignRun("refused", f"campaign is {campaign.status}")
-        if campaign.status != "sent":
+        if campaign.status != "sent" and not hash_is_intact(s, campaign):
+            return CampaignRun("refused", "payload hash mismatch")
+        if campaign.status == "approved":
+            # Expiry gates only the start. A campaign already `executing` finishes its open
+            # members with the same keys, so a half-sent campaign is never stranded.
             if now >= campaign.expires_at:
                 return CampaignRun("refused", "proposal expired")
-            if not hash_is_intact(s, campaign):
-                return CampaignRun("refused", "payload hash mismatch")
             if not dual_approved(valid_approvals(campaign, approvals_of(s, campaign), now)):
                 return CampaignRun("refused", "needs two valid approvals incl. an hq_owner")
         settings = effective_settings(s, location_id=campaign.location_id)
@@ -81,19 +86,33 @@ def execute_campaign(
         template = campaign.params["template"]
         offer = str(campaign.params["offer_paise"])
         place = s.scalar(select(Location.name).where(Location.id == campaign.location_id))
-        todo = [
-            (m.id, m.idempotency_key, phone)
-            for m, phone in s.execute(
-                select(CampaignMember, Customer.phone)
-                .join(Customer, Customer.id == CampaignMember.customer_id)
-                .where(
-                    CampaignMember.campaign_id == campaign.id,
-                    CampaignMember.arm == "treatment",
-                    CampaignMember.send_status.in_(OPEN_STATUSES),
-                )
-                .order_by(CampaignMember.customer_id)
+        consented = (
+            select(Consent.id)
+            .where(
+                Consent.customer_id == CampaignMember.customer_id,
+                Consent.channel == "whatsapp",
+                Consent.purpose == "marketing",
+                Consent.granted,
             )
-        ]
+            .exists()
+        )
+        todo = []
+        for m, phone, ok in s.execute(
+            select(CampaignMember, Customer.phone, consented)
+            .join(Customer, Customer.id == CampaignMember.customer_id)
+            .where(
+                CampaignMember.campaign_id == campaign.id,
+                CampaignMember.arm == "treatment",
+                CampaignMember.send_status.in_(OPEN_STATUSES),
+            )
+            .order_by(CampaignMember.customer_id)
+        ):
+            if ok and phone:
+                todo.append((m.id, m.idempotency_key, phone))
+            else:
+                # Consent withdrawn (or phone gone) since approval: never send. `failed` is
+                # terminal, so it is not retried.
+                m.send_status = "failed"
         if campaign.status == "approved":
             campaign.status = "executing"
             audit.record(
@@ -108,15 +127,21 @@ def execute_campaign(
             )
     params = {"offer_paise": offer, "location": place or ""}
     for member_id, key, phone in todo:  # no transaction is open here
-        outcome = connector.send(ctx, key, phone, template, params)
-        status = STATUS_MAP.get(outcome.status)
+        try:
+            outcome = connector.send(ctx, key, phone, template, params)
+            status, reference = STATUS_MAP.get(outcome.status), outcome.provider_reference
+        except Exception:
+            # The provider's answer is unknown: record that and carry on. A later run retries
+            # with the same key, which the provider de-duplicates.
+            log.exception("campaign %s: send for member %s raised", campaign_id, member_id)
+            status, reference = "unknown", None
         if status is None:
             continue
         with tenant_session(tenant_id, engine) as s:
             s.execute(
                 update(CampaignMember)
                 .where(CampaignMember.id == member_id, CampaignMember.send_status.notin_(TERMINAL))
-                .values(send_status=status, provider_reference=outcome.provider_reference)
+                .values(send_status=status, provider_reference=reference)
             )
     return _finish(engine, tenant_id, campaign_id, now)
 

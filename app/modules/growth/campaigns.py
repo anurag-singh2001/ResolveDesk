@@ -293,6 +293,9 @@ def decide(
     if decision not in ("approved", "rejected"):
         raise ValueError("decision must be approved or rejected")
     campaign = load_campaign(session, ctx, campaign_id)
+    # Lock the row and re-read its status: a concurrent reject and approve must not both see
+    # `pending_approval` (a rejected campaign would otherwise be approved and sent).
+    session.refresh(campaign, with_for_update=True)
     if campaign.status != "pending_approval":
         raise AlreadyDecided(f"campaign is {campaign.status}")
     if now >= campaign.expires_at:
