@@ -5,6 +5,7 @@ The redaction cannot be undone, so nothing is written without --apply, and the s
 to run at all unless APP_ENV is set explicitly (an unset APP_ENV means prod). Run daily."""
 
 import argparse
+import os
 import sys
 
 from app.config import Settings, get_settings
@@ -13,12 +14,14 @@ from app.core.tenant_config import tenant_dirs
 from app.engine.retention import purge_all
 
 
-def run(argv: list[str], settings: Settings, engine=None) -> int:
+def run(argv: list[str], settings: Settings, engine=None, environ=None) -> int:
     parser = argparse.ArgumentParser(prog="scripts.retention")
     parser.add_argument("--apply", action="store_true", help="really redact (default: dry run)")
     args = parser.parse_args(argv)
 
-    if "app_env" not in settings.model_fields_set:
+    # Explicit per invocation: the process environment, not a value picked up from .env.
+    environ = os.environ if environ is None else environ
+    if "APP_ENV" not in environ:
         print("refusing to run: APP_ENV is not set explicitly (unset means prod)", file=sys.stderr)
         return 2
     if args.apply and settings.app_env == "prod":

@@ -500,8 +500,8 @@ def test_runs_only_inside_the_given_tenant(app_engine, maint_engine, tid, made):
 # --- the script: refuses without an explicit APP_ENV, dry run by default, exit codes ----------
 
 
-def _settings(env="test", explicit=True):
-    return SimpleNamespace(app_env=env, model_fields_set={"app_env"} if explicit else set())
+def _settings(env="test"):
+    return SimpleNamespace(app_env=env)
 
 
 def _stub(monkeypatch, result):
@@ -517,7 +517,7 @@ def _stub(monkeypatch, result):
 
 def test_script_refuses_when_app_env_is_not_set_explicitly(monkeypatch):
     calls = _stub(monkeypatch, {})
-    assert retention_script.run(["--apply"], _settings("prod", explicit=False), engine=1) == 2
+    assert retention_script.run(["--apply"], _settings("prod"), engine=1, environ={}) == 2
     assert calls == []
 
 
@@ -526,8 +526,11 @@ def test_script_is_a_dry_run_unless_apply(monkeypatch, capsys):
 
     ok = {load_tenant(d).slug: RetentionReport() for d in tenant_dirs()}
     calls = _stub(monkeypatch, ok)
-    assert retention_script.run([], _settings(), engine=1) == 0
-    assert retention_script.run(["--apply"], _settings("prod"), engine=1) == 0
+    assert retention_script.run([], _settings(), engine=1, environ={"APP_ENV": "test"}) == 0
+    assert (
+        retention_script.run(["--apply"], _settings("prod"), engine=1, environ={"APP_ENV": "test"})
+        == 0
+    )
     assert calls == [False, True]
     assert "WARNING" in capsys.readouterr().err  # prod + apply
 
@@ -537,9 +540,9 @@ def test_script_exits_non_zero_when_a_tenant_failed_or_is_missing(monkeypatch):
 
     slugs = [load_tenant(d).slug for d in tenant_dirs()]
     _stub(monkeypatch, {slugs[0]: None, **{s: RetentionReport() for s in slugs[1:]}})
-    assert retention_script.run([], _settings(), engine=1) == 1
+    assert retention_script.run([], _settings(), engine=1, environ={"APP_ENV": "test"}) == 1
     _stub(monkeypatch, {slugs[0]: RetentionReport()})  # others missing
-    assert retention_script.run([], _settings(), engine=1) == 1
+    assert retention_script.run([], _settings(), engine=1, environ={"APP_ENV": "test"}) == 1
 
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")

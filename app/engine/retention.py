@@ -120,9 +120,12 @@ def purge_tenant(
             Case.legal_hold.is_(False),
             Case.id.not_in(unsettled),
         )
-        # Messages of an eligible case's tickets, except tickets still open.
+        # Messages of an eligible case's tickets, only once the ticket itself is settled (an
+        # open or escalated ticket is still being worked by a person).
         tickets = select(Ticket.id).where(
-            Ticket.tenant_id == tenant_id, Ticket.case_id.in_(eligible), Ticket.status != "open"
+            Ticket.tenant_id == tenant_id,
+            Ticket.case_id.in_(eligible),
+            Ticket.status.in_(("resolved", "closed")),
         )
         in_scope = (
             TicketMessage.tenant_id == tenant_id,
@@ -157,7 +160,7 @@ def purge_tenant(
         open_ticket = exists().where(
             Ticket.tenant_id == tenant_id,
             Ticket.customer_id == Customer.id,
-            Ticket.status == "open",
+            Ticket.status.in_(("open", "escalated")),
         )
         refund_on_order = exists().where(
             RefundOperation.tenant_id == tenant_id,
