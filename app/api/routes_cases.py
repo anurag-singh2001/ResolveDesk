@@ -145,14 +145,15 @@ def add_case_message(
     if ctx.role != "customer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "customers reply on their cases")
     case = visible_case(db, ctx, case_id)  # someone else's / another tenant's case: 404
+    now = datetime.now(UTC)  # a write: real time, never the dev clock
     try:
-        add_reply(db, ctx, case, body.message, datetime.now(UTC))
+        add_reply(db, ctx, case, body.message, now)
     except NotAwaitingInfo as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
     db.flush()
     if get_settings().engine_mode == "agents":  # the graph re-reads the whole conversation
         background.add_task(resume_info, engine, ctx.tenant_id, case.id, body.message)
-    return _out(db, case)
+    return _out(db, case, now)
 
 
 @router.get("/cases")
