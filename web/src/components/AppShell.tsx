@@ -2,12 +2,15 @@ import { NavLink, Link, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/session";
 import { homePath, navFor, roleLabel } from "../lib/roles";
 import type { NavItem } from "../lib/roles";
+import { api } from "../api/endpoints";
+import { useApi } from "../lib/useApi";
 import { Badge, Button, cx } from "./ui";
 
 const ICON: Record<NavItem["icon"], string> = {
   orders: "M3 4h2l2.4 10.2a2 2 0 0 0 2 1.8h7.7a2 2 0 0 0 2-1.6L21 8H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm9 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
   cases: "M4 5h16v11H8l-4 4V5Z",
   approvals: "M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Z",
+  dev: "M8 9l-4 3 4 3m8-6l4 3-4 3M14 6l-4 12",
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5V14m0 3h.01",
 };
 
@@ -35,7 +38,10 @@ export function Logo() {
 export function AppShell() {
   const { me, businessName, signOut } = useAuth();
   if (!me) return null;
-  const nav = navFor(me.role);
+  // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
+  const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
+  const base = navFor(me.role);
+  const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cx(

@@ -1,6 +1,8 @@
 import { request } from "./client";
 import type {
   AuditEvent,
+  ChaosSettings,
+  ChaosState,
   Business,
   Case,
   Categories,
@@ -11,12 +13,18 @@ import type {
   Order,
   OrderDetail,
   PendingApproval,
+  SweepReport,
   TimelineEntry,
 } from "./types";
 
 const enc = encodeURIComponent;
 
 export const api = {
+  // Dev panel (APP_ENV dev/test only; 404 elsewhere).
+  chaos: () => request<ChaosState>("/admin/chaos"),
+  setChaos: (service: string, settings: Partial<ChaosSettings>) =>
+    request<ChaosState>("/admin/chaos", { method: "POST", body: { service, ...settings } }),
+  sweep: () => request<SweepReport>("/admin/sweep", { method: "POST" }),
   businesses: () => request<Business[]>("/auth/businesses", { anonymous: true }),
   demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts", { anonymous: true }),
   login: (tenant: string, email: string, password: string) =>

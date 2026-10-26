@@ -70,6 +70,23 @@ details are hidden.
 | With our team | Handed to a person. |
 | Closed | Finished. |
 
+## Dev panel (demo only)
+
+In a demo or test setup, a **Dev panel** link appears in the menu. It is not there in a real
+(production) setup. It lets you break the pretend payment, voucher and messaging services on
+purpose, to see how the system recovers. It only affects your own business.
+
+1. Click **Dev panel**.
+2. Pick a preset such as **Payment times out after accepting**, or set the rates for one service
+   (0 means never, 1 means always) and click **Apply**. **Reset** puts that service back to normal.
+3. Report a problem as a customer and approve the refund. It shows as processing, never as paid,
+   until the provider confirms.
+4. Back on the Dev panel, click **Run sweeper**. It finishes or re-checks anything left
+   unfinished and shows how many items it handled.
+
+Resetting the demo data and moving the clock are not on this page. Ask whoever runs the demo to use
+`make seed` (reload data) and `make sweep` (same as Run sweeper, for every business).
+
 ## What the AI does and doesn't do
 
 - It reads order records and policies and **proposes** a remedy, never above what your business

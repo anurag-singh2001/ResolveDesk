@@ -3,6 +3,28 @@
 
 export type Role = "customer" | "location_manager" | "franchisee_owner" | "hq_owner";
 
+export interface ChaosSettings {
+  timeout_rate: number;
+  transient_error_rate: number;
+  accept_then_timeout_rate: number;
+  error_rate: number;
+  processing_rate: number;
+  settle_after_polls: number;
+  delay_ms: number;
+  seed: number;
+}
+
+export type ChaosState = Record<string, ChaosSettings>;
+
+export interface SweepReport {
+  executed: string[];
+  reconciled: string[];
+  escalated_cases: string[];
+  verified: string[];
+  pruned_threads: number;
+  events_published: number;
+}
+
 export interface Business {
   slug: string;
   name: string;

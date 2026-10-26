@@ -8,6 +8,7 @@ import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CasePage } from "./pages/CasePage";
 import { CasesPage } from "./pages/CasesPage";
+import { DevPage } from "./pages/DevPage";
 import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
@@ -56,6 +57,7 @@ export function App() {
         <Route path="/cases/:caseId" element={<CasePage />} />
         <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
+        <Route path="/dev" element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>
