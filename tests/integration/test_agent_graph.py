@@ -28,6 +28,7 @@ from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import tenant_dirs
 from app.engine.baseline import build_baseline_graph
+from app.engine.privacy import PRIVACY_CATEGORY
 from app.llm.providers import BudgetExceeded
 from app.rag.embeddings import HashEmbedder
 from app.rag.ingest import ingest_policies
@@ -613,3 +614,57 @@ def test_a_draft_claiming_success_never_reaches_the_customer_while_processing(ap
             assert " has been issued." not in text.replace("once it has been issued.", ""), text
     finally:
         reset_mocks()
+
+
+# --- privacy requests never reach a remedy (S5.5) ---
+
+
+def _file_as(app_engine, case, category):
+    with tenant_session(case["tid"], app_engine) as s:
+        s.get(Case, case["case_id"]).category = category
+        s.execute(update(Ticket).where(Ticket.case_id == case["case_id"]).values(category=category))
+
+
+def _stored_category(app_engine, case):
+    with tenant_session(case["tid"], app_engine) as s:
+        return s.get(Case, case["case_id"]).category
+
+
+def test_graph_classified_privacy_request_escalates_without_a_proposal(app_engine, case):
+    clf = FakeLLM({"Classification": [_classify(PRIVACY_CATEGORY)]})
+    res = FakeLLM({"ResolutionDraft": []})
+    out = _run(app_engine, case, clf, res)
+    assert out["outcome"] == "escalated" and res.calls == []
+    status, proposals = _case(app_engine, case)
+    assert status == "escalated" and proposals == []
+
+
+def test_graph_filed_privacy_request_is_not_reclassified(app_engine, case):
+    missing, _ = _pack_categories(app_engine, case)
+    _file_as(app_engine, case, PRIVACY_CATEGORY)
+    clf = FakeLLM({"Classification": [_classify(missing)]})
+    res = FakeLLM({"ResolutionDraft": []})
+    out = _run(app_engine, case, clf, res)
+    assert out["outcome"] == "escalated" and res.calls == []
+    status, proposals = _case(app_engine, case)
+    assert status == "escalated" and proposals == []
+    assert _stored_category(app_engine, case) == PRIVACY_CATEGORY
+
+
+def test_baseline_classified_privacy_request_escalates_without_a_proposal(app_engine, case):
+    res = FakeLLM({"BaselineDecision": [_decision(case, PRIVACY_CATEGORY)]})
+    out = _run_baseline(app_engine, case, res)
+    assert out["outcome"] == "escalated"
+    status, proposals = _case(app_engine, case)
+    assert status == "escalated" and proposals == []
+
+
+def test_baseline_filed_privacy_request_is_not_reclassified(app_engine, case):
+    missing, _ = _pack_categories(app_engine, case)
+    _file_as(app_engine, case, PRIVACY_CATEGORY)
+    res = FakeLLM({"BaselineDecision": [_decision(case, missing)]})
+    out = _run_baseline(app_engine, case, res)
+    assert out["outcome"] == "escalated" and res.calls == []  # no model call at all
+    status, proposals = _case(app_engine, case)
+    assert status == "escalated" and proposals == []
+    assert _stored_category(app_engine, case) == PRIVACY_CATEGORY

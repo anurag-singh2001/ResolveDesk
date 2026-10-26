@@ -161,3 +161,16 @@ def test_a_closed_privacy_case_is_not_flagged(api, app_engine, world):
         app_engine, w["tid"], now=opened + timedelta(days=40), min_age=timedelta(0)
     )
     assert str(case_id) not in report.grievances_flagged
+
+
+def test_text_omits_the_contact_sentence_when_no_contact_is_set():
+    from datetime import UTC, datetime
+
+    from app.engine.privacy import customer_message
+
+    text = customer_message(
+        datetime(2026, 10, 1, tzinfo=UTC),
+        {"privacy_contact_name": "", "privacy_contact_email": "", "grievance_target_days": 30},
+    )
+    assert "privacy contact" not in text
+    assert "31 Oct 2026" in text

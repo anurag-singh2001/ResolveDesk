@@ -81,8 +81,6 @@ def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
         .order_by(TicketMessage.sent_at, TicketMessage.id)
         .limit(1)
     )
-
-
 # Sorts over stored columns only: a pending proposal has no expiry yet (an approval's 4-hour
 # clock starts when someone decides), so there is deliberately no "expiring soon" sort.
 

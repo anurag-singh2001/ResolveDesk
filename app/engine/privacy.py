@@ -37,10 +37,11 @@ def _fmt(d: date) -> str:
 def customer_message(opened_at: datetime, settings: dict[str, Any]) -> str:
     """Template only: no model text, no promise beyond our own target."""
     name, email = settings.get("privacy_contact_name"), settings.get("privacy_contact_email")
-    contact = f"{name} ({email})" if name and email else (email or name or "our team")
+    contact = f"{name} ({email})" if name and email else (email or name)
+    reach = f"You can also reach our privacy contact: {contact}. " if contact else ""
     return (
         "We have received your privacy request and passed it to a member of our team. "
-        f"You can also reach our privacy contact: {contact}. "
+        f"{reach}"
         f"Our internal target is to respond by {_fmt(target_date(opened_at, settings))}."
     )
 
@@ -54,7 +55,9 @@ def flag_due_soon(engine: Engine, tenant_id: uuid.UUID, now: datetime) -> list[s
         days = settings["grievance_target_days"]
         cutoff = now - timedelta(days=days * DUE_SOON_FRACTION)
         already = select(AuditEvent.id).where(
-            AuditEvent.event == DUE_SOON_EVENT, AuditEvent.entity_id == Case.id
+            AuditEvent.event == DUE_SOON_EVENT,
+            AuditEvent.entity_type == "case",
+            AuditEvent.entity_id == Case.id,
         )
         cases = s.scalars(
             select(Case)
