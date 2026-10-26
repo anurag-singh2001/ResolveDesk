@@ -12,6 +12,7 @@ from app.api import (
     routes_orders,
 )
 from app.config import get_settings
+from mocks.registry import enable_persistence
 
 
 def create_app() -> FastAPI:
@@ -38,6 +39,8 @@ def create_app() -> FastAPI:
     app.include_router(routes_growth.router)
     if get_settings().app_env in routes_admin.DEV_ENVS:  # allow-list
         app.include_router(routes_admin.router)
+        if get_settings().mock_state_file:  # mock providers only exist in dev/test
+            enable_persistence(get_settings().mock_state_file)
     return app
 
 

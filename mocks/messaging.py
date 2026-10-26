@@ -24,6 +24,10 @@ def _result(op: Operation) -> MessageResult:
 
 class MockMessaging(IdempotentMock):
     prefix = "msg"
+    request_type = MessageRequest
+
+    def _decode_request(self, data: dict) -> MessageRequest:
+        return MessageRequest(data["to"], data["template"], tuple(tuple(p) for p in data["params"]))
 
     def send(
         self, merchant_id: str, idempotency_key: str, request: MessageRequest

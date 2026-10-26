@@ -75,4 +75,35 @@ describe("dev panel", () => {
     expect(await screen.findByTestId("sweep-result")).toHaveTextContent("Executed 1, reconciled 2, verified 0, escalated 0 case(s).");
     expect(calls.some((c) => c.method === "POST" && c.path === "/admin/sweep")).toBe(true);
   });
+
+  it("shows the simulated clock and moves or resets it", async () => {
+    const at = (offset: number) => ({ now: "2026-10-27T10:00:00Z", offset_seconds: offset });
+    let offset = 0;
+    const { calls } = setup("hq_owner", {
+      "GET /admin/chaos": { body: chaos },
+      "GET /admin/clock": () => ({ body: at(offset) }),
+      "POST /admin/clock": (c) => {
+        const b = c.body as { advance_seconds?: number; reset?: boolean };
+        offset = b.reset ? 0 : offset + (b.advance_seconds ?? 0);
+        return { body: at(offset) };
+      },
+    });
+    renderApp("/dev");
+    expect(await screen.findByTestId("clock-offset")).toHaveTextContent("offset 0s");
+    await userEvent.click(screen.getByRole("button", { name: "+1h" }));
+    await userEvent.click(screen.getByRole("button", { name: "+4h" }));
+    await userEvent.click(screen.getByRole("button", { name: "+1 day" }));
+    await userEvent.click(screen.getByRole("button", { name: "+15 days" }));
+    expect(await screen.findByText(`(offset ${3600 + 4 * 3600 + 86400 + 15 * 86400}s)`)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Reset clock" }));
+    expect(await screen.findByText("(offset 0s)")).toBeInTheDocument();
+    const posts = calls.filter((c) => c.method === "POST" && c.path === "/admin/clock").map((c) => c.body);
+    expect(posts).toEqual([
+      { advance_seconds: 3600 },
+      { advance_seconds: 14400 },
+      { advance_seconds: 86400 },
+      { advance_seconds: 1296000 },
+      { reset: true },
+    ]);
+  });
 });
