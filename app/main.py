@@ -7,6 +7,7 @@ from app.api import (
     routes_auth,
     routes_cases,
     routes_growth,
+    routes_insights,
     routes_locations,
     routes_meta,
     routes_orders,
@@ -37,6 +38,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_cases.router)
     app.include_router(routes_approvals.router)
     app.include_router(routes_growth.router)
+    app.include_router(routes_insights.router)
     if get_settings().app_env in routes_admin.DEV_ENVS:  # allow-list
         app.include_router(routes_admin.router)
         if get_settings().mock_state_file:  # mock providers only exist in dev/test

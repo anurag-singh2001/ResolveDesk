@@ -5,7 +5,11 @@ import type {
   ChaosState,
   ClockState,
   Business,
+  Campaign,
   Case,
+  GrowthSignal,
+  LocationRef,
+  OutletInsight,
   Categories,
   DecisionResponse,
   DemoAccount,
@@ -49,6 +53,16 @@ export const api = {
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
   approvals: (limit = 200) => request<PendingApproval[]>(`/approvals?limit=${limit}`),
+  locations: () => request<LocationRef[]>("/locations"),
+  outletInsights: () => request<OutletInsight[]>("/insights/outlets"),
+  growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
+  refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
+  proposeCampaign: (signalId: string) =>
+    request<Campaign>(`/growth/signals/${enc(signalId)}/campaign`, { method: "POST", body: {} }),
+  campaign: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}`),
+  decideCampaign: (id: string, decision: "approved" | "rejected") =>
+    request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
+  campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {
       method: "POST",

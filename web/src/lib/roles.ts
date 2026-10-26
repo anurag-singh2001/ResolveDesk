@@ -18,11 +18,20 @@ export function isStaff(role: string | undefined): boolean {
 export interface NavItem {
   to: string;
   label: string;
-  icon: "orders" | "cases" | "approvals" | "help" | "dev";
+  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "growth";
 }
 
 /** Which screens a role sees. The API still enforces access on every call. */
-export function navFor(role: string): NavItem[] {
+export function canSeeInsights(role: string | undefined): boolean {
+  return role === "hq_owner" || role === "franchisee_owner";
+}
+
+/** Growth is staff-only and only where the tenant's growth flag is on (GET /me). */
+export function canSeeGrowth(role: string | undefined, growthEnabled: boolean | undefined): boolean {
+  return isStaff(role) && growthEnabled === true;
+}
+
+export function navFor(role: string, growthEnabled = false): NavItem[] {
   if (role === "customer") {
     return [
       { to: "/orders", label: "My orders", icon: "orders" },
@@ -34,6 +43,8 @@ export function navFor(role: string): NavItem[] {
     return [
       { to: "/approvals", label: "Approvals", icon: "approvals" },
       { to: "/cases", label: "Cases", icon: "cases" },
+      ...(canSeeInsights(role) ? [{ to: "/insights", label: "Insights", icon: "insights" as const }] : []),
+      ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth", label: "Growth", icon: "growth" as const }] : []),
       { to: "/help", label: "Help", icon: "help" },
     ];
   }

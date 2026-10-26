@@ -14,7 +14,7 @@ Five wrong passwords lock the account for a few minutes ("Too many attempts"). "
 ended" means you need to sign in again. Use **Sign out** (top right) on shared devices.
 
 The top bar shows your business, your name, your role badge (**Franchisee owner**), **Help** and
-**Sign out**. The menu has **Approvals**, **Cases** and **Help**.
+**Sign out**. The menu has **Approvals**, **Cases**, **Insights**, **Growth** (if switched on for your business) and **Help**.
 
 ## Approvals
 
@@ -64,6 +64,13 @@ shows the progress bar, the current customer message, the remedy, the timeline a
 | Declined | Not approved. |
 | With our team | Handed to a person. |
 | Closed | Finished. |
+
+## Insights and Growth
+
+**Insights** shows a read-only table for your outlets over the last 30 days: cases opened,
+refunds confirmed, vouchers issued, median time to decision and repeat-customer rate (**-** means
+no data). If **Growth** is in your menu you can propose a win-back campaign for a flagged outlet
+and approve it, but sending also needs a second, different approver and an HQ owner's approval.
 
 ## What the AI does and doesn't do
 
