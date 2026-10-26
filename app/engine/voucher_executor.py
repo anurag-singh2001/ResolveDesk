@@ -149,6 +149,7 @@ def _record_refusal(engine, ctx, proposal_id, reason: str) -> None:
                 idempotency_key=voucher_key(proposal_id),
                 status="failed",
                 error=f"refused: {reason}"[:500],
+                never_sent=True,
             )
         )
         audit.record(

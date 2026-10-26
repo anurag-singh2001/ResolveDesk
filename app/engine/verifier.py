@@ -20,9 +20,6 @@ from app.core.tenancy import TenantContext
 from app.engine.eligibility import order_facts
 
 FINAL = ("verified", "mismatch")
-# Error prefixes of failed executions that never reached the provider (executor refusal,
-# operator release).
-NEVER_SENT = ("refused:", "released by operator")
 
 
 @dataclass(frozen=True)
@@ -156,5 +153,5 @@ def _snapshot(engine, ctx, proposal_id) -> "_Snapshot | VerifyResult":
             proposal.params["amount_paise"],  # the hashed, approved params
             # The same (brand/location-narrowed) settings the executor used to pick the connector.
             order_facts(s, uuid.UUID(proposal.params["transaction_id"]))[1].settings,
-            (execution.error or "").startswith(NEVER_SENT),
+            execution.never_sent,  # explicit flag, not error text
         )
