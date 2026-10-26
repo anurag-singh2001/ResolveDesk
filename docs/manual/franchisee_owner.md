@@ -22,6 +22,8 @@ The top bar shows your business, your name, your role badge (**Franchisee owner*
 **order**, **outlet**, **action**, **amount**, **risk** (*Low*, *Medium*, *High*) and **age**. A
 **Checks failed** badge means it can't be approved as it stands.
 
+Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*, *Expiring soon*). Your choices stay in the page address, so a reload or a shared link keeps them. If nothing matches, the page says so.
+
 Open one with **Review**. The page shows:
 
 1. **Customer's message**: the customer's own words. It is a claim, not a fact.

@@ -346,3 +346,8 @@ Format:
 - Why: (1) customers were never told what was needed, and storing a code keeps hard rule 7 (no model text). (2) float formatting and floor truncation disagreed on x.x5 values. (3) rewriting the whole file per mutation made a 154-message campaign quadratic (about 2 minutes).
 - Trade-off: a hard crash (kill -9, power loss) can lose the last ~200 ms of mock provider records. Acceptable for dev mocks; a clean exit loses nothing.
 - Alternative rejected: storing the question text on the event (stale if templates change, tempts storing model text); a write-ahead log or SQLite for the mocks (more machinery than a dev tool needs).
+
+## 2026-10-27 - Approvals queue filter and sort (S5.4)
+- Decision: `GET /approvals` takes `location_id`, `action` and `sort` (oldest, newest, amount_desc, expiring_soon). An unreadable `location_id` (other tenant, out of scope, nonexistent) is 404 through `ctx.can_see_location`; an unregistered `action` or unknown `sort` is 422. `expiring_soon` ranks the longest-waiting proposals first (same as oldest, then larger amounts first), because a pending proposal has no stored expiry: the approval expiry only starts when someone decides. The web filter state lives in the URL query string; the outlet menu uses `/locations`, which is already scope-filtered.
+- Why: staff need to triage by outlet, kind and size, and a 404 for hidden locations leaks nothing (hard rule 8).
+- Alternative rejected: adding a proposal expiry column (a migration and a new rule nobody asked for); client-side filtering (the 200-row cap would hide matches).
