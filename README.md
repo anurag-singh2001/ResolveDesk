@@ -154,8 +154,11 @@ biryani, once filed as wrong item in a demo) is in the second run and now passes
 ## Tests
 
 `make test` (both tenants, every test), `make test-isolation`, `make test-chaos`, `make lint`,
-`make web-test`. Last full run: 930 passed, 9 skipped (shape-specific, e.g. a tenant without
-lateness tiers); chaos 2 passed.
+`make web-test`. Last full run (2026-10-26, after the growth module): 1020 passed, 10 skipped
+(shape-specific, e.g. a tenant without lateness tiers), 2 failed; chaos 1 of 2 failed. All three
+failures were fixed in `e047336` and their suites re-run green (chaos 2 passed; the affected
+integration and unit suites 591 passed). The chaos failure was a real one: an escalated case
+hid a refund the provider had confirmed.
 
 ## Tradeoffs
 
