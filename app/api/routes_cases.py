@@ -1,3 +1,4 @@
+import logging
 import uuid
 from datetime import UTC, datetime
 
@@ -24,6 +25,7 @@ from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
 from app.engine.dispatch import executable
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["cases"])
 
 
@@ -128,6 +130,20 @@ def create_case(
     return _out(db, case, datetime.now(UTC))
 
 
+def _resume_after_reply(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, message: str
+) -> None:
+    """Background task for a reply. The reply is already stored; if the graph did not pick
+    it up, say so (the sweeper re-drives it or escalates the case)."""
+    out = resume_info(engine, tenant_id, case_id, message)
+    if out.get("outcome") == "skipped":
+        log.warning(
+            "reply on case %s did not resume the workflow (%s); the sweeper will retry",
+            case_id,
+            out.get("reason"),
+        )
+
+
 class ReplyIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
@@ -151,8 +167,8 @@ def add_case_message(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
     db.flush()
     if get_settings().engine_mode == "agents":  # the graph re-reads the whole conversation
-        background.add_task(resume_info, engine, ctx.tenant_id, case.id, body.message)
-    return _out(db, case)
+        background.add_task(_resume_after_reply, engine, ctx.tenant_id, case.id, body.message)
+    return _out(db, case, datetime.now(UTC))
 
 
 @router.get("/cases")
