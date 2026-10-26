@@ -41,11 +41,51 @@ Risks and mitigations
 - S4.5 [~]: README demo steps 6-7 (02e0ade); test to main needs user re-confirm.
 - Follow-ups (not ticked): F1 explicit never-sent flag in verifier; F2 sweeper net for skipped reply resume + concurrent-reply test; F3 done (ea2103e); F4 polish (needed-info templates, growth rounding 76.4 vs 76.5, mock persistence O(n^2), 154 msgs ~2 min).
 
-## Review
-(pending)
+## Status
+OPEN until the final full suite + chaos run (prepared 2026-10-27; nothing below is ticked yet).
 
-## Retro
-(pending)
+Follow-up state (from the main session, 2026-10-27)
+- F3 done: merged, ea2103e.
+- F2 (sweeper safety net for lost reply resumes, concurrent-reply test): merged locally, 5904e23. Safety review: 1 medium (a transient DB error before the claim was reported as "no paused workflow", so the sweeper escalated a healthy case) plus lows (explicit tenant filters; report counted escalations as resumes). Fixed by the main session; tests running. Not verified by me yet.
+- F1 (explicit executions.never_sent flag, migration 0016 with backfill and column grant): 8451ed2, review fixes b09c157. Safety review: no blocking, 1 medium (backfill silently relied on owner BYPASSRLS), fixed: migration now fails loudly if rows remain unflagged and checks the role on the grant. Round-trip 0016 -> 0015 -> 0016 OK on an isolated DB (main session report). Merging now.
+- F4 (needed-info templates, growth rounding mismatch, mock persistence O(n^2)): interrupted by the usage limit, resumed.
+
+## What is left to close Sprint 4
+- [ ] F2 tests green, then push
+- [ ] F1 merged; test and demo DBs migrated to 0016
+- [ ] F4 reviewed (safety review if it touches anything sensitive) and merged
+- [ ] One full suite + `make test-chaos` x1 on the final head, results pasted here (this also closes S4.4)
+- [ ] Demo restarted on the final head
+- [ ] User confirms test to main (S4.5)
+S4.4 and S4.5 stay `[~]` in EPICS.md until these are checked.
+
+## Review
+(to fill at close: for each story run or cite its done-when; S4.1-S4.3b already carry evidence in EPICS.md. S4.4 needs the final full-suite and chaos numbers; S4.5 needs the user's confirmation.)
+
+## Retro (draft, 2026-10-27)
+Went well
+- Parallel builders on isolated DBs (b1..b3) delivered S4.1-S4.3 in one day; safety review caught a real HIGH (simulated clock leaked into approval and growth timestamps) before merge.
+- The browser walkthrough found what unit tests missed; the F1 and F2 reviews each found a medium that was fixed before merge.
+
+Hurt
+- (a) The Sonnet session limit hit around midnight and stopped two agents mid-task (F4 among them).
+- (b) The machine ran critically low on memory with 2 servers, a full suite, chaos, evals, 4 builders and 7 Neon DBs at once. Claude Code killed the API, the web server, the full-suite run and one test run. Lesson: cap parallelism at about 2 heavy processes.
+- (c) Semantic merge conflict between parallel builders: S4.1 called `_out(db, case)` after S4.3 changed its signature, so every customer reply returned 500. Git merged cleanly; only the browser walkthrough caught it. Lesson: after merging parallel branches run the merged branch's targeted tests before the walkthrough, and give builders the current branch head.
+- (d) A stale vite server on port 5173 served a broken page.
+
+Action for next sprint
+- Add to the planning checklist: max 2 heavy processes at once; a targeted-test run on the merged head after every merge, before any browser check; kill stale dev servers (port 5173, API) before a walkthrough.
 
 ## Scorecard
-(end of sprint)
+Draft with evidence so far; "no data" where no output was pasted into this file.
+
+| Agent | Tasks done | First-try test pass | Rework commits | Safety findings raised/missed | Eval delta | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| main session (Opus per S4.4 owner; trailer not checked) | S4.4/S4.5 integration, F1, F2, F3, fixes 59a711e, eb51a70, 02e25d4 | full suite before reply fix: 1077 passed, 4 failed (all test_case_reply_api) | 59a711e (S4.1 integration), b09c157 (F1 review fix), F2 review fixes | n/a | evals eval-20261026-161051.md: agents 100% both tenants; baseline brewco 100%, spice_route 92%; over-rule 0 | final suite pending |
+| builder B1 (Sonnet) | S4.1 | no data | 0 own (integration fix by main) | safety: no high/medium | no data | |
+| builder B2 (Sonnet) | S4.2 | no data | eb51a70, 02e25d4, ea2103e (walkthrough follow-ups) | no data | no data | |
+| builder B3 (Sonnet) | S4.3a, S4.3b | no data | 8f1b28b, 040081e after safety HIGH | 1 HIGH raised (clock leak); 0 known missed | no data | |
+| test-runner (haiku) | no data | no data | no data | n/a | n/a | |
+| safety-reviewer (sonnet) | reviews of B1-B3, F1, F2 | n/a | n/a | raised: 1 HIGH (B3), 1 medium (F1), 1 medium + lows (F2); missed: the _out merge break (outside its scope) | n/a | |
+| eval-runner (haiku) | evals run 2026-10-26 | n/a | n/a | n/a | see main row | |
+| business-analyst (sonnet) | no work this sprint | n/a | n/a | n/a | n/a | |

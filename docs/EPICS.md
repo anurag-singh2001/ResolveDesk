@@ -12,6 +12,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 | 2 | 2026-10-24 → 2026-10-31 (starts early, Sprint 1 finished 2026-10-24) | AI pipeline + safe execution |
 | 3 | 2026-11-02 → 2026-11-04 (closed early 2026-10-26) | UI + evals (pulled into Sprint 2) + E8 growth; human items carried over |
 | 4 | 2026-10-26 → 2026-10-27 (re-planned; usage resets Tue 2026-10-27) | Spec gaps to a complete v1 (E9) + ship (E7 remainder) |
+| 5 | proposed, dates after Sprint 4 closes (user to confirm scope) | Privacy basics (DPDP retention, consent, access/erasure), growth chaos test, approvals filter, grievance SLA display, Hindi templates; see docs/sprints/sprint-5.md |
 
 ---
 
