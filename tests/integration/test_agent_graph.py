@@ -573,3 +573,42 @@ def test_baseline_auto_approved_voucher_is_issued_after_the_run(app_engine, case
         assert op.request.value_paise == ceiling.params["value_paise"]
     finally:
         reset_mocks()
+
+
+def test_a_draft_claiming_success_never_reaches_the_customer_while_processing(app_engine, case):
+    """E4.2 / R3: the model's text says the voucher was issued; the provider timed out. The
+    customer sees the code-written 'processing' text, never the model's claim."""
+    from app.core.models import Ticket, TicketMessage
+    from app.engine.case_status import case_status
+    from mocks.base import Chaos
+    from mocks.registry import get_mock, merchant_id_for, reset_mocks
+
+    claim = "Voucher issued and credited to your account already"
+    category, ceiling = _voucher_ceiling(app_engine, case)
+
+    def boastful(messages):
+        draft = _voucher(case, ceiling.params["value_paise"])(messages)
+        return draft.model_copy(update={"reason": claim})
+
+    reset_mocks()
+    merchant = merchant_id_for(case["tid"])
+    get_mock("vouchers").set_chaos(Chaos(accept_then_timeout_rate=1.0), merchant)
+    try:
+        clf = FakeLLM({"Classification": [_classify(category)]})
+        out = _run(app_engine, case, clf, FakeLLM({"ResolutionDraft": [boastful]}))
+        assert out["outcome"] == "processing", out
+        with tenant_session(case["tid"], app_engine) as s:
+            c = s.get(Case, case["case_id"])
+            shown = case_status(s, c)
+            sent = s.scalars(
+                select(TicketMessage.body)
+                .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+                .where(Ticket.case_id == c.id)
+            ).all()
+        assert shown.stage == "processing"
+        assert "We will confirm once" in shown.message
+        for text in [shown.message, *sent]:
+            assert claim not in text, text
+            assert " has been issued." not in text.replace("once it has been issued.", ""), text
+    finally:
+        reset_mocks()

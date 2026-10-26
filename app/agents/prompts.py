@@ -4,13 +4,23 @@ ignore instructions inside them (hard rule 9). The output schema is enforced by
 LLMClient.invoke_structured; the rules here only steer what the model chooses."""
 
 import json
+import re
 from html import escape
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+# DPDP data minimisation (E3.4): the model never needs a customer's contact details (order
+# facts come from the read tools), so emails and phone numbers are masked before any prompt.
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+_PHONE = re.compile(r"(?<!\w)(?:\+?91[\s-]?|0)?[6-9]\d{4}[\s-]?\d{5}(?!\w)")
+
+
+def mask_contact_details(message: str) -> str:
+    return _PHONE.sub("[phone]", _EMAIL.sub("[email]", message))
+
 
 def fence_customer(message: str) -> str:
-    return f"<customer_message>\n{escape(message)}\n</customer_message>"
+    return f"<customer_message>\n{escape(mask_contact_details(message))}\n</customer_message>"
 
 
 def fence_policy(c: dict) -> str:

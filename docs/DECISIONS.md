@@ -271,3 +271,12 @@ Format:
 - Guards kept: ids-only checkpoint state, tenant/case ownership on resume, prune (the sweeper now calls `prune_finished` and `events.publish_pending`), the late-run skip in `store_proposal` (the graph ends there, the run is marked failed), forward-only statuses, and `lifecycle.escalate` no longer overwrites a case a person already resolved/closed/escalated.
 - Why: two parallel paths (graph execute vs. dispatch) risked divergent rules (verification, escalation, events) and double sends if one drifted from the other.
 - Alternative rejected: making `dispatch.run_approved` the owner (it would have to import lifecycle for events/escalation, and the graph nodes would need a second set of status strings).
+
+## 2026-10-26 - DPDP posture and data minimisation in LLM prompts (E3.4)
+- Decision:
+  - Under India's DPDP Act 2023, each tenant business is the data fiduciary for its customers. ResolveDesk processes their data on the tenant's behalf, and the LLM vendors (Groq, Google Gemini) are sub-processors.
+  - Prompts carry only what a decision needs. The read tools return a customer reference, order lines, fulfilment times, payments and previous case categories, never a name, email, phone or address. The customer's own message has emails and phone numbers masked (`[email]`, `[phone]`) in `fence_customer`, so every prompt gets the masked text.
+  - Audit payloads are already redacted (`audit.redact`). Ollama remains the option when no data may leave the machine.
+- Why: the model needs order facts, not contact details. Masking at the one place every prompt is built keeps that true for new prompts too.
+- Not done in this POC: data-retention periods, consent records, data-principal access/erasure requests, and a vendor DPA review. These are listed in the README limits as needed before real customer data.
+- Alternative rejected: masking names too. A name in free text is rare in complaints and the regexes would mangle dish names; it is left to a real NER step if needed.

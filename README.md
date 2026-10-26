@@ -163,6 +163,9 @@ lateness tiers); chaos 2 passed.
 - Small eval set; a single seed of synthetic data.
 - English only; one channel (web).
 - The voucher check trusts the provider's confirmed status (there is no amount to compare).
+- Privacy (DPDP): prompts get order facts but no contact details (emails and phone numbers
+  in customer messages are masked). Retention periods, consent records, access/erasure
+  requests and vendor DPAs are not built; they are needed before real customer data.
 
 ## How it compares
 
