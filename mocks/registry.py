@@ -23,8 +23,8 @@ _STORE: MockStateStore | None = None
 
 
 def enable_persistence(path: str) -> MockStateStore:
-    """Keep the idempotent mocks' records in a JSON file (MOCK_STATE_FILE): load it now, rewrite
-    it after every change. Chaos is never saved. Off by default (pure in-memory)."""
+    """Keep the idempotent mocks' records in a JSON file (MOCK_STATE_FILE): load it now, write
+    it (coalesced, ~200 ms) after changes. Chaos is never saved. Off by default (pure in-memory)."""
     global _STORE
     mocks = {name: m for name, m in _MOCKS.items() if isinstance(m, IdempotentMock)}
     store = MockStateStore(path, mocks)
@@ -37,6 +37,8 @@ def enable_persistence(path: str) -> MockStateStore:
 
 def disable_persistence() -> None:
     global _STORE
+    if _STORE is not None:
+        _STORE.close()
     for mock in _MOCKS.values():
         if isinstance(mock, IdempotentMock):
             mock.attach_store(None)

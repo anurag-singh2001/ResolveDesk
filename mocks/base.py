@@ -163,12 +163,11 @@ class IdempotentMock:
         return self.request_type(**data)
 
     def _flush(self) -> None:
-        """Write the file if something changed. Never called with self._lock held: the store
-        takes each mock's lock to snapshot it."""
+        """Ask the store to write soon (coalesced, see mocks/persist.py) if something changed."""
         with self._lock:
             dirty, self._dirty = self._dirty, False
         if dirty and self._store is not None:
-            self._store.save()
+            self._store.request_save()
 
     def dump_state(self) -> dict:
         with self._lock:
@@ -216,7 +215,9 @@ class IdempotentMock:
             self._clock = time.time
             self._dirty = True
         self.chaos.reset()
-        self._flush()  # with a state file configured, this empties it too
+        self._flush()
+        if self._store is not None:
+            self._store.flush()  # with a state file configured, this empties it at once
 
     def _land(self, merchant_id: str, key: str) -> None:
         """Apply a late request whose time has come; drop one past the request lifetime.

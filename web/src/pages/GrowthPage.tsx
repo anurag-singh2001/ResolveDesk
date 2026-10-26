@@ -8,9 +8,11 @@ import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../auth/session";
 
-/** Basis points → "12.3%" with integer maths. */
-function pct(bp: number): string {
-  return `${Math.floor(bp / 100)}.${String(bp % 100).padStart(2, "0").slice(0, 1)}%`;
+/** Basis points → "12.3%", rounded half up with integer maths (same rule as the server's
+ * format_pct in app/modules/growth/signals.py, so headline and diagnosis agree). */
+export function pct(bp: number): string {
+  const tenths = Math.floor((Math.abs(bp) + 5) / 10);
+  return `${bp < 0 ? "-" : ""}${Math.floor(tenths / 10)}.${tenths % 10}%`;
 }
 
 function CampaignPanel({ signalId, campaignId, location }: { signalId: string; campaignId: string; location: string }) {

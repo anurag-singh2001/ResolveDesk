@@ -11,6 +11,7 @@ import pytest
 from sqlalchemy import func, select
 
 import app.engine.graph as graph
+import app.engine.needs as needs
 from app.api import routes_cases
 from app.config import get_settings
 from app.core.db import tenant_session
@@ -254,3 +255,23 @@ def test_a_skipped_resume_is_logged(api, case, waiting, monkeypatch):
     monkeypatch.setattr(routes_cases.log, "warning", lambda msg, *args: warned.append(msg % args))
     api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
     assert any("did not resume" in w for w in warned)
+
+
+def test_the_customer_is_told_what_we_need_in_status_and_timeline(api, case, waiting):
+    """The question is a code-owned template picked by the need code, never model text."""
+    base = f"/cases/{case['case_id']}"
+    status = api.get(base, headers=waiting["owner"]).json()
+    assert status["stage"] == "awaiting_info"
+    assert needs.QUESTIONS[needs.NEED_DETAILS] in status["message"]
+    steps = api.get(f"{base}/timeline", headers=waiting["owner"]).json()
+    asked = [s for s in steps if s["stage"] == "awaiting_info"]
+    assert [s["text"] for s in asked] == [needs.QUESTIONS[needs.NEED_DETAILS]]
+    assert asked[0]["title"] == "Question for you"
+
+
+def test_need_codes_map_to_templates_and_unknown_codes_to_a_generic_sentence():
+    assert needs.question_for(needs.NEED_ORDER) == needs.QUESTIONS[needs.NEED_ORDER]
+    for odd in (None, "", "which_item_is_it", 7, "<script>"):
+        assert needs.question_for(odd) == needs.GENERIC_QUESTION
+    assert needs.need_from_payload({"reason": "x"}) is None
+    assert needs.need_from_payload(None) is None

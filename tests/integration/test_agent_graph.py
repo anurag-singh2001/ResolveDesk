@@ -9,6 +9,7 @@ import pytest
 from sqlalchemy import delete, func, select, update
 
 import app.engine.graph as graph
+import app.engine.needs as needs
 from app.agents.schemas import BaselineDecision, Classification, ResolutionDraft
 from app.core.db import tenant_session
 from app.core.models import (
@@ -229,7 +230,7 @@ def test_missing_info_asks_one_question_and_pauses(app_engine, case, classificat
             .join(Ticket)
             .where(Ticket.case_id == case["case_id"], TicketMessage.author == "system")
         )
-        assert list(bodies) == [graph.QUESTIONS[graph.NEED_DETAILS]]  # code's text, not a model's
+        assert list(bodies) == [needs.QUESTIONS[needs.NEED_DETAILS]]  # code's text, not a model's
     assert len(clf.calls) == 1
 
 

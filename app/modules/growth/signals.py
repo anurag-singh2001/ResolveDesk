@@ -188,13 +188,20 @@ def gather_evidence(session: Session, tenant_id: uuid.UUID, r: Reading) -> dict:
     }
 
 
+def format_pct(bp: int) -> str:
+    """Basis points -> "12.3" (one decimal, half up) with integer maths. The web headline
+    (GrowthPage.tsx pct) uses the same rule, so the two never disagree on a figure."""
+    tenths = (abs(bp) + 5) // 10
+    return f"{'-' if bp < 0 else ''}{tenths // 10}.{tenths % 10}"
+
+
 def template_diagnosis(evidence: dict) -> Diagnosis:
     """Deterministic summary: states only the numbers above (hard rule 7 for staff-facing text)."""
     base, recent = evidence["baseline"], evidence["recent"]
     findings = [
-        f"Repeat-customer rate fell from {base['repeat_bp'] / 100:.1f}% "
-        f"({base['orders']} orders) to {recent['repeat_bp'] / 100:.1f}% "
-        f"({recent['orders']} orders): a drop of {evidence['drop_bp'] / 100:.1f} points."
+        f"Repeat-customer rate fell from {format_pct(base['repeat_bp'])}% "
+        f"({base['orders']} orders) to {format_pct(recent['repeat_bp'])}% "
+        f"({recent['orders']} orders): a drop of {format_pct(evidence['drop_bp'])} points."
     ]
     hypotheses = []
     before, after = evidence["tickets_baseline"], evidence["tickets_recent"]

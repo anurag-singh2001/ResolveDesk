@@ -21,6 +21,7 @@ from app.core.models import (
     RefundOperation,
 )
 from app.core.money import format_inr
+from app.engine.needs import need_from_payload, question_for
 
 
 @dataclass(frozen=True)
@@ -80,7 +81,11 @@ def case_timeline(session: Session, case: Case, now: datetime | None = None) -> 
         )
         .order_by(AuditEvent.occurred_at, AuditEvent.id)
     )
-    steps += [TimelineStep(e.occurred_at, *_CASE_EVENTS[e.event]) for e in events]
+    for e in events:
+        stage, title, text = _CASE_EVENTS[e.event]
+        if e.event == "case.awaiting_info":  # say WHAT we need: a code-owned template
+            text = question_for(need_from_payload(e.payload))
+        steps.append(TimelineStep(e.occurred_at, stage, title, text))
 
     proposals = session.scalars(
         select(ActionProposal)

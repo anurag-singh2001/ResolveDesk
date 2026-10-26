@@ -54,6 +54,7 @@ from app.engine import lifecycle
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
 from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
+from app.engine.needs import NEED_DETAILS, NEED_ORDER, question_for
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
 from app.llm.providers import LLMError
@@ -72,15 +73,6 @@ RECURSION_LIMIT = MAX_STEPS + 12
 NO_PAUSED_WORKFLOW = "no paused workflow"
 # A failure before the claim (e.g. the database blipped): nothing changed, try again later.
 RESUME_ERROR = "resume failed before the claim"
-
-# What we may need from the customer -> the question code sends (no model-written text).
-NEED_ORDER = "order"
-NEED_DETAILS = "details"
-QUESTIONS = {
-    NEED_ORDER: "Which order is this about? Please pick it from your order list.",
-    NEED_DETAILS: "Thanks for telling us. So we can look into it, could you tell us a bit more"
-    " about what went wrong with your order (for example, which item was affected)?",
-}
 
 
 class StructuredLLM(Protocol):
@@ -431,9 +423,10 @@ def store_proposal(deps: Deps, state: CaseState) -> CaseState:
 
 
 def ask_customer(deps: Deps, state: CaseState) -> CaseState:
-    question = QUESTIONS[state.get("need") or NEED_DETAILS]
+    need = state.get("need") or NEED_DETAILS
+    question = question_for(need)
     reason = _work(deps, state).get("reason") or question
-    _finish(deps, state, "awaiting_info", reason, ticket=question)
+    _finish(deps, state, "awaiting_info", reason, ticket=question, need=need)
     return {"outcome": "awaiting_info", "step_count": _step(state)}
 
 
@@ -487,7 +480,9 @@ FINISHABLE_FROM = {
 }
 
 
-def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "") -> None:
+def _finish(
+    deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "", need: str = ""
+) -> None:
     """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
     the customer. The event payload carries no reason text (it may quote the model)."""
     tid = uuid.UUID(state["tenant_id"])
@@ -506,9 +501,11 @@ def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str 
             if ticket_id is not None:
                 s.add(TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="system",
                                     body=ticket, sent_at=now))  # fmt: skip
+        payload = {"reason": reason[:500]}
+        if need:  # a code, not text: the customer-facing question is looked up from it
+            payload["need"] = need
         audit.record(s, tid, actor_type="agent", actor_id=None, event=f"case.{status}",
-                     entity_type="case", entity_id=case.id,
-                     payload={"reason": reason[:500]})  # fmt: skip
+                     entity_type="case", entity_id=case.id, payload=payload)  # fmt: skip
         events.emit(s, tid, f"case.{status}", case.id, {"run_id": state.get("run_id")})
 
 
