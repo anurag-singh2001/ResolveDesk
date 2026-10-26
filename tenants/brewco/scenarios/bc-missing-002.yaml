@@ -1,0 +1,11 @@
+id: bc-missing-002
+tenant: brewco
+kind: phrasing
+message: only got some of the things i paid for?? one thing just wasnt there
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact

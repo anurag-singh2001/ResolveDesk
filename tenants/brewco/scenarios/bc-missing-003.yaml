@@ -1,0 +1,10 @@
+id: bc-missing-003
+tenant: brewco
+kind: wrong_claim
+message: My sandwich was missing from the order.
+order:
+  select: on_time
+expect:
+  category: missing_items
+  outcome: escalated
+note: nothing short on record

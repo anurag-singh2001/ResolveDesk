@@ -1,0 +1,15 @@
+id: sr-late-002
+tenant: spice_route
+kind: hinglish
+message: Bhai order lagbhag 50 minute late aaya, khana thanda ho gaya. Refund chahiye.
+order:
+  select: late_between
+  min_minutes: 45
+  max_minutes: 59
+  placed_on: '2026-10-27'
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: refund
+  amount: exact
+note: 'placed under late_delivery_v4 tiers (from 2026-10-26): 45-59 min late is a 25% refund'

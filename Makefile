@@ -1,8 +1,9 @@
 # Recipes are single commands so they run under cmd (Windows) or sh.
 TENANT ?= all
+SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate seed test test-tenant test-isolation test-chaos eval lint ui
+.PHONY: up down db-check migrate seed sweep api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
 
 db-check:
 	uv run python -m scripts.db_check
@@ -15,8 +16,17 @@ down:
 migrate:
 	uv run alembic upgrade head
 
+sweep:
+	uv run python -m scripts.sweep
+
 seed:
-	@echo not implemented yet
+	uv run python -m scripts.seed $(TENANT) --seed $(SEED)
+
+api:
+	uv run uvicorn app.main:app --reload --port 8000
+
+flight:
+	uv run python -m scripts.flight $(ARGS)
 
 test:
 	uv run pytest -q -m "not isolation and not chaos and not live"
@@ -28,13 +38,29 @@ test-isolation:
 	uv run pytest -q -m isolation
 
 test-chaos:
-	@echo not implemented yet
+	uv run pytest -q -m chaos
 
 eval:
-	@echo not implemented yet
+	uv run python -m evals.run $(ARGS)
 
 lint:
 	uv run ruff check . && uv run ruff format --check .
 
 ui:
-	@echo not implemented yet
+	uv run streamlit run ui/app.py
+
+llm-smoke:
+	uv run python -m scripts.llm_smoke
+
+# React web app (web/). Run web-install once; the API must be running (make api).
+web-install:
+	npm --prefix web ci
+
+web:
+	npm --prefix web run dev
+
+web-build:
+	npm --prefix web run build
+
+web-test:
+	npm --prefix web test

@@ -1,0 +1,12 @@
+id: sr-late-001
+tenant: spice_route
+kind: plain
+message: My order arrived more than an hour after the time the app promised.
+order:
+  select: most_late
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: refund
+  amount: exact
+note: 'the most late order; history predates v4, so late_delivery_v3 applies (45+ min: 50%)'

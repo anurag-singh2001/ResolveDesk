@@ -1,0 +1,15 @@
+brand,sku,name,category,price_paise
+biryani_box,BB-CHK-BIR,Chicken Dum Biryani,biryani,34900
+biryani_box,BB-MUT-BIR,Mutton Dum Biryani,biryani,44900
+biryani_box,BB-VEG-BIR,Veg Dum Biryani,biryani,26900
+biryani_box,BB-RAITA,Burani Raita,side,6900
+biryani_box,BB-KEBAB,Chicken Seekh Kebab,starter,24900
+midnight_pizza,MP-MARG,Margherita (Medium),pizza,29900
+midnight_pizza,MP-PEPP,Pepperoni (Medium),pizza,42900
+midnight_pizza,MP-PANEER,Tandoori Paneer (Medium),pizza,37900
+midnight_pizza,MP-GBREAD,Garlic Bread,side,14900
+midnight_pizza,MP-COKE,Coke 500 ml,beverage,6000
+bowl_theory,BT-TERI,Teriyaki Chicken Bowl,bowl,31900
+bowl_theory,BT-BURRITO,Burrito Bowl Veg,bowl,27900
+bowl_theory,BT-THAI,Thai Green Curry Bowl,bowl,32900
+bowl_theory,BT-SALAD,Quinoa Salad,salad,24900

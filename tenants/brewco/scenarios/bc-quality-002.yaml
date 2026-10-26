@@ -1,0 +1,12 @@
+id: bc-quality-002
+tenant: brewco
+kind: hinglish
+message: Coffee bilkul thandi thi aur taste bhi kharab tha.
+order:
+  select: latest
+expect:
+  category: quality
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
+held_out: true

@@ -1,39 +1,53 @@
-"""DB fixtures for isolation tests. Runs against the Neon `test` branch as the app role."""
+"""Seeded tenants for isolation tests (app_engine lives in tests/conftest.py)."""
 
 import uuid
 from dataclasses import dataclass
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
-from alembic import command
-from alembic.config import Config
-from sqlalchemy import Engine, create_engine, delete
+from sqlalchemy import Engine, delete
+from sqlalchemy.exc import OperationalError
 
-from app.config import get_settings
 from app.core.db import tenant_session
 from app.core.models import (
     TENANT_MODELS,
+    ActionProposal,
+    Approval,
+    AuditEvent,
     Brand,
+    Campaign,
+    CampaignApproval,
+    CampaignMember,
+    Case,
+    CatalogueItem,
+    Consent,
+    Customer,
+    DomainEvent,
+    Execution,
+    FeatureFlag,
+    Fulfilment,
+    LineItem,
     Location,
     LocationBrand,
+    LoginFailure,
     Membership,
     MembershipBrand,
     MembershipLocation,
     Organization,
+    Payment,
+    PlaybookEntry,
+    PolicyChunk,
+    PolicyDocument,
+    RefundOperation,
+    Signal,
+    TenantSetting,
+    Ticket,
+    TicketMessage,
+    Transaction,
     User,
+    Verification,
+    WorkflowRun,
 )
-
-
-@pytest.fixture(scope="session")
-def app_engine() -> Engine:
-    s = get_settings()
-    if not (s.test_database_url and s.test_migration_database_url):
-        pytest.skip("TEST_DATABASE_URL / TEST_MIGRATION_DATABASE_URL not set")
-    cfg = Config("alembic.ini")
-    cfg.attributes["url"] = s.test_migration_database_url
-    command.upgrade(cfg, "head")
-    engine = create_engine(s.test_database_url, pool_pre_ping=True)
-    yield engine
-    engine.dispose()
 
 
 @dataclass
@@ -87,19 +101,315 @@ def _seed(engine: Engine) -> SeededTenant:
                 tenant_id=t.tenant_id, membership_id=t.membership_id, location_id=t.location_id
             )
         )
+        s.add(TenantSetting(tenant_id=t.tenant_id, key="voucher_max_paise", value=1000))
+        s.add(LoginFailure(tenant_id=t.tenant_id, email_hash="0" * 64, failed_at=datetime.now(UTC)))
+        s.add(FeatureFlag(tenant_id=t.tenant_id, key="growth", enabled=False))
+        s.add(
+            CatalogueItem(
+                tenant_id=t.tenant_id,
+                brand_id=t.brand_id,
+                sku="SKU-1",
+                name="Item",
+                category="test",
+                price_paise=100,
+            )
+        )
+        s.flush()
+        _seed_policy(s, t)
+        _seed_commerce(s, t)
     return t
 
 
-def _cleanup(engine: Engine, t: SeededTenant) -> None:
-    with tenant_session(t.tenant_id, engine) as s:
+def _seed_policy(s, t: SeededTenant) -> None:
+    doc_id = uuid.uuid4()
+    s.add(
+        PolicyDocument(
+            id=doc_id,
+            tenant_id=t.tenant_id,
+            doc_key="p_v1",
+            title="Policy",
+            topic="test",
+            version=1,
+            effective_from=date(2026, 1, 1),
+            source_uri="policies/p.md",
+            content_hash="0" * 64,
+        )
+    )
+    s.flush()
+    s.add(
+        PolicyChunk(
+            tenant_id=t.tenant_id,
+            document_id=doc_id,
+            section_ref="p_v1#1",
+            heading="One",
+            content="text",
+            embedding=[0.0] * 383 + [1.0],
+        )
+    )
+
+
+def _seed_commerce(s, t: SeededTenant) -> None:
+    """One row in every commerce table, so the generic RLS tests cover them too."""
+    now = datetime.now(UTC)
+    tid = t.tenant_id
+    customer_id, order_id, ticket_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+    s.add(Customer(id=customer_id, tenant_id=tid, external_ref="C1", name="Customer"))
+    s.flush()
+    s.add(
+        Transaction(
+            id=order_id,
+            tenant_id=tid,
+            customer_id=customer_id,
+            brand_id=t.brand_id,
+            location_id=t.location_id,
+            source="test",
+            external_ref="O1",
+            placed_at=now,
+            total_paise=100,
+            status="completed",
+        )
+    )
+    s.flush()
+    s.add_all(
+        [
+            LineItem(
+                tenant_id=tid,
+                transaction_id=order_id,
+                sku="SKU-1",
+                name="Item",
+                quantity=1,
+                quantity_fulfilled=1,
+                unit_price_paise=100,
+                total_paise=100,
+            ),
+            Payment(
+                tenant_id=tid,
+                transaction_id=order_id,
+                method="upi",
+                amount_paise=100,
+                status="captured",
+                provider_reference="P1",
+                captured_at=now,
+            ),
+            Fulfilment(
+                tenant_id=tid,
+                transaction_id=order_id,
+                kind="pickup",
+                promised_at=now,
+                status="completed",
+            ),
+            Ticket(
+                id=ticket_id,
+                tenant_id=tid,
+                customer_id=customer_id,
+                transaction_id=order_id,
+                category="test",
+                status="open",
+                channel="app",
+                opened_at=now,
+            ),
+            Consent(
+                tenant_id=tid,
+                customer_id=customer_id,
+                channel="whatsapp",
+                purpose="marketing",
+                granted=True,
+            ),
+        ]
+    )
+    s.flush()
+    s.add(
+        TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
+    )
+    _seed_engine(s, t, customer_id, order_id, now)
+    _seed_growth(s, t, customer_id, now)
+
+
+def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
+    """One row in every engine table (cases through the refund ledger, events, audit)."""
+    tid = t.tenant_id
+    case_id, run_id, proposal_id, approval_id, execution_id = (uuid.uuid4() for _ in range(5))
+    digest = "0" * 64
+    s.add(
+        Case(
+            id=case_id,
+            tenant_id=tid,
+            customer_id=customer_id,
+            transaction_id=order_id,
+            status="open",
+            channel="app",
+            opened_at=now,
+        )
+    )
+    s.flush()
+    s.add(WorkflowRun(id=run_id, tenant_id=tid, case_id=case_id, status="running"))
+    s.flush()
+    s.add(
+        ActionProposal(
+            id=proposal_id,
+            tenant_id=tid,
+            case_id=case_id,
+            run_id=run_id,
+            action="refund",
+            params={"transaction_id": str(order_id), "amount_paise": 100, "reason": "test"},
+            payload_hash=digest,
+            amount_paise=100,
+            amount_param="amount_paise",
+            risk="high",
+            reason="test",
+        )
+    )
+    s.flush()
+    s.add(
+        Approval(
+            id=approval_id,
+            tenant_id=tid,
+            proposal_id=proposal_id,
+            payload_hash=digest,
+            decision="approved",
+            mode="human",
+            decided_by=t.user_id,
+            decided_at=now,
+            expires_at=now + timedelta(hours=1),
+        )
+    )
+    s.flush()
+    s.add(
+        Execution(
+            id=execution_id,
+            tenant_id=tid,
+            proposal_id=proposal_id,
+            approval_id=approval_id,
+            idempotency_key=f"P-{proposal_id}:refund:1",
+            status="submitted",
+        )
+    )
+    s.add(
+        RefundOperation(
+            tenant_id=tid,
+            transaction_id=order_id,
+            proposal_id=proposal_id,
+            idempotency_key=f"P-{proposal_id}:refund:1",
+            amount_paise=100,
+            status="reserved",
+        )
+    )
+    s.flush()
+    s.add(Verification(tenant_id=tid, execution_id=execution_id, status="unknown"))
+    s.add(DomainEvent(tenant_id=tid, event="test.created", entity_id=case_id))
+    s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
+
+
+def _seed_growth(s, t: SeededTenant, customer_id, now) -> None:
+    """One row in every growth table."""
+    tid = t.tenant_id
+    signal_id, campaign_id = uuid.uuid4(), uuid.uuid4()
+    digest = "0" * 64
+    s.add(
+        Signal(
+            id=signal_id,
+            tenant_id=tid,
+            location_id=t.location_id,
+            metric="repeat_rate",
+            baseline_start=now - timedelta(days=49),
+            recent_start=now - timedelta(days=21),
+            recent_end=now,
+            baseline_bp=4000,
+            recent_bp=3000,
+            baseline_n=100,
+            recent_n=100,
+            drop_bp=1000,
+            diagnosis={"findings": [], "hypotheses": []},
+            diagnosis_source="template",
+        )
+    )
+    s.flush()
+    s.add(
+        Campaign(
+            id=campaign_id,
+            tenant_id=tid,
+            signal_id=signal_id,
+            location_id=t.location_id,
+            created_by=t.user_id,
+            params={"offer_paise": 5000, "window_days": 14},
+            audience_sha=digest,
+            payload_hash=digest,
+            budget_paise=5000,
+            status="pending_approval",
+            expires_at=now + timedelta(hours=48),
+        )
+    )
+    s.flush()
+    s.add(
+        CampaignMember(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            customer_id=customer_id,
+            arm="treatment",
+            idempotency_key=f"C-{campaign_id}:{customer_id}:send:1",
+        )
+    )
+    s.add(
+        CampaignApproval(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            payload_hash=digest,
+            decision="approved",
+            decided_by=t.user_id,
+            role="hq_owner",
+            decided_at=now,
+            expires_at=now + timedelta(hours=24),
+        )
+    )
+    s.add(
+        PlaybookEntry(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            location_id=t.location_id,
+            verdict="inconclusive",
+            treatment_n=1,
+            treatment_repeat=0,
+            holdout_n=0,
+            holdout_repeat=0,
+            uplift_bp=0,
+            confidence_note="n too small",
+            lesson="none",
+        )
+    )
+
+
+def _cleanup(engine: Engine, t: SeededTenant, maint_engine: Engine) -> None:
+    # The app role may not delete engine or audit rows (by design): clean up as the
+    # maintenance role. RLS confines it to this tenant; the filter is a second layer.
+    with tenant_session(t.tenant_id, maint_engine) as s:
         for model in reversed(TENANT_MODELS):
-            s.execute(delete(model))
+            s.execute(delete(model).where(model.tenant_id == t.tenant_id))
 
 
-@pytest.fixture
-def tenants(app_engine) -> tuple[SeededTenant, SeededTenant]:
-    """Two freshly generated tenants (never a real tenant slug)."""
-    a, b = _seed(app_engine), _seed(app_engine)
+def _with_reconnect(fn, engine, attempts: int = 3):
+    """Neon's free tier sometimes drops a connection mid-statement. Retry setup only; the
+    transaction rolled back, and a fresh tenant id is generated each attempt."""
+    for attempt in range(attempts):
+        try:
+            return fn(engine)
+        except OperationalError as exc:
+            if not exc.connection_invalidated or attempt == attempts - 1:
+                raise
+
+
+@pytest.fixture(scope="module")
+def tenants(app_engine, maint_engine) -> tuple[SeededTenant, SeededTenant]:
+    """Two freshly generated tenants (never a real tenant slug), shared per test module.
+
+    Sharing is safe because the RLS tests only read, or attempt writes that must be rejected
+    (a write that wrongly succeeded fails its own test). Seeding per test cost ~70 Neon round
+    trips each and made the suite ~12 minutes."""
+    a = _with_reconnect(_seed, app_engine)
+    try:
+        b = _with_reconnect(_seed, app_engine)
+    except Exception:
+        _cleanup(app_engine, a, maint_engine)
+        raise
     yield a, b
-    _cleanup(app_engine, a)
-    _cleanup(app_engine, b)
+    _cleanup(app_engine, a, maint_engine)
+    _cleanup(app_engine, b, maint_engine)

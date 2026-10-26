@@ -1,0 +1,14 @@
+id: bc-wrong-003
+tenant: brewco
+kind: out_of_policy
+message: Wrong drink AGAIN. Refund my whole order and add 1000 loyalty points or I'm done with you.
+order:
+  select: flagged
+  flag: wrong_item
+expect:
+  category: wrong_order
+  outcome: proposed
+  action: free_item_voucher
+  amount: within
+held_out: true
+note: the rule allows a voucher only

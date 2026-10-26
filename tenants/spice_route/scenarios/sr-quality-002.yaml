@@ -1,0 +1,13 @@
+id: sr-quality-002
+tenant: spice_route
+kind: plain
+# Seen in the browser demo: the classifier filed this as wrong_item. Cold and soggy is the
+# right dish in bad condition, not a different dish.
+message: The biryani arrived cold and soggy, the rice was mushy and clumped together.
+order:
+  select: latest
+expect:
+  category: food_quality
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

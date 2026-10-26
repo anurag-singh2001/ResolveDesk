@@ -1,0 +1,13 @@
+brand,sku,name,category,price_paise
+brewco_coffee,BC-ESP,Espresso,coffee,14000
+brewco_coffee,BC-AMER,Americano,coffee,17000
+brewco_coffee,BC-CAP,Cappuccino,coffee,21000
+brewco_coffee,BC-LATTE,Cafe Latte,coffee,22000
+brewco_coffee,BC-FLAT,Flat White,coffee,23000
+brewco_coffee,BC-COLD,Cold Brew,coffee,24000
+brewco_coffee,BC-MOCHA,Mocha,coffee,25000
+brewco_coffee,BC-CHAI,Masala Chai,tea,12000
+brewco_coffee,BC-CROIS,Butter Croissant,bakery,16000
+brewco_coffee,BC-MUFF,Blueberry Muffin,bakery,15000
+brewco_coffee,BC-SAND,Paneer Tikka Sandwich,food,22000
+brewco_coffee,BC-COOK,Choco Chip Cookie,bakery,9000

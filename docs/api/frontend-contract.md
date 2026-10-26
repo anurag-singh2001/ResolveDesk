@@ -1,0 +1,60 @@
+# Web frontend ↔ API contract (v1)
+
+The React app (`web/`) talks only to this HTTP API. Every business rule stays in the API; the
+frontend only displays what the API returns. Money is integer paise in JSON; the frontend formats
+it as ₹ with 2 decimals. Times are ISO 8601 UTC; the frontend shows them in the browser's local
+time. Tokens are bearer JWTs, kept in memory and `sessionStorage` (never `localStorage`).
+
+`NEW` = added by the backend story E5.4 (implemented); everything else existed before.
+
+## Auth
+| Method | Path | Who | Body / query | Response |
+| --- | --- | --- | --- | --- |
+| GET | `/auth/businesses` NEW | public | – | `[{slug, name, vertical}]` |
+| GET | `/auth/demo-accounts` NEW | public, **dev only** (404 when `APP_ENV=prod` or `DEMO_AUTH` is off) | – | `[{tenant, email, name, role, password}]` |
+| POST | `/auth/login` | public | `{tenant, email, password}` | `{access_token, token_type, expires_at}` (`expires_at` NEW). 401 `invalid credentials` (same for unknown user and wrong password). 429 NEW `too many failed logins, try again later` after 5 failures for one tenant+email in 15 min (even with the right password; unknown emails lock the same way). `expires_at` is ISO 8601 UTC |
+| GET | `/me` | any | – | `{user_id, name, email, role, location_ids, brand_ids, tenant: {slug, name, vertical}}` (`tenant` NEW) |
+
+Roles: `customer`, `location_manager`, `franchisee_owner`, `hq_owner`. 401 on any call → token is
+gone or expired: clear it and go to the login page with "Your session has ended".
+
+## Meta
+| GET | `/meta/categories` | any | – | `{categories: [slug], free_text: bool}` |
+
+## Orders (customers: their own; staff: in scope)
+| GET | `/orders?limit=` | any | – | `[{id, external_ref, brand_id, location_id, brand_name, location_name, placed_at, total_paise, status}]` (`brand_name`, `location_name` NEW) |
+| GET | `/orders/{id}` | any | – | the above + `items: [{sku, name, quantity, quantity_fulfilled, total_paise}]`, `promised_at`, `completed_at`. 404 if not visible |
+
+## Cases
+| POST | `/cases` | customer | `{transaction_id, category: slug or null, message}` | case (201). `category: null` only when `free_text` |
+| GET | `/cases?limit=` | any | – | `[case]` newest first |
+| GET | `/cases/{id}` | any | – | case. 404 if not visible |
+| GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
+| GET | `/cases/{id}/events` | staff | – | raw audit events (redacted) |
+
+`case` = `{id, transaction_id, order_ref, category, stage, message, action, amount_paise, proposal_id, created_at}` (`order_ref`, `created_at` NEW; `order_ref` is the order's `external_ref` or null; `created_at` is when the case was opened).
+
+Stages (show as a stepper; the happy path is received → investigating → awaiting_approval →
+processing → confirmed): `received`, `investigating`, `awaiting_info`, `awaiting_approval`,
+`processing`, `confirmed`, `declined`, `escalated`, `closed`. `message` is the text to show the
+customer for the current stage.
+
+## Approvals (staff)
+| GET | `/approvals?limit=` | staff | – | `[pending]` |
+| POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |
+
+`pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.
+
+## Dev panel (demo only)
+Mounted only when `APP_ENV` is `dev` or `test`; **404 in prod**. `hq_owner` only (403 otherwise), and
+always the caller's own tenant, taken from the token. The frontend shows the "Dev panel" nav item
+only for an hq_owner whose `GET /admin/chaos` succeeds; a 404 hides it.
+| GET | `/admin/chaos` | hq_owner | – | `{service: {timeout_rate, transient_error_rate, accept_then_timeout_rate, error_rate, processing_rate, settle_after_polls, delay_ms, seed}}` |
+| POST | `/admin/chaos` | hq_owner | `{service, timeout_rate?, accept_then_timeout_rate?, transient_error_rate?, error_rate?, processing_rate?, settle_after_polls?, delay_ms?, seed?}` (rates 0..1; omitted = default, so `{service}` alone resets it) | the full chaos state, as GET. 422 for an unknown service or a rate outside 0..1 |
+| POST | `/admin/sweep` | hq_owner | – | `{executed, reconciled, escalated_cases, verified: [id], pruned_threads, events_published}`. Runs the crash-recovery sweeper for the caller's tenant, outside any open DB transaction |
+
+There is deliberately no reseed or clock endpoint: use `make seed` and `make sweep`.
+
+## CORS
+NEW: the API allows the origins in `WEB_ORIGINS` (default `http://localhost:5173`), methods GET/POST,
+header `Authorization`, `Content-Type`.

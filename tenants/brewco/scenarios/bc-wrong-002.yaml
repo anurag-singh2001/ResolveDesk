@@ -1,0 +1,12 @@
+id: bc-wrong-002
+tenant: brewco
+kind: hinglish
+message: Maine latte order kiya tha, mila kuch aur hi. Galat order de diya aapne.
+order:
+  select: flagged
+  flag: wrong_item
+expect:
+  category: wrong_order
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

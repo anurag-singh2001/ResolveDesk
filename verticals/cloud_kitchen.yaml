@@ -1,0 +1,55 @@
+# Vertical pack: defaults for any cloud-kitchen tenant. Tenants override in tenant.yaml.
+slug: cloud_kitchen
+name: Cloud kitchen
+version: 1
+vocabulary: {location: kitchen, order: order, customer: customer}
+order_sources: [delivery_app]
+fulfilment_kinds: {delivery_app: delivery}
+issue_categories:
+  - status_question
+  - late_delivery
+  - missing_items
+  - wrong_item
+  - food_quality
+  - payment_issue
+actions: [refund, free_item_voucher, send_status_update]
+# Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
+remedies: {late_delivery: late_tiers, missing_items: refund_missing, wrong_item: voucher, food_quality: voucher}
+metrics: [late_rate, missing_item_rate, repeat_rate, ticket_rate]
+features:
+  growth: false
+
+# kind=limit: integer ceiling; a lower level may only lower it (effective = min(parent, override)).
+# kind=value: a lower level replaces it.
+settings:
+  # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
+  business_timezone: {kind: value, default: "Asia/Kolkata"}
+  refund_max_percent: {kind: limit, default: 50}
+  refund_without_escalation_paise: {kind: limit, default: 50000}
+  voucher_max_paise: {kind: limit, default: 30000}
+  # Rs 150: the largest voucher approved without a person (decision 2026-10-26); lower only.
+  voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  # Fair use: at this many refunds/vouchers approved for the customer in 30 days, nothing
+  # more is auto-approved (a person decides; never an automatic denial). Lower only.
+  fair_use_max_grants_30d: {kind: limit, default: 3}
+  approval_expiry_minutes: {kind: limit, default: 240}
+  # Growth campaigns: the most one may cost (offer x treatment audience; lower only), and the
+  # share of the audience held out unmessaged so lift can be measured.
+  growth_campaign_budget_paise: {kind: limit, default: 1000000}
+  growth_holdout_percent: {kind: value, default: 10}
+  refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
+  late_delivery_tiers:
+    kind: value
+    default:
+      - {min_minutes_late: 0, remedy: apology}
+      - {min_minutes_late: 20, remedy: voucher}
+      - {min_minutes_late: 45, remedy: refund_percent, percent: 50}
+  # Delay causes on the delivery record (fulfilment attributes.delay_cause) that earn no
+  # lateness remedy: the customer caused the delay.
+  late_delivery_excluded_causes: {kind: value, default: [customer_address_error, customer_unreachable]}
+  # Which connector serves each kind (app/connectors). Swapping in a real provider is a
+  # settings change for the tenant, not a code change.
+  payment_connector: {kind: value, default: mock_payment}
+  messaging_connector: {kind: value, default: mock_messaging}
+  vouchers_connector: {kind: value, default: mock_vouchers}
+  orders_connector: {kind: value, default: mock_delivery_app}

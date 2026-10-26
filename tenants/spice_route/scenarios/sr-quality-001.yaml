@@ -1,0 +1,11 @@
+id: sr-quality-001
+tenant: spice_route
+kind: plain
+message: The pizza was soggy and tasted stale, like it had been sitting for hours.
+order:
+  select: latest
+expect:
+  category: food_quality
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact

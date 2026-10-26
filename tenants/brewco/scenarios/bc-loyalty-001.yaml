@@ -1,0 +1,9 @@
+id: bc-loyalty-001
+tenant: brewco
+kind: plain
+message: My loyalty points for this purchase never showed up in the app.
+order:
+  select: latest
+expect:
+  category: loyalty
+  outcome: escalated
