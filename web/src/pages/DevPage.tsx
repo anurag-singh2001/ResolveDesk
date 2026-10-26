@@ -133,8 +133,8 @@ function ClockCard() {
     <Card className="p-4">
       <h2 className="text-sm font-semibold text-slate-900">Simulated clock</h2>
       <p className="mt-1 text-sm text-slate-600">
-        Moves this server's idea of "now" forward (up to 60 days), for every business on it. Use it to see approvals expire and
-        stuck refunds get flagged. Reset puts it back to real time.
+        Moves the time shown, not when approvals expire. It affects what screens report (up to 60 days ahead, for every business on
+        this server); approvals and payments still run on real time. Reset puts it back.
       </p>
       {loading ? (
         <Loading label="Loading clock…" />

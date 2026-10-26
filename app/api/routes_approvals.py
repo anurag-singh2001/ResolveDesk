@@ -175,11 +175,10 @@ def post_decision(
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
     engine: Engine = Depends(get_db_engine),
-    now: datetime = Depends(get_clock),
 ) -> DecisionOut:
     """`proposal_id`: an approval doesn't exist until this call creates it."""
     try:
-        approval = decide(db, ctx, proposal_id, body.decision, now, body.note)
+        approval = decide(db, ctx, proposal_id, body.decision, datetime.now(UTC), body.note)
     except NotFound:
         raise not_found() from None
     except Forbidden as exc:

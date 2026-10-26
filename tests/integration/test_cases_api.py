@@ -9,6 +9,7 @@ from sqlalchemy import delete, select, update
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
+    Approval,
     Case,
     Customer,
     LineItem,
@@ -20,6 +21,7 @@ from app.core.models import (
     User,
 )
 from app.core.tenancy import tenant_id_for
+from app.engine.approvals import check_usable
 from mocks.base import Chaos
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
 from tests.helpers import login
@@ -311,10 +313,76 @@ def test_an_approval_expired_under_the_dev_clock_is_reported_as_stuck(api, app_e
         assert api.get(url, headers=f["customer"]).json()["stage"] != "escalated"
         resp = api.post("/admin/clock", headers=f["hq"], json={"advance_seconds": 86400})
         assert resp.status_code == 200
-        assert api.get(url, headers=f["customer"]).json()["stage"] == "escalated"
+        body = api.get(url, headers=f["customer"]).json()
+        assert body["stage"] == "escalated" and "confirmed" not in body["message"].lower()
+        assert _stages(api, opened["id"], f["customer"])[-1] == "escalated"  # timeline agrees
+        # Display only: at real time the approval is still usable, so nothing could execute early.
+        with tenant_session(f["tid"], app_engine) as s:
+            proposal = s.get(ActionProposal, uuid.UUID(opened["proposal_id"]))
+            approval = s.scalar(select(Approval).where(Approval.proposal_id == proposal.id))
+            assert check_usable(approval, proposal, datetime.now(UTC)).ok
     finally:
         deps.reset_clock()
     assert api.get(url, headers=f["customer"]).json()["stage"] != "escalated"
+
+
+def test_a_decision_made_under_the_dev_clock_is_stamped_in_real_time(api, app_engine, flow):
+    """The clock offset is display-only: approval writes use real time (hard rule 6)."""
+    from datetime import UTC, datetime, timedelta
+
+    import app.api.deps as deps
+
+    f = flow
+    opened = _open(api, f)
+    try:
+        api.post("/admin/clock", headers=f["hq"], json={"advance_seconds": 15 * 86400})
+        resp = api.post(
+            f"/approvals/{opened['proposal_id']}/decision",
+            headers=f["hq"],
+            json={"decision": "approved"},
+        )
+        assert resp.status_code == 200, resp.text
+    finally:
+        deps.reset_clock()
+    now = datetime.now(UTC)
+    with tenant_session(f["tid"], app_engine) as s:
+        approval = s.scalar(
+            select(Approval).where(Approval.proposal_id == uuid.UUID(opened["proposal_id"]))
+        )
+        assert abs(now - approval.decided_at) < timedelta(minutes=2)
+        ttl = approval.expires_at - approval.decided_at
+        assert abs(now + ttl - approval.expires_at) < timedelta(minutes=2)  # expiry from real now
+        assert approval.expires_at < now + timedelta(days=1)
+
+
+def test_fair_use_count_ignores_a_decision_made_under_the_dev_clock(api, app_engine, flow):
+    from datetime import UTC, datetime
+
+    import app.api.deps as deps
+    from app.core.settings_resolver import effective_settings
+    from app.engine.eligibility import fair_use
+
+    f = flow
+    opened = _open(api, f)
+
+    def count() -> int:
+        with tenant_session(f["tid"], app_engine) as s:
+            case = s.get(Case, uuid.UUID(opened["id"]))
+            settings = effective_settings(s)
+            return fair_use(s, case.customer_id, settings, datetime.now(UTC)).grants_30d
+
+    before = count()
+    try:
+        api.post("/admin/clock", headers=f["hq"], json={"advance_seconds": 15 * 86400})
+        resp = api.post(
+            f"/approvals/{opened['proposal_id']}/decision",
+            headers=f["hq"],
+            json={"decision": "approved"},
+        )
+        assert resp.status_code == 200, resp.text
+    finally:
+        deps.reset_clock()
+    assert count() == before + 1  # a future-stamped decision would not have counted
 
 
 def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):

@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
@@ -96,7 +96,6 @@ def create_case(
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
     engine: Engine = Depends(get_db_engine),
-    now: datetime = Depends(get_clock),
 ) -> CaseOut:
     if ctx.role != "customer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "customers open cases")
@@ -110,7 +109,7 @@ def create_case(
             transaction_id=body.transaction_id,
             category=body.category,
             message=body.message,
-            now=now,
+            now=datetime.now(UTC),  # a write: real time, never the dev clock
         )
     except CaseNotFound:
         raise not_found() from None
@@ -126,7 +125,7 @@ def create_case(
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))
         if approved is not None and executable(proposal.action):
             background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
-    return _out(db, case, now)
+    return _out(db, case, datetime.now(UTC))
 
 
 @router.get("/cases")
@@ -169,12 +168,13 @@ def get_case_timeline(
     case_id: uuid.UUID,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> list[TimelineStepOut]:
     """Customer-safe steps, oldest first; same visibility as GET /cases/{id}."""
     case = visible_case(db, ctx, case_id)
     return [
         TimelineStepOut(at=s.at, stage=s.stage, title=s.title, text=s.text)
-        for s in case_timeline(db, case)
+        for s in case_timeline(db, case, now)
     ]
 
 
