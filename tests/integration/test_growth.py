@@ -22,6 +22,7 @@ from app.core.models import (
     Location,
     PlaybookEntry,
     Signal,
+    Transaction,
     User,
 )
 from app.core.tenancy import load_context, tenant_id_for
@@ -38,7 +39,8 @@ from tests.helpers import login
 
 @pytest.fixture
 def gt(seeded_history, tenant, app_engine, maint_engine):
-    """(cfg, tenant_id, as_of) with the tenant's growth rows cleared before and after."""
+    """(cfg, tenant_id, as_of) with the tenant's growth rows, and the orders the growth
+    simulator adds, cleared before and after (so later tests see the seeded history only)."""
     cfg = seeded_history[tenant.name]
     tid = tenant_id_for(cfg.slug)
 
@@ -46,6 +48,11 @@ def gt(seeded_history, tenant, app_engine, maint_engine):
         with tenant_session(tid, maint_engine) as s:
             for model in reversed(GROWTH_MODELS):
                 s.execute(delete(model).where(model.tenant_id == tid))
+            s.execute(
+                delete(Transaction).where(
+                    Transaction.tenant_id == tid, Transaction.source == "sim_growth"
+                )
+            )
 
     clear()
     reset_mocks()

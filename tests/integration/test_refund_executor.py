@@ -579,3 +579,33 @@ def test_a_refusal_is_not_recorded_once_the_balance_is_back(app_engine, world, m
     monkeypatch.setattr(executor, "_reserve", stale_then_real)
     assert execute_refund(app_engine, w["hq"], pid).status == "succeeded"
     assert len(calls) == 2 and len(provider_ops(w)) == 1
+
+
+def test_a_confirmed_refund_stays_confirmed_when_another_proposal_escalates_the_case(
+    app_engine, world
+):
+    """E4 chaos finding: an older proposal on the same case was refused for balance, which
+    escalates the case; the case's latest refund had succeeded and been verified. The customer
+    was told "needs a check" for money the provider confirmed. A verified payout is reported as
+    confirmed; the case stays escalated for staff."""
+    from app.engine import lifecycle
+    from app.engine.case_status import case_status
+
+    w = world
+    refused = propose(app_engine, w, 1)
+    approve(app_engine, w, refused)
+    used, remaining = [], w["total"]
+    while remaining > 0:  # newer approved refunds that use the whole order
+        amount = min(w["cap"], remaining)
+        used.append(propose(app_engine, w, amount))
+        approve(app_engine, w, used[-1])
+        remaining -= amount
+    for pid in used:
+        assert lifecycle.execute_and_verify(app_engine, w["tid"], pid) == "resolved"
+    assert lifecycle.execute_approved(app_engine, w["tid"], refused) == "escalated"
+    with tenant_session(w["tid"], app_engine) as s:
+        case = s.get(Case, w["case_id"])
+        status = case_status(s, case)
+        assert case.status == "escalated"  # a person still looks at the refused one
+        assert (status.stage, status.proposal_id) == ("confirmed", str(used[-1]))
+    assert len(provider_ops(w)) == len(used)

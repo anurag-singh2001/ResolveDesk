@@ -75,15 +75,6 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
     if approval.decision == "rejected":
         return CaseStatus("declined", "Your request was reviewed and not approved.", **common)
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
-    if case.status == "escalated" and (execution is None or execution.status != "failed"):
-        # Approved, but the engine handed it to a person (e.g. the approval expired before
-        # execution, or the provider's record didn't match ours).
-        return CaseStatus("escalated", NEEDS_CHECK_ANY, **common)
-    if proposal.action == "free_item_voucher":
-        return _voucher_status(execution, approval, now, amount, common)
-    if proposal.action != "refund":
-        # No executor for this action yet: approved, not yet done.
-        return CaseStatus("processing", "Approved. We will confirm once it is ready.", **common)
     verification = (
         session.scalars(
             select(Verification.status)
@@ -93,6 +84,27 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
         if execution is not None
         else None
     )
+    # The provider confirmed this payout (a refund also re-read and matched by the verifier).
+    payout_confirmed = (
+        execution is not None
+        and execution.status == "succeeded"
+        and (proposal.action != "refund" or verification == "verified")
+    )
+    if (
+        case.status == "escalated"
+        and not payout_confirmed
+        and (execution is None or execution.status != "failed")
+    ):
+        # Approved, but the engine handed it to a person (e.g. the approval expired before
+        # execution, or the provider's record didn't match ours). A confirmed payout is still
+        # reported as confirmed: the case may be escalated for another reason (say, a second
+        # proposal on it was refused), and the money that moved is a verified fact.
+        return CaseStatus("escalated", NEEDS_CHECK_ANY, **common)
+    if proposal.action == "free_item_voucher":
+        return _voucher_status(execution, approval, now, amount, common)
+    if proposal.action != "refund":
+        # No executor for this action yet: approved, not yet done.
+        return CaseStatus("processing", "Approved. We will confirm once it is ready.", **common)
     if verification == "mismatch":  # the provider's record disagrees with ours
         return CaseStatus("escalated", NEEDS_CHECK, **common)
     if execution is not None and execution.status == "succeeded" and verification == "verified":
