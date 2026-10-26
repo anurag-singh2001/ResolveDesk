@@ -119,7 +119,13 @@ With `DEMO_AUTH=true`, the login page lists the demo accounts; pick one, no typi
    auto-approved; the approval shows the fair-use count for a person to decide.
 
 Steps 4 and 5 are covered by the chaos and fair-use test suites; walk through them once
-before showing them live.
+before showing them live. As HQ, the **Dev panel** (left menu, dev only) has the chaos presets
+and a **Run sweeper** button, so step 4 needs no terminal.
+
+The mock providers keep their records in memory. Restarting the API forgets them, so a refund
+approved before a restart and checked after it is reported as "provider has no record" and
+handed to a person (the honest answer, since nothing can confirm it). Finish a demo flow
+before restarting.
 
 ## Evals
 
