@@ -124,6 +124,19 @@ With `DEMO_AUTH=true`, the login page lists the demo accounts; pick one, no typi
    case moves to **Confirmed** with one refund, not two.
 5. **Repeat complainer.** A customer with three or more grants in 30 days is never
    auto-approved; the approval shows the fair-use count for a person to decide.
+6. **The AI asks, the customer answers** (checked in the browser). BrewCo → *Dev P.* →
+   report "Not sure — just describe it" with "Something was not right with this order." The
+   case stops at **Waiting for your reply** with a reply box. Reply "my cappuccino was served
+   cold and tasted burnt" → the timeline shows *You replied*, then Quality → ₹100 voucher →
+   **Confirmed**.
+7. **Outlet insights and a win-back campaign** (checked in the browser). BrewCo → *Meera
+   Iyer* → **Insights**: per-outlet cases, refunds, vouchers, decision time and repeat rate
+   (Baner stands out at ~37%). **Growth** → *Refresh signals* → "Baner: repeat customers
+   down" with the evidence and causes marked "not confirmed" → *Propose win-back campaign*
+   (offer group and a holdout group, budget) → *Approve*. Approving twice is refused; sign in
+   as *Neha Joshi* (Baner manager) and approve → **Sent**. Dev panel → clock +15 days →
+   Growth → *Measure result*: with 154 offered and 17 held out the verdict is honestly
+   **Inconclusive** ("too few people to tell"). Reset the clock afterwards.
 
 Steps 4 and 5 are covered by the chaos and fair-use test suites; walk through them once
 before showing them live. As HQ, the **Dev panel** (left menu, dev only) has the chaos presets
