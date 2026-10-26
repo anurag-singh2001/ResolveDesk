@@ -20,6 +20,9 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 
 ## Meta
 | GET | `/meta/categories` | any | – | `{categories: [slug], free_text: bool}` |
+| GET | `/meta/privacy` NEW | any | – | `{name, email}`: the caller's tenant privacy contact (empty strings if unset). Web shows it in the footer ("Privacy contact", mailto link) and on the Help page |
+
+`privacy_request` is a normal category slug in `/meta/categories`. A case opened with it is `escalated` at once, has no proposal, and its `message` is a template naming the privacy contact and an internal response date (never described as statutory). Staff `/cases/{id}/events` gain `grievance.due_soon` (payload `{target_days, internal_target_on}`) once the case is open past 75% of the target; customer text is unchanged.
 
 ## Orders (customers: their own; staff: in scope)
 | GET | `/orders?limit=` | any | – | `[{id, external_ref, brand_id, location_id, brand_name, location_name, placed_at, total_paise, status}]` (`brand_name`, `location_name` NEW) |

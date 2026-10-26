@@ -19,6 +19,7 @@ from app.core.money import percent_of
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import order_facts
+from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import create_proposal
 
 
@@ -31,6 +32,8 @@ class Remedy:
 
 
 def decide_remedy(session: Session, case: Case) -> Remedy:
+    if case.category == PRIVACY_CATEGORY:  # never a payout: a person handles it (S5.5)
+        return Remedy(None, {}, ESCALATION_REASON, "escalate")
     rule = tenant_pack(session).remedies.get(case.category)
     if rule is None or case.transaction_id is None:
         return Remedy(None, {}, "no automatic remedy for this category", "escalate")

@@ -42,6 +42,7 @@ from app.engine.dispatch import EXECUTORS, reconcile, run_approved
 from app.engine.executor import TERMINAL
 from app.engine.graph import NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
+from app.engine.privacy import flag_due_soon
 from app.engine.verifier import FINAL
 
 log = logging.getLogger(__name__)
@@ -56,6 +57,7 @@ class SweepReport:
     reconciled: list[str] = field(default_factory=list)
     escalated_cases: list[str] = field(default_factory=list)
     replies_resumed: list[str] = field(default_factory=list)
+    grievances_flagged: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
@@ -142,6 +144,10 @@ def sweep_tenant(
         report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
     except Exception:
         log.exception("could not escalate stuck cases for tenant %s", tenant_id)
+    try:
+        report.grievances_flagged = flag_due_soon(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not flag due-soon grievances for tenant %s", tenant_id)
     try:
         report.replies_resumed = _recover_replies(engine, tenant_id, now, min_age)
     except Exception:

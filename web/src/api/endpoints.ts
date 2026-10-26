@@ -18,6 +18,7 @@ import type {
   Order,
   OrderDetail,
   PendingApproval,
+  PrivacyContact,
   SweepReport,
   TimelineEntry,
 } from "./types";
@@ -50,6 +51,7 @@ export const api = {
     }),
   me: () => request<Me>("/me"),
   categories: () => request<Categories>("/meta/categories"),
+  privacyContact: () => request<PrivacyContact>("/meta/privacy"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
   cases: (limit = 100) => request<Case[]>(`/cases?limit=${limit}`),
