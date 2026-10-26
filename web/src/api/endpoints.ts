@@ -50,6 +50,8 @@ export const api = {
   case: (id: string) => request<Case>(`/cases/${enc(id)}`),
   createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
     request<Case>("/cases", { method: "POST", body }),
+  replyToCase: (id: string, message: string) =>
+    request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
   approvals: (limit = 200) => request<PendingApproval[]>(`/approvals?limit=${limit}`),

@@ -38,6 +38,7 @@ _CASE_EVENTS = {
         "Question for you",
         "We asked you for a few more details about this order.",
     ),
+    "case.info_added": ("investigating", "You replied", "We received your reply."),
     "case.escalate": (
         "escalated",
         "Passed to our team",

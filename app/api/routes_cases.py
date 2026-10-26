@@ -21,7 +21,7 @@ from app.core.tenancy import TenantContext
 from app.engine.agent_runner import resume_info, run_agents
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
-from app.engine.cases import CaseNotFound, InvalidCategory, open_case
+from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
 from app.engine.dispatch import executable
 
 router = APIRouter(tags=["cases"])
@@ -126,6 +126,33 @@ def create_case(
         if approved is not None and executable(proposal.action):
             background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
     return _out(db, case, datetime.now(UTC))
+
+
+class ReplyIn(BaseModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+
+@router.post("/cases/{case_id}/messages", status_code=status.HTTP_201_CREATED)
+def add_case_message(
+    case_id: uuid.UUID,
+    body: ReplyIn,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> CaseOut:
+    """The customer answers a needs-info question on their own case; the case then continues."""
+    if ctx.role != "customer":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "customers reply on their cases")
+    case = visible_case(db, ctx, case_id)  # someone else's / another tenant's case: 404
+    try:
+        add_reply(db, ctx, case, body.message, datetime.now(UTC))
+    except NotAwaitingInfo as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    db.flush()
+    if get_settings().engine_mode == "agents":  # the graph re-reads the whole conversation
+        background.add_task(resume_info, engine, ctx.tenant_id, case.id, body.message)
+    return _out(db, case)
 
 
 @router.get("/cases")

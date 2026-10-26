@@ -61,6 +61,10 @@ The case page shows:
 While the case is *Investigating* or *Processing*, the page updates by itself every few seconds.
 If it takes more than two minutes, click **Refresh** to check again.
 
+If the case is **Awaiting info**, we have asked you a question and a **Your reply** box appears on
+the case page. Type your answer and press **Send reply**; the case carries on by itself and the
+timeline shows "You replied".
+
 ### What each stage means
 
 | Stage | What it means |
