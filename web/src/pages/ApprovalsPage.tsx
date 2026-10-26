@@ -11,7 +11,6 @@ const SORTS: [string, string][] = [
   ["oldest", "Oldest first"],
   ["newest", "Newest first"],
   ["amount_desc", "Highest amount"],
-  ["expiring_soon", "Expiring soon"],
 ];
 const SELECT = "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm";
 

@@ -126,13 +126,6 @@ def test_amount_desc_is_largest_first(queue):
     assert amounts[0] >= 500
 
 
-def test_expiring_soon_puts_the_longest_waiting_first(queue):
-    rows = _mine(queue, _get(queue, queue["hq"], sort="expiring_soon"))
-    assert [r["proposal_id"] for r in rows] == queue["ordered"]
-    stamps = [r["created_at"] for r in rows]
-    assert stamps == sorted(stamps)
-
-
 def test_location_filter_only_returns_that_location(queue):
     rows = _mine(queue, _get(queue, queue["hq"], location_id=queue["own_loc"]))
     assert {r["proposal_id"] for r in rows} == queue["mine"]

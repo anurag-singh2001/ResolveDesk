@@ -33,7 +33,7 @@ shows:
 
 Click **Review** (or the card, on a phone) to open it.
 
-Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*, *Expiring soon*). The Outlet menu only lists your own outlets. Your choices stay in the page address, so a reload keeps them. If nothing matches, the page says so.
+Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*). The Outlet menu only lists your own outlets. Your choices stay in the page address, so a reload keeps them. If nothing matches, the page says so.
 
 ## Reviewing a proposal
 

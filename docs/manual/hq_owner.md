@@ -22,7 +22,7 @@ column tells you where each order was made. Each row also shows **category**, **
 **action**, **amount**, **risk** (*Low*, *Medium*, *High*) and **age**; **Checks failed** means it
 can't be approved as it stands.
 
-Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*, *Expiring soon*). Your choices stay in the page address, so a reload or a shared link keeps them. If nothing matches, the page says so.
+Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*). Your choices stay in the page address, so a reload or a shared link keeps them. If nothing matches, the page says so.
 
 Proposals that a manager or franchisee couldn't approve ("needs a senior approver") wait here for
 you, usually larger refunds.

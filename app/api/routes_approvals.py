@@ -84,12 +84,10 @@ def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
 
 
 # A pending proposal has no stored expiry (an approval's expiry starts when someone decides), so
-# "expiring_soon" ranks by age: the longest-waiting proposals are the ones closest to going stale.
 _SORTS = {
     "oldest": (ActionProposal.created_at,),
     "newest": (ActionProposal.created_at.desc(),),
     "amount_desc": (ActionProposal.amount_paise.desc().nulls_last(), ActionProposal.created_at),
-    "expiring_soon": (ActionProposal.created_at, ActionProposal.amount_paise.desc().nulls_last()),
 }
 
 
@@ -98,7 +96,7 @@ def pending_approvals(
     limit: int = Query(100, ge=1, le=500),
     location_id: uuid.UUID | None = Query(None),
     action: str | None = Query(None, max_length=64),
-    sort: Literal["oldest", "newest", "amount_desc", "expiring_soon"] = "oldest",
+    sort: Literal["oldest", "newest", "amount_desc"] = "oldest",
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
     now: datetime = Depends(get_clock),
