@@ -71,8 +71,8 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [x] E6.3 (in progress, feature/E6-evals) Single-agent baseline + comparison — done when: report shows both [verified 2026-10-26, edd25e5: make eval brewco 100%, spice_route 91%, baseline 91%/75%, 0 over-rule proposals; sr-quality-002 added in ec2a80a not yet evaluated]
 
 ## E7 · Ship — Sprint 4
-- [ ] E7.1 (R6 mock-payment framing + competitor paragraph hedged + assumed rates; R10 ops-head demo script; R13 illustrative pricing note) README (problem, scope, Mermaid diagram, ≤ 6 setup commands, demo script, eval table, limits, tradeoffs) — done when: written
-- [ ] E7.2 Clean-clone check of every Makefile target — done when: fresh clone + README reaches working demo
+- [x] E7.1 (R6 mock-payment framing + competitor paragraph hedged + assumed rates; R10 ops-head demo script; R13 illustrative pricing note) README (problem, scope, Mermaid diagram, ≤ 6 setup commands, demo script, eval table, limits, tradeoffs) — done when: written [verified 2026-10-26, fc7bb5f: README has all required sections]
+- [~] E7.2 Clean-clone check of every Makefile target — done when: fresh clone + README reaches working demo [2026-10-26, fc7bb5f+90fd4a1: fresh clone passed sync, lint, db-check, migrate, 357 unit, web 45 tests+build, seed, make flight (14 cases); missing: API+web start and browser click-through from the clean clone]
 
 ## E8 · Growth (stretch) — Sprint 4, only if E0–E7 done
 - [ ] E8.1 Repeat-rate signal job + diagnosis agent — done when: planted Baner drop detected

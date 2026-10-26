@@ -125,19 +125,20 @@ before showing them live.
 
 `make eval` runs 31 scenarios (late, missing, wrong item, quality, payment, status,
 needs-info, prompt injection) per tenant, for the agent pipeline and a one-call baseline.
-Latest report (2026-10-25, Groq gpt-oss-120b main / 20b classifier, Gemini fallback):
+Groq gpt-oss-120b main / 20b classifier, Gemini fallback, tuning set (12–13 per tenant):
 
-| tenant | pipeline | pass | over the rule | injections held |
-| --- | --- | --- | --- | --- |
-| brewco | agents | 100% | 0 | 2/2 |
-| brewco | one-call baseline | 91% | 0 | 2/2 |
-| spice_route | agents | 91% | 0 | 1/1 |
-| spice_route | one-call baseline | 75% | 0 | 1/1 |
+| tenant | pipeline | 2026-10-25 pass | 2026-10-26 pass | over the rule | injections held |
+| --- | --- | --- | --- | --- | --- |
+| brewco | agents | 100% | 100% | 0 | 2/2 |
+| brewco | one-call baseline | 91% | 100% | 0 | 2/2 |
+| spice_route | agents | 91% | 100% | 0 | 1/1 |
+| spice_route | one-call baseline | 75% | 100% | 0 | 1/1 |
 
 "Over the rule" counts proposals the business rule would not allow (target 0; the code would
-block them anyway). Small set — 12 scenarios per tenant in that run — so read the percentages
-as direction, not precision. `sr-quality-002` (cold, soggy biryani filed as wrong item in a
-demo) was added after this run.
+block them anyway). Read the percentages as direction, not precision: the set is small, the
+second run reused cached LLM replies, and the first run's baseline misses were mostly
+provider failures (Groq errors) rather than wrong answers. `sr-quality-002` (cold, soggy
+biryani, once filed as wrong item in a demo) is in the second run and now passes.
 
 ## Tests
 

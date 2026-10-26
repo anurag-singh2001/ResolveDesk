@@ -129,6 +129,8 @@ Status: AMBER, trending better thanks to parallelism, with new risks:
 - Blocked/user: rotate the Neon owner password.
 - Follow-ups: replace error-prefix "never sent" detection in app/engine/verifier.py with an explicit flag; demo seed should keep packs current (click-through needed seed --no-history plus scripts.sweep).
 
+- Update (same day): E7.1 README done (fc7bb5f), ticked. E7.2 clean clone at fc7bb5f mostly passes (make flight fixed in 90fd4a1 after it rejected confirmed auto-approved vouchers); stays [~] until API+web are started from the clone and clicked through.
+
 ## Review
 _to fill at sprint end_
 
