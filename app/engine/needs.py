@@ -16,8 +16,8 @@ NEED_ORDER = "order"
 NEED_DETAILS = "details"
 QUESTIONS = {
     NEED_ORDER: "Which order is this about? Please pick it from your order list.",
-    NEED_DETAILS: "Thanks for telling us. So we can look into it, could you tell us a bit more"
-    " about what went wrong with your order (for example, which item was affected)?",
+    NEED_DETAILS: "So we can look into it, could you tell us a bit more about what went wrong"
+    " with your order (for example, which item was affected)?",
 }
 GENERIC_QUESTION = "Could you tell us a bit more about what went wrong with this order?"
 

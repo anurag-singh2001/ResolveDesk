@@ -38,6 +38,7 @@ class MockStateStore:
         self._flush_lock = threading.Lock()  # one flush at a time
         self._dirty = False
         self._timer: threading.Timer | None = None
+        self._closed = False  # after close() nothing arms a timer or writes again
         atexit.register(self.flush)
 
     def load(self) -> None:
@@ -61,6 +62,8 @@ class MockStateStore:
         """Mark the state changed; a timer writes it within FLUSH_INTERVAL_S. Cheap, so mocks
         can call it after every mutation."""
         with self._meta:
+            if self._closed:
+                return
             self._dirty = True
             if self._timer is None:
                 self._timer = threading.Timer(FLUSH_INTERVAL_S, self._timer_fired)
@@ -92,6 +95,17 @@ class MockStateStore:
                     with self._meta:
                         self._dirty = True
                     raise
+
+    def close(self) -> None:
+        """Final write, then stop: cancel the timer and drop the exit hook, so a store that is
+        no longer used (persistence disabled, a test finished) can never write again."""
+        self.flush()
+        with self._meta:
+            self._closed = True
+            timer, self._timer = self._timer, None
+        if timer is not None:
+            timer.cancel()
+        atexit.unregister(self.flush)
 
     def save(self) -> None:
         with self._lock:  # snapshots are taken inside, so the last writer holds the newest state

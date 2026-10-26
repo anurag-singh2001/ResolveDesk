@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from mocks import registry
+from mocks import persist, registry
 from mocks.base import Chaos, IdempotencyConflict
 from mocks.messaging import MessageRequest, MockMessaging
 from mocks.payment import MockPayment, RefundRequest
@@ -135,14 +135,20 @@ def test_many_mutations_coalesce_into_far_fewer_file_writes(state_file, monkeypa
         real_save(self)
 
     monkeypatch.setattr(MockStateStore, "save", counting_save)
+    monkeypatch.setattr(persist, "FLUSH_INTERVAL_S", 3600)  # no timer write during the burst
     mocks = _registry(state_file)
     for i in range(150):
         mocks["payment"].refund(MERCHANT, f"k{i}", RefundRequest("pay_1", 100))
-    assert len(writes) <= 5  # the burst fits in a couple of timer windows, not 150 rewrites
+    assert writes == []  # 150 mutations only mark the store dirty
     mocks["payment"]._store.flush()
-    assert len(writes) <= 6
+    assert len(writes) == 1  # one write for the whole burst, not 150 rewrites
     saved = json.loads(state_file.read_text(encoding="utf-8"))
     assert len(saved["mocks"]["payment"]["ops"]) == 150  # nothing lost once flushed
     count = len(writes)
     mocks["payment"]._store.flush()
     assert len(writes) == count  # clean state: flush is a no-op
+    store = mocks["payment"]._store
+    store.close()
+    mocks["payment"].refund(MERCHANT, "after-close", RefundRequest("pay_1", 100))
+    store.flush()
+    assert len(writes) == count  # a closed store never writes again

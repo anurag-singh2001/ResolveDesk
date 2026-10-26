@@ -38,7 +38,7 @@ def enable_persistence(path: str) -> MockStateStore:
 def disable_persistence() -> None:
     global _STORE
     if _STORE is not None:
-        _STORE.flush()
+        _STORE.close()
     for mock in _MOCKS.values():
         if isinstance(mock, IdempotentMock):
             mock.attach_store(None)
