@@ -613,6 +613,8 @@ class Execution(TenantOwned, Base):
     status: Mapped[str] = mapped_column(String(16), nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(64))
     error: Mapped[str | None] = mapped_column(Text)
+    # True only where we know no request reached the provider (refused, released).
+    never_sent: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class Verification(TenantOwned, Base):

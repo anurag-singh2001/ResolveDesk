@@ -183,3 +183,17 @@ def test_a_released_refund_escalates_its_case(app_engine, quarantined):
     assert release_refund(app_engine, w["hq"], pid, now=_ready(w)).outcome == "released"
     with tenant_session(w["tid"], app_engine) as s:
         assert s.get(Case, case_id).status == "escalated"
+
+
+def _flag(app_engine, w, pid):
+    with tenant_session(w["tid"], app_engine) as s:
+        e = s.scalar(select(Execution).where(Execution.proposal_id == pid))
+        return e.status, e.never_sent
+
+
+@pytest.mark.parametrize("quarantined", [LIFETIME * 10], indirect=True, ids=["never_lands"])
+def test_a_released_refund_is_recorded_as_never_sent(app_engine, quarantined):
+    w, pid, clock = quarantined
+    clock.advance(_expiry(w) + LIFETIME + RELEASE_MARGIN + timedelta(minutes=1))
+    assert release_refund(app_engine, w["hq"], pid, now=_ready(w)).outcome == "released"
+    assert _flag(app_engine, w, pid) == ("failed", True)
