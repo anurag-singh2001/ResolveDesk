@@ -1,12 +1,13 @@
 import { useState } from "react";
+import type { FormEvent } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ApiError } from "../api/client";
+import { ApiError, errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { AuditEvent, Case, TimelineEntry } from "../api/types";
 import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
-import { Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx } from "../components/ui";
+import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { isStaff } from "../lib/roles";
@@ -73,6 +74,43 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
         );
       })}
     </ol>
+  );
+}
+
+function ReplyBox({ caseId, onSent }: { caseId: string; onSent: () => void }) {
+  const [text, setText] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!text.trim() || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.replyToCase(caseId, text.trim());
+      setText("");
+      onSent();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4 sm:p-6">
+      <form onSubmit={submit} className="space-y-3">
+        <label htmlFor="reply" className="block text-sm font-semibold text-slate-900">
+          Your reply
+        </label>
+        <textarea id="reply" rows={4} maxLength={2000} className={inputClass} value={text} onChange={(e) => setText(e.target.value)} />
+        {error && <Alert>{error}</Alert>}
+        <Button type="submit" disabled={busy || !text.trim()}>
+          {busy ? "Sending…" : "Send reply"}
+        </Button>
+      </form>
+    </Card>
   );
 }
 
@@ -192,6 +230,15 @@ export function CasePage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            {c.stage === "awaiting_info" && !staff && (
+              <ReplyBox
+                caseId={c.id}
+                onSent={() => {
+                  void kase.reload();
+                  void timeline.reload();
+                }}
+              />
+            )}
             {timeline.data !== null && (
               <Card className="p-4 sm:p-6">
                 <h2 className="mb-4 text-sm font-semibold text-slate-900">Timeline</h2>

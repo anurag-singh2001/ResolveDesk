@@ -31,6 +31,10 @@ class InvalidCategory(CaseError):
     code = "invalid_category"
 
 
+class NotAwaitingInfo(CaseError):
+    code = "not_awaiting_info"
+
+
 def open_case(
     session: Session,
     ctx: TenantContext,
@@ -146,3 +150,38 @@ def open_case(
         payload={"reason": remedy.reason, "proposal_id": str(proposal_id or "")},
     )
     return case, proposal_id
+
+
+def add_reply(
+    session: Session, ctx: TenantContext, case: Case, message: str, now: datetime
+) -> None:
+    """The customer answers the question a case is waiting on: keep their words on the case's
+    ticket (the graph re-reads the whole conversation when it resumes) and note it in the audit
+    trail. The caller has already checked the case is theirs. The row lock makes the status check
+    race-free; the graph's own resume claim makes a double submit continue the thread once."""
+    locked = session.scalar(select(Case).where(Case.id == case.id).with_for_update())
+    if locked is None or locked.status != "awaiting_info":
+        raise NotAwaitingInfo("this case is not waiting for more information")
+    ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
+    if ticket_id is None:
+        raise NotAwaitingInfo("this case has no conversation to add to")
+    session.add(
+        TicketMessage(
+            tenant_id=ctx.tenant_id,
+            ticket_id=ticket_id,
+            author="customer",
+            body=message,
+            sent_at=now,
+        )
+    )
+    # No message text in the audit payload: the words live on the ticket only.
+    audit.record(
+        session,
+        ctx.tenant_id,
+        actor_type="user",
+        actor_id=ctx.user_id,
+        event="case.info_added",
+        entity_type="case",
+        entity_id=case.id,
+        payload={},
+    )
