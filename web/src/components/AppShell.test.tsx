@@ -56,3 +56,21 @@ describe("role-based navigation", () => {
     expect(await screen.findByRole("heading", { name: "Location manager guide" })).toBeInTheDocument();
   });
 });
+
+describe("privacy contact", () => {
+  it("links the tenant's privacy contact in the footer and shows it on the Help page", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /orders": { body: [] },
+      "GET /cases": { body: [] },
+      "GET /meta/privacy": { body: { name: "Privacy desk", email: "privacy@acme.test" } },
+    });
+    renderApp("/help");
+    expect(await screen.findByRole("link", { name: "privacy@acme.test" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Privacy contact" })).toHaveAttribute(
+      "href",
+      "mailto:privacy@acme.test",
+    );
+  });
+});

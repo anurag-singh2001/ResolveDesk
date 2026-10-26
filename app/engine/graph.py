@@ -55,6 +55,7 @@ from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
 from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
 from app.engine.needs import NEED_DETAILS, NEED_ORDER, question_for
+from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
 from app.llm.providers import LLMError
@@ -142,6 +143,14 @@ def _step(state: CaseState) -> int:
     return state.get("step_count", 0) + 1
 
 
+def _privacy_guard(w: dict, out: CaseState) -> CaseState:
+    """A privacy/grievance request never reaches the model that drafts remedies (S5.5)."""
+    if out["category"] == PRIVACY_CATEGORY:
+        w["reason"] = ESCALATION_REASON
+        return {**out, "outcome": "escalated"}
+    return out
+
+
 def build_graph(deps: Deps, checkpointer=None):
     def classify(state: CaseState) -> CaseState:
         step = _step(state)
@@ -153,7 +162,7 @@ def build_graph(deps: Deps, checkpointer=None):
             categories, vocabulary = list(pack.issue_categories), dict(pack.vocabulary)
             known = case.category
         if known:  # the customer already chose a category (form): no LLM call needed
-            return {"category": known, "need": None, "step_count": step}
+            return _privacy_guard(w, {"category": known, "need": None, "step_count": step})
         result: Classification = deps.classifier.invoke_structured(
             classifier_messages(message, categories, vocabulary), Classification
         )
@@ -171,7 +180,7 @@ def build_graph(deps: Deps, checkpointer=None):
             s.execute(
                 update(Ticket).where(Ticket.case_id == case_id).values(category=result.category)
             )
-        return {"category": result.category, "need": None, "step_count": step}
+        return _privacy_guard(w, {"category": result.category, "need": None, "step_count": step})
 
     def investigate(state: CaseState) -> CaseState:
         step = _step(state)
