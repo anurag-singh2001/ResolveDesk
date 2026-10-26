@@ -339,6 +339,7 @@ def test_verdict_after_window_and_playbook_entry(app_engine, gt):
         first = (entry.id, entry.verdict, entry.treatment_n, entry.holdout_n)
         assert entry.treatment_repeat == added and entry.holdout_repeat == 0
         assert entry.uplift_bp > 0
+        assert "₹" in entry.lesson and "paise" not in entry.lesson  # customer-grade money text
         small = entry.holdout_n < MIN_ARM_N or entry.treatment_n < MIN_ARM_N
         verdict, note = entry.verdict, entry.confidence_note
     with tenant_session(tid, app_engine) as s:
