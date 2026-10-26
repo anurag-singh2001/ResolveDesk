@@ -43,12 +43,16 @@ class OutletInsight(BaseModel):
     repeat_rate_bp: int | None  # basis points of orders that were repeats; None with no orders
 
 
-# Cases (and so their proposals) belong to a location through their order.
+# Cases (and so their proposals) belong to a location through their order. A case or refund
+# with no transaction (no order) is not attributed to any location, so it appears in no row.
 _CASES = """
     SELECT t.location_id, count(*) AS n FROM cases c
     JOIN transactions t ON t.tenant_id = c.tenant_id AND t.id = c.transaction_id
     WHERE c.tenant_id = :tid AND c.opened_at >= :lo AND c.opened_at < :hi GROUP BY 1
 """
+# Approximation: neither refund_operations nor executions has a dedicated "succeeded at" column,
+# so a confirmed refund/voucher is bucketed by updated_at. A later touch of a succeeded row (for
+# example a verification note) could move it into a newer window.
 _REFUNDS = """
     SELECT t.location_id, count(*) AS n, COALESCE(sum(r.amount_paise), 0) AS paise
     FROM refund_operations r
