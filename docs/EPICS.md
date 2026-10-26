@@ -11,7 +11,7 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 | 1 | 2026-10-26 → 2026-10-28 (starting early 2026-10-23) | Foundation (tenancy, RLS, settings, auth) + data & money core |
 | 2 | 2026-10-24 → 2026-10-31 (starts early, Sprint 1 finished 2026-10-24) | AI pipeline + safe execution |
 | 3 | 2026-11-02 → 2026-11-04 (closed early 2026-10-26) | UI + evals (pulled into Sprint 2) + E8 growth; human items carried over |
-| 4 | 2026-11-05 → 2026-11-06 | Ship (+ growth stretch) |
+| 4 | 2026-10-26 → 2026-10-27 (re-planned; usage resets Tue 2026-10-27) | Spec gaps to a complete v1 (E9) + ship (E7 remainder) |
 
 ---
 
@@ -78,4 +78,15 @@ A story is never ticked on a claim alone; the scrum master runs or cites the che
 - [x] E8.1 Repeat-rate signal job + diagnosis agent — done when: planted Baner drop detected [verified 2026-10-26, feature e811ede, hardening c605096, merged to test 80eb079; tests/integration/test_growth.py 27 passed, 1 skipped (tenant shape); growth + isolation 225 passed, 2 skipped; migration 0015 applied to test and demo DBs; API only (/growth, staff-only, 404 when flag `growth` off: BrewCo on, Spice Route off)]
 - [x] E8.2 Audience, campaign proposal with holdout, dual approval, idempotent sends — done when: zero duplicate sends [verified 2026-10-26, e811ede + c605096 (safety review fixes: campaign row lock on decide, consent re-checked at send, expiry gates start only, per-send error handling), safety clean after fixes; idempotent-send tests in test_growth.py (27 passed); after e047336 test_growth + seed-reload 29 passed, 1 skipped]
 - [x] E8.3 Verdict (treatment vs holdout) + playbook entry — done when: verdict computed [verified 2026-10-26, e811ede, merged 80eb079; verdict and playbook tests in test_growth.py]
-- Follow-up (not a story, not in done-when): growth web UI (README Scope says API only).
+- Follow-up superseded: growth web UI is now S4.2 in E9.
+
+## E9 · v1 spec gaps — Sprint 4
+Source: gap audit of docs/PROJECT.md section 12/13/17 against the code, 2026-10-26. Builders work in isolated DBs resolvedesk_b1..b3.
+- [ ] S4.1 Customer replies to a needs-info question (owner: Sonnet builder B1, branch feature/S4.1-case-reply; est M) — done when: POST /cases/{id}/messages (spec section 12) plus reply box on the case page; owner-only, other-tenant case gives 404, 409 unless status is awaiting_info, double submit yields exactly one proposal, timeline shows "You replied"; tests run for both tenants and name neither; safety review clean
+- [ ] S4.2 HQ view and Growth UI (owner: Sonnet builder B2, branch feature/S4.2-hq-insights-growth-ui; est L) — done when: GET /insights/outlets (spec section 12) plus Insights page; Growth page (signals, propose, dual approve, verdict) shown only when the `growth` flag is on; API tests plus `make web-test` green
+- [ ] S4.3a Simulated clock (owner: B3; est S) — done when: GET/POST /admin/clock works in dev only (404/disabled otherwise), dev panel has a clock card (spec section 12/13); tested
+- [ ] S4.3b Durable mock providers (owner: B3, branch feature/S4.3-dev-clock-durable-mocks; est S) — done when: with MOCK_STATE_FILE set, mock providers persist to that file and an API restart does not forget refunds; unset keeps in-memory behaviour; tested
+- [ ] S4.4 Integration (owner: main session, Opus; est L) — done when: B1, B2, B3 merged into test after safety review; full suite green, `make test-chaos` green x3, `make test-isolation` green; `make eval` re-run (cache off if quota allows) with report path; browser walkthrough of every role on both tenants including the new pages
+- [ ] S4.5 Ship (owner: main session; est M) — done when: README, manuals and demo script cover the new screens; `make lint` clean; test merged to main (user approved the earlier merge at bf0a2b5; re-confirm with the user before this one)
+- Carried human-only: E0.3 rotate Neon owner password; E7.2 copy .env into the clean clone and see an AI proposal (stays `[~]` above).
+- Follow-ups (not in sprint, not in done-when): explicit never-sent flag in the verifier instead of the error-prefix match; demo seed refreshing packs automatically; dev-panel reseed (destructive, deliberately not built).
