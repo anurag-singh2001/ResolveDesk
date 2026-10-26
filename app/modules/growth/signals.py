@@ -19,15 +19,18 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.business_time import DEFAULT_TIMEZONE
 from app.core.db import tenant_session
-from app.core.models import Location, Signal
+from app.core.models import Location, Signal, Transaction
+from app.core.settings_resolver import effective_settings
 
 log = logging.getLogger(__name__)
 
@@ -128,6 +131,20 @@ def read_location(
         recent_bp=round(recent_hits * 10000 / recent_n) if recent_n else 0,
         z_x100=drop_z_x100(base_hits, base_n, recent_hits, recent_n),
     )
+
+
+def data_as_of(session: Session, tenant_id: uuid.UUID, now: datetime) -> datetime:
+    """When the job measures up to: the local midnight after the newest order, never later than
+    `now`. A nightly job reads the latest complete day of data; with live orders that is today,
+    and with a fixed demo history it is the history's last day (not an empty recent window)."""
+    latest = session.scalar(
+        select(func.max(Transaction.placed_at)).where(Transaction.tenant_id == tenant_id)
+    )
+    if latest is None:
+        return now
+    tz = ZoneInfo(effective_settings(session).get("business_timezone") or DEFAULT_TIMEZONE)
+    midnight = datetime.combine(latest.astimezone(tz).date() + timedelta(days=1), time(0), tz)
+    return min(now, midnight)
 
 
 def readings(session: Session, tenant_id: uuid.UUID, as_of: datetime) -> list[Reading]:

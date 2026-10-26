@@ -33,6 +33,7 @@ def _result(op: Operation) -> RefundResult:
 
 class MockPayment(IdempotentMock):
     prefix = "rf"
+    request_type = RefundRequest
 
     def refund(
         self, merchant_id: str, idempotency_key: str, request: RefundRequest

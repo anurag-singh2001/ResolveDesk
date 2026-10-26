@@ -13,7 +13,7 @@ time. Tokens are bearer JWTs, kept in memory and `sessionStorage` (never `localS
 | GET | `/auth/businesses` NEW | public | – | `[{slug, name, vertical}]` |
 | GET | `/auth/demo-accounts` NEW | public, **dev only** (404 when `APP_ENV=prod` or `DEMO_AUTH` is off) | – | `[{tenant, email, name, role, password}]` |
 | POST | `/auth/login` | public | `{tenant, email, password}` | `{access_token, token_type, expires_at}` (`expires_at` NEW). 401 `invalid credentials` (same for unknown user and wrong password). 429 NEW `too many failed logins, try again later` after 5 failures for one tenant+email in 15 min (even with the right password; unknown emails lock the same way). `expires_at` is ISO 8601 UTC |
-| GET | `/me` | any | – | `{user_id, name, email, role, location_ids, brand_ids, tenant: {slug, name, vertical}}` (`tenant` NEW) |
+| GET | `/me` | any | – | `{user_id, name, email, role, location_ids, brand_ids, tenant: {slug, name, vertical}, growth_enabled}` (`tenant` NEW; `growth_enabled` NEW: bool, the tenant's `growth` flag; show the Growth page only for staff when true) |
 
 Roles: `customer`, `location_manager`, `franchisee_owner`, `hq_owner`. 401 on any call → token is
 gone or expired: clear it and go to the login page with "Your session has ended".
@@ -27,6 +27,7 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 
 ## Cases
 | POST | `/cases` | customer | `{transaction_id, category: slug or null, message}` | case (201). `category: null` only when `free_text` |
+| POST | `/cases/{id}/messages` NEW | customer (own case) | `{message}` (1-2000 chars) | case (201). Answers the AI's needs-info question; only while stage is `awaiting_info`, else 409. Other customers'/tenants' cases 404, staff 403. The case resumes (stage goes back to `investigating`) and the timeline gains a "You replied" step |
 | GET | `/cases?limit=` | any | – | `[case]` newest first |
 | GET | `/cases/{id}` | any | – | case. 404 if not visible |
 | GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
@@ -44,6 +45,28 @@ customer for the current stage.
 | POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |
 
 `pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.
+
+## Insights (hq_owner, franchisee_owner)
+| Method | Path | Who | Response |
+| --- | --- | --- | --- |
+| GET | `/insights/outlets` NEW | `hq_owner` (all outlets), `franchisee_owner` (own outlets); 403 for other roles | `[{location_id, name, cases_opened, refunds_confirmed_count, refunds_confirmed_paise, vouchers_issued_count, vouchers_issued_paise, median_decision_minutes, orders, repeat_rate_bp}]` |
+
+Last 30 days. Money is integer paise (format with the money helper). `median_decision_minutes` is
+null when nothing was decided; `repeat_rate_bp` (basis points, 3125 = 31.2%) is null with no orders.
+
+## Growth (staff, tenant `growth` flag on; 404 when off)
+| Method | Path | Who | Notes |
+| --- | --- | --- | --- |
+| GET | `/growth/signals` | staff | `[{id, location_id, metric, baseline_bp, recent_bp, baseline_n, recent_n, drop_bp, status, diagnosis: {findings, hypotheses}, diagnosis_source, recent_end, campaign_id}]` (`campaign_id` NEW: the signal's campaign once proposed, else null) |
+| POST | `/growth/signals/refresh` | `hq_owner` | runs the signal job now; same list |
+| POST | `/growth/signals/{id}/campaign` | staff | `{}` body; 201 campaign; 422 text on refusal (budget, audience) |
+| GET | `/growth/campaigns/{id}` | staff | campaign |
+| POST | `/growth/campaigns/{id}/approve` | staff | `{decision: approved or rejected}`; 409 already decided, 410 expired, 422 not eligible; show the `detail` text |
+| POST | `/growth/campaigns/{id}/verdict` | staff | measures the result; 409 when the window isn't over |
+
+`campaign` = `{id, signal_id, location_id, status, payload_hash, params, budget_paise, expires_at, sent_at, treatment_n, holdout_n, approvals: [{decided_by, role, decision, expires_at}], fully_approved, playbook: {verdict, uplift_bp, treatment_n, holdout_n, confidence_note, lesson} | null}`.
+Sending needs two different approvers, at least one `hq_owner`; the server enforces it. The UI
+shows `diagnosis.findings` (facts) and `hypotheses` (labelled unconfirmed), never model reasoning.
 
 ## Dev panel (demo only)
 Mounted only when `APP_ENV` is `dev` or `test`; **404 in prod**. `hq_owner` only (403 otherwise), and

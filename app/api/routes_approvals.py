@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db_engine, not_found, require_staff, tenant_db
+from app.api.deps import get_clock, get_db_engine, not_found, require_staff, tenant_db
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -87,6 +87,7 @@ def pending_approvals(
     limit: int = Query(100, ge=1, le=500),
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> list[PendingOut]:
     """Undecided proposals in the caller's scope, with the code checks the approver needs."""
     query = (
@@ -102,7 +103,6 @@ def pending_approvals(
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
-    now = datetime.now(UTC)
     for proposal, case, order, location_name in db.execute(query).all():
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         out.append(

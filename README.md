@@ -32,12 +32,13 @@ approves, and code executes.
   decides refunds; the policy packs say so, and the remedy there is a voucher on the
   tenant's own channel or an escalation — never a refund we can't execute. Background:
   [docs/research/market.md](docs/research/market.md) (F7–F10).
-- **Growth (stretch, API only):** for tenants with the `growth` flag (BrewCo in the demo), a
+- **Growth (stretch):** for tenants with the `growth` flag (BrewCo in the demo), a
   nightly-style job spots a drop in an outlet's repeat-customer rate, proposes a win-back
   campaign with a holdout group, needs two staff approvals (one HQ), sends once per customer
   to consented customers only, and reports an honest verdict (worked / did not work /
-  inconclusive). Endpoints under `/growth` (see http://localhost:8000/docs); no web screens yet.
-- **Out:** real integrations, billing, multi-channel inbox, a web UI for growth.
+  inconclusive). Endpoints under `/growth` (see http://localhost:8000/docs); the web app has a **Growth** page
+  (staff, flag on) and an **Insights** page (HQ and franchisee owners: per-outlet metrics).
+- **Out:** real integrations, billing, multi-channel inbox.
 
 ## How it works
 
@@ -89,9 +90,10 @@ make api                   # terminal 1: API on :8000
 make web-install web       # terminal 2: web app on http://localhost:5173
 ```
 
-**After pulling new code**, run `make migrate`, then refresh the tenant packs:
-`uv run python -m scripts.seed all --seed 42 --no-history`. Otherwise new settings never
-reach the demo database (this is what once left a voucher stuck at *processing*).
+**After pulling new code**, run `make migrate`. With `APP_ENV=dev` it also runs `make refresh`,
+which re-applies the tenant packs, settings and policies from `tenants/` (idempotent; it never
+touches order history and does nothing when `APP_ENV` is not `dev`). Without that, new settings
+never reach the demo database (this is what once left a voucher stuck at *processing*).
 `make sweep` finishes or reconciles any interrupted payout.
 
 LLM choice: `LLM_PROVIDER=groq`, `LLM_FALLBACK_PROVIDER=gemini` and `ENGINE_MODE=agents`
@@ -122,15 +124,30 @@ With `DEMO_AUTH=true`, the login page lists the demo accounts; pick one, no typi
    case moves to **Confirmed** with one refund, not two.
 5. **Repeat complainer.** A customer with three or more grants in 30 days is never
    auto-approved; the approval shows the fair-use count for a person to decide.
+6. **The AI asks, the customer answers** (checked in the browser). BrewCo → *Dev P.* →
+   report "Not sure — just describe it" with "Something was not right with this order." The
+   case stops at **Waiting for your reply** with a reply box. Reply "my cappuccino was served
+   cold and tasted burnt" → the timeline shows *You replied*, then Quality → ₹100 voucher →
+   **Confirmed**.
+7. **Outlet insights and a win-back campaign** (checked in the browser). BrewCo → *Meera
+   Iyer* → **Insights**: per-outlet cases, refunds, vouchers, decision time and repeat rate
+   (Baner stands out at ~37%). **Growth** → *Refresh signals* → "Baner: repeat customers
+   down" with the evidence and causes marked "not confirmed" → *Propose win-back campaign*
+   (offer group and a holdout group, budget) → *Approve*. Approving twice is refused; sign in
+   as *Neha Joshi* (Baner manager) and approve → **Sent**. Dev panel → clock +15 days →
+   Growth → *Measure result*: with 154 offered and 17 held out the verdict is honestly
+   **Inconclusive** ("too few people to tell"). Reset the clock afterwards.
 
 Steps 4 and 5 are covered by the chaos and fair-use test suites; walk through them once
 before showing them live. As HQ, the **Dev panel** (left menu, dev only) has the chaos presets
 and a **Run sweeper** button, so step 4 needs no terminal.
 
-The mock providers keep their records in memory. Restarting the API forgets them, so a refund
-approved before a restart and checked after it is reported as "provider has no record" and
-handed to a person (the honest answer, since nothing can confirm it). Finish a demo flow
-before restarting.
+By default the mock providers keep their records in memory. Restarting the API forgets them, so
+a refund approved before a restart and checked after it is reported as "provider has no record"
+and handed to a person (the honest answer, since nothing can confirm it). To keep them across
+restarts, set `MOCK_STATE_FILE=var/mock_state.json` in `.env` (dev only): the mocks reload that
+file at startup and rewrite it after every change. Chaos settings are not saved. The Dev panel
+also has a **Simulated clock** (+1h to +15 days, reset) to see approvals expire without waiting.
 
 ## Evals
 

@@ -3,8 +3,13 @@ import type {
   AuditEvent,
   ChaosSettings,
   ChaosState,
+  ClockState,
   Business,
+  Campaign,
   Case,
+  GrowthSignal,
+  LocationRef,
+  OutletInsight,
   Categories,
   DecisionResponse,
   DemoAccount,
@@ -25,6 +30,10 @@ export const api = {
   setChaos: (service: string, settings: Partial<ChaosSettings>) =>
     request<ChaosState>("/admin/chaos", { method: "POST", body: { service, ...settings } }),
   sweep: () => request<SweepReport>("/admin/sweep", { method: "POST" }),
+  clock: () => request<ClockState>("/admin/clock"),
+  advanceClock: (advance_seconds: number) =>
+    request<ClockState>("/admin/clock", { method: "POST", body: { advance_seconds } }),
+  resetClock: () => request<ClockState>("/admin/clock", { method: "POST", body: { reset: true } }),
   businesses: () => request<Business[]>("/auth/businesses", { anonymous: true }),
   demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts", { anonymous: true }),
   login: (tenant: string, email: string, password: string) =>
@@ -41,9 +50,21 @@ export const api = {
   case: (id: string) => request<Case>(`/cases/${enc(id)}`),
   createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
     request<Case>("/cases", { method: "POST", body }),
+  replyToCase: (id: string, message: string) =>
+    request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
   approvals: (limit = 200) => request<PendingApproval[]>(`/approvals?limit=${limit}`),
+  locations: () => request<LocationRef[]>("/locations"),
+  outletInsights: () => request<OutletInsight[]>("/insights/outlets"),
+  growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
+  refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
+  proposeCampaign: (signalId: string) =>
+    request<Campaign>(`/growth/signals/${enc(signalId)}/campaign`, { method: "POST", body: {} }),
+  campaign: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}`),
+  decideCampaign: (id: string, decision: "approved" | "rejected") =>
+    request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
+  campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {
       method: "POST",

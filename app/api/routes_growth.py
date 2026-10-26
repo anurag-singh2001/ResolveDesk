@@ -3,7 +3,7 @@ disabled module answers 404, like any other thing that isn't there."""
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -46,6 +46,7 @@ class SignalOut(BaseModel):
     diagnosis: dict
     diagnosis_source: str
     recent_end: datetime
+    campaign_id: uuid.UUID | None = None
 
 
 class CampaignOut(BaseModel):
@@ -65,8 +66,11 @@ class CampaignOut(BaseModel):
     playbook: dict | None
 
 
-def _signal_out(s: Signal) -> SignalOut:
-    return SignalOut.model_validate(s, from_attributes=True)
+def _signal_out(db: Session, s: Signal) -> SignalOut:
+    out = SignalOut.model_validate(s, from_attributes=True)
+    # One campaign per signal: lets the UI reopen a proposed campaign after a reload.
+    out.campaign_id = db.scalar(select(Campaign.id).where(Campaign.signal_id == s.id))
+    return out
 
 
 def _campaign_out(db: Session, c: Campaign, now: datetime) -> CampaignOut:
@@ -112,7 +116,7 @@ def list_signals(
     ctx: TenantContext = Depends(require_growth), db: Session = Depends(tenant_db)
 ) -> list[SignalOut]:
     rows = db.scalars(select(Signal).order_by(Signal.recent_end.desc(), Signal.id))
-    return [_signal_out(s) for s in rows if camp.in_scope(ctx, s.location_id)]
+    return [_signal_out(db, s) for s in rows if camp.in_scope(ctx, s.location_id)]
 
 
 @router.post("/signals/refresh")
@@ -124,7 +128,8 @@ def refresh_signals(
     """Run the signal job now (it also runs nightly). hq_owner only: it reads every location."""
     if ctx.role != "hq_owner":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "hq_owner only")
-    return [_signal_out(s) for s in sig.run_signal_job(db, ctx.tenant_id, now)]
+    as_of = sig.data_as_of(db, ctx.tenant_id, now)
+    return [_signal_out(db, s) for s in sig.run_signal_job(db, ctx.tenant_id, as_of)]
 
 
 class ProposeIn(BaseModel):
@@ -141,7 +146,8 @@ def propose_campaign(
     now: datetime = Depends(get_clock),
 ) -> CampaignOut:
     try:
-        c = camp.propose(db, ctx, signal_id, now, body.offer_paise, body.window_days)
+        # A write: proposal expiry is stamped in real time, never the dev clock (DECISIONS.md).
+        c = camp.propose(db, ctx, signal_id, datetime.now(UTC), body.offer_paise, body.window_days)
     except camp.NotFound:
         raise not_found() from None
     except ProposalError as exc:
@@ -186,7 +192,8 @@ def approve_campaign(
     now: datetime = Depends(get_clock),
 ) -> CampaignOut:
     try:
-        _, ready = camp.decide(db, ctx, campaign_id, body.decision, now)
+        # Approvals, their expiry and the sends run in real time; `now` is for display only.
+        _, ready = camp.decide(db, ctx, campaign_id, body.decision, datetime.now(UTC))
     except camp.NotFound:
         raise not_found() from None
     except camp.AlreadyDecided as exc:
@@ -196,7 +203,7 @@ def approve_campaign(
     except camp.NotEligible as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     if ready:
-        background.add_task(_send, engine, ctx.tenant_id, campaign_id, now)
+        background.add_task(_send, engine, ctx.tenant_id, campaign_id, datetime.now(UTC))
     return _campaign_out(db, camp.load_campaign(db, ctx, campaign_id), now)
 
 

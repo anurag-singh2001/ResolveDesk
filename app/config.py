@@ -56,6 +56,10 @@ class Settings(BaseSettings):
     # (cache hits send none). Bounds the worst case of retry * fallback per logical call.
     llm_max_provider_requests_per_run: int = Field(default=24, ge=1)
 
+    # Dev only: JSON file the mock providers keep their records in, so they survive an API
+    # restart. Unset = in memory (tests, default).
+    mock_state_file: str | None = None
+
     # Fail safe: an unset APP_ENV is treated as prod (dev/test must opt in explicitly).
     app_env: Literal["dev", "test", "prod"] = "prod"
 
