@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Campaign, GrowthSignal, Role } from "../api/types";
 import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
+import { pct } from "./GrowthPage";
 
 const signal: GrowthSignal = {
   id: "s-1",
@@ -132,5 +133,14 @@ describe("growth page", () => {
     renderApp("/growth");
     await userEvent.setup().click(await screen.findByRole("button", { name: "Refresh signals" }));
     expect(calls.some((c) => c.path === "/growth/signals/refresh")).toBe(true);
+  });
+});
+
+describe("pct", () => {
+  it("rounds basis points half up, matching the server's diagnosis text", () => {
+    expect(pct(7645)).toBe("76.5%");
+    expect(pct(4085)).toBe("40.9%");
+    expect(pct(7644)).toBe("76.4%");
+    expect(pct(0)).toBe("0.0%");
   });
 });

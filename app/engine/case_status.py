@@ -20,6 +20,7 @@ from app.core.models import (
     Verification,
 )
 from app.core.money import format_inr
+from app.engine.needs import latest_question
 
 STAGES = (
     "received",
@@ -59,7 +60,8 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
             return CaseStatus("escalated", "A member of our team will look into this.")
         if case.status == "awaiting_info":
             return CaseStatus(
-                "awaiting_info", "We need a little more information from you about this order."
+                "awaiting_info",
+                "We need a little more information from you. " + latest_question(session, case.id),
             )
         if case.status == "resolved":
             return CaseStatus("closed", "Sorry about this. We have noted it with the team.")
