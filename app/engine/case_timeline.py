@@ -129,6 +129,8 @@ def _proposal_steps(
             else "Your request was approved by our team.",
         )
     )
+    if proposal.action == "free_item_voucher":
+        return steps + _voucher_steps(session, proposal, approval, now)
     if proposal.action != "refund":
         return steps
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
@@ -174,3 +176,39 @@ def _proposal_steps(
             )
         )
     return steps
+
+
+def _voucher_steps(
+    session: Session, proposal: ActionProposal, approval: Approval, now: datetime
+) -> list[TimelineStep]:
+    """Same wording and rules as case_status: issued only once the voucher provider confirmed."""
+    execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
+    if execution is not None and execution.status == "succeeded":
+        return [
+            TimelineStep(
+                execution.updated_at,
+                "confirmed",
+                "Voucher issued",
+                f"Your voucher worth {format_inr(proposal.amount_paise)} has been issued.",
+            )
+        ]
+    if execution is not None and execution.status == "failed":
+        return [
+            TimelineStep(
+                execution.updated_at,
+                "escalated",
+                "Passed to our team",
+                "We could not issue the voucher automatically. "
+                "A member of our team will contact you.",
+            )
+        ]
+    if execution is None and now >= approval.expires_at:  # same rule as case_status
+        return [
+            TimelineStep(
+                approval.expires_at,
+                "escalated",
+                "Passed to our team",
+                "Your voucher needs a check by our team before it can be issued.",
+            )
+        ]
+    return []

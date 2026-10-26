@@ -5,7 +5,7 @@ import uuid
 from dataclasses import dataclass
 from typing import Literal
 
-from sqlalchemy import ColumnElement, and_, false, select, true
+from sqlalchemy import ColumnElement, and_, false, func, select, true
 from sqlalchemy.orm import Session
 
 from app.core.models import (
@@ -83,26 +83,33 @@ def load_context(
 
     `session` must already be scoped to tenant_id, so a user id from another tenant is invisible.
     """
-    user = session.get(User, user_id)
-    if user is None or user.tenant_id != tenant_id:
-        return None
-    memberships = session.scalars(select(Membership).where(Membership.user_id == user_id)).all()
-    if len(memberships) != 1:  # unique in the schema; fail closed rather than pick a role
-        return None
-    membership = memberships[0]
-    brand_ids = session.scalars(
-        select(MembershipBrand.brand_id).where(MembershipBrand.membership_id == membership.id)
+    # One round trip (the DB is remote; this runs on every request): the user, their
+    # memberships, and each membership's brand and location scope as arrays.
+    brands = (
+        select(func.array_agg(MembershipBrand.brand_id))
+        .where(MembershipBrand.membership_id == Membership.id)
+        .scalar_subquery()
     )
-    location_ids = session.scalars(
-        select(MembershipLocation.location_id).where(
-            MembershipLocation.membership_id == membership.id
-        )
+    locations = (
+        select(func.array_agg(MembershipLocation.location_id))
+        .where(MembershipLocation.membership_id == Membership.id)
+        .scalar_subquery()
     )
+    rows = session.execute(
+        select(User.tenant_id, Membership.id, Membership.role, brands, locations)
+        .outerjoin(Membership, Membership.user_id == User.id)
+        .where(User.id == user_id)
+    ).all()
+    if not rows or rows[0][0] != tenant_id:
+        return None
+    if len(rows) != 1 or rows[0][1] is None:  # unique in the schema; fail closed
+        return None
+    _, membership_id, role, brand_ids, location_ids = rows[0]
     return TenantContext(
         tenant_id=tenant_id,
         user_id=user_id,
-        membership_id=membership.id,
-        role=membership.role,
-        brand_ids=frozenset(brand_ids),
-        location_ids=frozenset(location_ids),
+        membership_id=membership_id,
+        role=role,
+        brand_ids=frozenset(brand_ids or ()),
+        location_ids=frozenset(location_ids or ()),
     )

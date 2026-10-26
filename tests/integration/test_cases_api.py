@@ -435,3 +435,23 @@ def test_timeline_has_the_same_visibility_as_the_case(api, seeded, flow):
             )
             assert resp.status_code == 404, user.email
     assert api.get(f"/cases/{uuid.uuid4()}/timeline", headers=f["customer"]).status_code == 404
+
+
+def test_timeline_ends_voucher_issued_once_the_provider_confirms(api, app_engine, flow):
+    """An auto-approved voucher gets its own final step, as a confirmed refund does."""
+    from app.core.settings_resolver import tenant_pack
+
+    f = flow
+    reset_mocks()
+    with tenant_session(f["tid"], app_engine) as s:
+        category = next(c for c, rule in tenant_pack(s).remedies.items() if rule == "voucher")
+    try:
+        opened = _open(api, f, category=category)
+        steps = api.get(f"/cases/{opened['id']}/timeline", headers=f["customer"]).json()
+        assert [s["stage"] for s in steps][-2:] == ["processing", "confirmed"], steps
+        assert steps[-1]["title"] == "Voucher issued"
+        assert api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()["stage"] == (
+            "confirmed"
+        )
+    finally:
+        reset_mocks()

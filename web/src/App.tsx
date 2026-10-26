@@ -24,7 +24,7 @@ function NotFound() {
 }
 
 export function App() {
-  const { status, me } = useAuth();
+  const { status, me, signedOutByUser } = useAuth();
   const location = useLocation();
 
   if (status === "loading") return <Loading label="Signing you in…" />;
@@ -33,7 +33,9 @@ export function App() {
     return (
       <Routes>
         <Route path="/login" element={<LoginPage />} />
-        <Route path="*" element={<Navigate to="/login" replace state={{ from: location.pathname }} />} />
+        {/* Come back to a deep link or an expired session's page; not to the page someone left
+            when they signed out. */}
+        <Route path="*" element={<Navigate to="/login" replace state={signedOutByUser ? null : { from: location.pathname }} />} />
       </Routes>
     );
   }

@@ -46,6 +46,9 @@ interface AuthValue {
   businessName: string;
   /** Shown on the login page after a 401 ("Your session has ended"). */
   notice: string | null;
+  /** True after the user signed out themselves: the next sign-in (maybe another person) starts
+   * on their home page, not on the page the last user had open. */
+  signedOutByUser: boolean;
   signIn: (tenant: string, email: string, password: string, business?: Business) => Promise<void>;
   signOut: () => void;
 }
@@ -59,14 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [me, setMe] = useState<Me | null>(null);
   const [status, setStatus] = useState<Status>(initial.current ? "loading" : "signed_out");
   const [notice, setNotice] = useState<string | null>(null);
+  const [signedOutByUser, setSignedOutByUser] = useState(false);
 
-  const clear = useCallback((why: string | null) => {
+  const clear = useCallback((why: string | null, byUser = false) => {
     tokenRef.current = null;
     writeStored(null);
     setStored(null);
     setMe(null);
     setStatus("signed_out");
     setNotice(why);
+    setSignedOutByUser(byUser);
   }, []);
 
   useEffect(() => {
@@ -123,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setStored(s);
         setMe(m);
         setNotice(null);
+        setSignedOutByUser(false);
         setStatus("signed_in");
       } catch (err) {
         tokenRef.current = null;
@@ -132,7 +138,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const signOut = useCallback(() => clear(null), [clear]);
+  const signOut = useCallback(() => clear(null, true), [clear]);
 
   const value = useMemo<AuthValue>(
     () => ({
@@ -140,10 +146,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       me,
       businessName: me?.tenant?.name ?? stored?.businessName ?? stored?.tenant ?? "",
       notice,
+      signedOutByUser,
       signIn,
       signOut,
     }),
-    [status, me, stored, notice, signIn, signOut],
+    [status, me, stored, notice, signedOutByUser, signIn, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

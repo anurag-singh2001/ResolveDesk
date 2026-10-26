@@ -92,4 +92,31 @@ describe("login page", () => {
     expect(screen.getByRole("button", { name: "Sign in" })).toBeInTheDocument();
     expect(sessionStorage.getItem("resolvedesk.session")).toBeNull();
   });
+
+  it("after a sign-out, the next sign-in starts on the home page, not the last user's page", async () => {
+    seedSession();
+    const { calls } = mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /auth/businesses": { body: businesses },
+      "POST /auth/login": { body: { access_token: "t2", token_type: "bearer", expires_at: "2999-01-01T00:00:00Z" } },
+      "GET /orders": { body: [] },
+    });
+    renderApp("/help");
+    await userEvent.setup().click(await screen.findByRole("button", { name: "Sign out" }));
+    await fill("beanco", "other@b.co", "pw");
+    // Home (the orders list), not the help page the last user had open.
+    await waitFor(() => expect(calls.some((c) => c.path.startsWith("/orders"))).toBe(true));
+  });
+
+  it("a deep link opened while signed out is shown after sign-in", async () => {
+    const { calls } = mockFetch({
+      "GET /auth/businesses": { body: businesses },
+      "POST /auth/login": { body: { access_token: "t3", token_type: "bearer", expires_at: "2999-01-01T00:00:00Z" } },
+      "GET /me": { body: makeMe("customer") },
+    });
+    renderApp("/help");
+    await fill("beanco", "a@b.co", "pw");
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Sign in" })).not.toBeInTheDocument());
+    expect(calls.some((c) => c.path.startsWith("/orders"))).toBe(false); // not sent home
+  });
 });
