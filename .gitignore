@@ -33,3 +33,6 @@ Thumbs.db
 # Claude Code local overrides
 .claude/settings.local.json
 .claude/worktrees/
+
+# Mock provider state (MOCK_STATE_FILE)
+var/

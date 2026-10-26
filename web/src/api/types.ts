@@ -155,3 +155,8 @@ export interface DecisionResponse {
   expires_at: string;
   execution: string;
 }
+
+export interface ClockState {
+  now: string;
+  offset_seconds: number;
+}

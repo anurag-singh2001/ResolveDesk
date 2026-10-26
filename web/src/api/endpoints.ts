@@ -3,6 +3,7 @@ import type {
   AuditEvent,
   ChaosSettings,
   ChaosState,
+  ClockState,
   Business,
   Case,
   Categories,
@@ -25,6 +26,10 @@ export const api = {
   setChaos: (service: string, settings: Partial<ChaosSettings>) =>
     request<ChaosState>("/admin/chaos", { method: "POST", body: { service, ...settings } }),
   sweep: () => request<SweepReport>("/admin/sweep", { method: "POST" }),
+  clock: () => request<ClockState>("/admin/clock"),
+  advanceClock: (advance_seconds: number) =>
+    request<ClockState>("/admin/clock", { method: "POST", body: { advance_seconds } }),
+  resetClock: () => request<ClockState>("/admin/clock", { method: "POST", body: { reset: true } }),
   businesses: () => request<Business[]>("/auth/businesses", { anonymous: true }),
   demoAccounts: () => request<DemoAccount[]>("/auth/demo-accounts", { anonymous: true }),
   login: (tenant: string, email: string, password: string) =>

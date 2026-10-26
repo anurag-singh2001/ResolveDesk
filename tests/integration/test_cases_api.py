@@ -292,6 +292,31 @@ def test_an_approved_but_stuck_refund_is_not_shown_as_progressing(api, app_engin
     assert _stages(api, opened["id"], f["customer"])[-1] == "escalated"  # timeline agrees
 
 
+def test_an_approval_expired_under_the_dev_clock_is_reported_as_stuck(api, app_engine, flow):
+    """Approved but not executed: fine now, "needs a check" once the dev clock passes expiry."""
+    from datetime import UTC, datetime
+
+    import app.api.deps as deps
+    from app.core.tenancy import load_context
+    from app.engine.approvals import decide
+
+    f = flow
+    opened = _open(api, f)
+    hq_email = next(u.email for u in f["cfg"].users if u.role == "hq_owner")
+    with tenant_session(f["tid"], app_engine) as s:
+        hq = load_context(s, f["tid"], s.scalar(select(User.id).where(User.email == hq_email)))
+        decide(s, hq, uuid.UUID(opened["proposal_id"]), "approved", datetime.now(UTC))
+    url = f"/cases/{opened['id']}"
+    try:
+        assert api.get(url, headers=f["customer"]).json()["stage"] != "escalated"
+        resp = api.post("/admin/clock", headers=f["hq"], json={"advance_seconds": 86400})
+        assert resp.status_code == 200
+        assert api.get(url, headers=f["customer"]).json()["stage"] == "escalated"
+    finally:
+        deps.reset_clock()
+    assert api.get(url, headers=f["customer"]).json()["stage"] != "escalated"
+
+
 def test_case_list_is_scoped_to_the_caller(api, app_engine, flow):
     f = flow
     opened = _open(api, f)

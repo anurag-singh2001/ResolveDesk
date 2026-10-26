@@ -1,12 +1,19 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import datetime
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, or_, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db_engine, get_tenant_context, not_found, require_staff, tenant_db
+from app.api.deps import (
+    get_clock,
+    get_db_engine,
+    get_tenant_context,
+    not_found,
+    require_staff,
+    tenant_db,
+)
 from app.api.routes_approvals import run_execution
 from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
@@ -40,8 +47,8 @@ class CaseOut(BaseModel):
     created_at: datetime
 
 
-def _out(db: Session, case: Case) -> CaseOut:
-    st = case_status(db, case)
+def _out(db: Session, case: Case, now: datetime) -> CaseOut:
+    st = case_status(db, case, now)
     order = db.get(Transaction, case.transaction_id) if case.transaction_id else None
     return CaseOut(
         id=case.id,
@@ -89,6 +96,7 @@ def create_case(
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
     engine: Engine = Depends(get_db_engine),
+    now: datetime = Depends(get_clock),
 ) -> CaseOut:
     if ctx.role != "customer":
         raise HTTPException(status.HTTP_403_FORBIDDEN, "customers open cases")
@@ -102,7 +110,7 @@ def create_case(
             transaction_id=body.transaction_id,
             category=body.category,
             message=body.message,
-            now=datetime.now(UTC),
+            now=now,
         )
     except CaseNotFound:
         raise not_found() from None
@@ -118,7 +126,7 @@ def create_case(
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))
         if approved is not None and executable(proposal.action):
             background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
-    return _out(db, case)
+    return _out(db, case, now)
 
 
 @router.get("/cases")
@@ -126,6 +134,7 @@ def list_cases(
     limit: int = Query(50, ge=1, le=200),
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> list[CaseOut]:
     """Customers: their own cases. hq_owner: all. Scoped staff: cases on orders in scope."""
     query = select(Case).order_by(Case.opened_at.desc(), Case.id).limit(limit)
@@ -135,7 +144,7 @@ def list_cases(
     elif ctx.role != "hq_owner":
         visible = select(Transaction.id).where(ctx.visible_orders())
         query = query.where(Case.transaction_id.in_(visible))
-    return [_out(db, case) for case in db.scalars(query)]
+    return [_out(db, case, now) for case in db.scalars(query)]
 
 
 @router.get("/cases/{case_id}")
@@ -143,8 +152,9 @@ def get_case(
     case_id: uuid.UUID,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> CaseOut:
-    return _out(db, visible_case(db, ctx, case_id))
+    return _out(db, visible_case(db, ctx, case_id), now)
 
 
 class TimelineStepOut(BaseModel):

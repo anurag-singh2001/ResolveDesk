@@ -33,6 +33,7 @@ def _result(op: Operation) -> VoucherResult:
 
 class MockVouchers(IdempotentMock):
     prefix = "vc"
+    request_type = VoucherRequest
 
     def issue(
         self, merchant_id: str, idempotency_key: str, request: VoucherRequest

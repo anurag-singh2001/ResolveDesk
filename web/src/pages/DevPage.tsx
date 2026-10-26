@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "../api/endpoints";
 import { errorMessage } from "../api/client";
-import type { ChaosSettings, SweepReport } from "../api/types";
+import type { ChaosSettings, ClockState, SweepReport } from "../api/types";
 import { Alert, Button, Card, ErrorState, Field, Loading, PageHeader, inputClass } from "../components/ui";
 import { useApi } from "../lib/useApi";
 
@@ -103,6 +103,77 @@ function SweepResult({ r }: { r: SweepReport }) {
   );
 }
 
+const CLOCK_STEPS = [
+  ["+1h", 3600],
+  ["+4h", 4 * 3600],
+  ["+1 day", 86400],
+  ["+15 days", 15 * 86400],
+] as const;
+
+function ClockCard() {
+  const { data, error, loading, reload } = useApi(() => api.clock(), []);
+  const [state, setState] = useState<ClockState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<unknown>(null);
+  const shown = state ?? data;
+
+  async function move(call: () => Promise<ClockState>) {
+    setBusy(true);
+    setActionError(null);
+    try {
+      setState(await call());
+    } catch (err) {
+      setActionError(err);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <h2 className="text-sm font-semibold text-slate-900">Simulated clock</h2>
+      <p className="mt-1 text-sm text-slate-600">
+        Moves this server's idea of "now" forward (up to 60 days), for every business on it. Use it to see approvals expire and
+        stuck refunds get flagged. Reset puts it back to real time.
+      </p>
+      {loading ? (
+        <Loading label="Loading clock…" />
+      ) : error != null && shown == null ? (
+        <div className="mt-3">
+          <Alert>{errorMessage(error)}</Alert>
+          <Button className="mt-2" variant="secondary" onClick={reload}>
+            Retry
+          </Button>
+        </div>
+      ) : (
+        <>
+          <p className="mt-3 text-sm text-slate-900">
+            Simulated now: <span data-testid="clock-now">{shown ? new Date(shown.now).toLocaleString() : ""}</span>{" "}
+            <span className="text-slate-500" data-testid="clock-offset">
+              (offset {shown?.offset_seconds ?? 0}s)
+            </span>
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {CLOCK_STEPS.map(([label, secs]) => (
+              <Button key={label} variant="secondary" disabled={busy} onClick={() => void move(() => api.advanceClock(secs))}>
+                {label}
+              </Button>
+            ))}
+            <Button variant="secondary" disabled={busy} onClick={() => void move(() => api.resetClock())}>
+              Reset clock
+            </Button>
+          </div>
+        </>
+      )}
+      {actionError != null && (
+        <div className="mt-3">
+          <Alert>{errorMessage(actionError)}</Alert>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function DevPage() {
   const { data, error, loading, reload } = useApi(() => api.chaos(), []);
   const [sweeping, setSweeping] = useState(false);
@@ -173,10 +244,12 @@ export function DevPage() {
             </div>
           </Card>
 
+          <ClockCard />
+
           <Card className="p-4 text-sm text-slate-600">
-            <h2 className="text-sm font-semibold text-slate-900">Clock and reseed</h2>
+            <h2 className="text-sm font-semibold text-slate-900">Reseed</h2>
             <p className="mt-1">
-              There is no clock override or reseed button here: both are too destructive for a web button. From a terminal, run{" "}
+              There is no reseed button here: it is too destructive for a web button. From a terminal, run{" "}
               <code className="rounded bg-slate-100 px-1">make seed TENANT=all</code> to reload the demo data and{" "}
               <code className="rounded bg-slate-100 px-1">make sweep</code> to run the sweeper for every business.
             </p>
