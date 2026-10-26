@@ -1,0 +1,12 @@
+id: bc-missing-004
+tenant: brewco
+kind: hinglish
+message: Mere bag mein croissant nahi tha, jabki paise lag gaye the. Please check karke paise wapas kijiye.
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact
+note: 'S5.6: Hinglish (Roman) variant of bc-missing-001'

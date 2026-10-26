@@ -101,3 +101,21 @@ timeline shows "You replied".
 - It **never promises money** before the payment provider confirms it. If the case says
   *Processing*, the refund is on its way but not yet confirmed.
 - It only ever looks at **your** orders.
+
+## Language for our messages
+
+On the **Help** page, under **Language for our messages**, you can choose how we write to you
+about a report: **English**, **Hinglish** (Hindi in English letters) or **हिन्दी** (Devanagari).
+The status of your report, its history and the questions we ask you then appear in that language.
+
+- The choice is yours alone. We never pick a language for you from your name or where you live.
+  Until you choose, we write in English.
+- Only our messages about your reports change. The buttons, menus and headings of this app stay
+  in English.
+- Amounts look the same in every language (for example `₹1,00,000.00`), and dates use a month
+  name (for example `27 Oct 2026`), never numbers like `10/11`.
+- The messages are fixed, pre-written sentences, not generated text. The Hindi and Hinglish
+  versions say exactly what the English ones say, and keep *waiting for approval*, *being
+  processed*, *done*, *failed* and *needs a check* clearly different. If a sentence has no
+  translation, you see it in English.
+- What you type to us can be in any language; the choice above only affects what we send you.

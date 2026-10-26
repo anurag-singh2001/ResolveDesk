@@ -192,7 +192,10 @@ hid a refund the provider had confirmed.
 
 - Mock providers only; no real gateway, aggregator or POS integration.
 - Small eval set; a single seed of synthetic data.
-- English only; one channel (web).
+- One channel (web). Customer messages are templated in English, Hinglish (`hi-Latn`) and
+  Devanagari Hindi (`hi`), chosen by the customer; they are not generated, and no other
+  language is supported. The web app's own labels are English only. Inbound Hinglish
+  classification is covered by only a few eval scenarios.
 - The voucher check trusts the provider's confirmed status (there is no amount to compare).
 - Privacy (DPDP): prompts get order facts but no contact details (emails and phone numbers
   in customer messages are masked). `make retention` (dry run; `APPLY=1` to redact, irreversible) redacts message text and contact data

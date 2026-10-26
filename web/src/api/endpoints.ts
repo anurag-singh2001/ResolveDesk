@@ -21,6 +21,8 @@ import type {
   PrivacyContact,
   SweepReport,
   TimelineEntry,
+  Language,
+  Preferences,
 } from "./types";
 
 const enc = encodeURIComponent;
@@ -51,6 +53,9 @@ export const api = {
     }),
   me: () => request<Me>("/me"),
   categories: () => request<Categories>("/meta/categories"),
+  preferences: () => request<Preferences>("/me/preferences"),
+  setPreferences: (language: Language) =>
+    request<Preferences>("/me/preferences", { method: "PUT", body: { language } }),
   privacyContact: () => request<PrivacyContact>("/meta/privacy"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),

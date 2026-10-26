@@ -301,6 +301,8 @@ class Customer(TenantOwned, Base):
     # Set only for customers who can log in; ownership checks go through this link.
     user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
     home_location_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # The customer's own choice (en / hi-Latn / hi); never inferred. Migration 0018.
+    preferred_language: Mapped[str] = mapped_column(String(10), nullable=False, server_default="en")
     attributes: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
 

@@ -10,20 +10,19 @@ import uuid
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.i18n import t
 from app.core.models import AuditEvent
 
 NEED_ORDER = "order"
 NEED_DETAILS = "details"
-QUESTIONS = {
-    NEED_ORDER: "Which order is this about? Please pick it from your order list.",
-    NEED_DETAILS: "So we can look into it, could you tell us a bit more about what went wrong"
-    " with your order (for example, which item was affected)?",
-}
-GENERIC_QUESTION = "Could you tell us a bit more about what went wrong with this order?"
+# English text per need code (the templates themselves live in app/core/i18n.py).
+QUESTIONS = {code: t(f"need.{code}") for code in (NEED_ORDER, NEED_DETAILS)}
+GENERIC_QUESTION = t("need.generic")
 
 
-def question_for(code: object) -> str:
-    return QUESTIONS.get(code, GENERIC_QUESTION) if isinstance(code, str) else GENERIC_QUESTION
+def question_for(code: object, language: object = None) -> str:
+    key = f"need.{code}" if code in (NEED_ORDER, NEED_DETAILS) else "need.generic"
+    return t(key, language)
 
 
 def need_from_payload(payload: object) -> str | None:
@@ -31,7 +30,7 @@ def need_from_payload(payload: object) -> str | None:
     return code if isinstance(code, str) else None
 
 
-def latest_question(session: Session, case_id: uuid.UUID) -> str:
+def latest_question(session: Session, case_id: uuid.UUID, language: object = None) -> str:
     """The question of the case's most recent case.awaiting_info event."""
     payload = session.scalar(
         select(AuditEvent.payload)
@@ -43,4 +42,4 @@ def latest_question(session: Session, case_id: uuid.UUID) -> str:
         .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
         .limit(1)
     )
-    return question_for(need_from_payload(payload))
+    return question_for(need_from_payload(payload), language)

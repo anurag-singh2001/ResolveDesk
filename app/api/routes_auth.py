@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -8,8 +9,9 @@ from sqlalchemy.orm import Session
 
 from app.api.deps import get_clock, get_db_engine, get_tenant_context, not_found, tenant_db
 from app.config import get_settings
+from app.core import audit
 from app.core.auth import InvalidCredentials, LockedOut, authenticate
-from app.core.models import FeatureFlag, Organization, User
+from app.core.models import Customer, FeatureFlag, Organization, User
 from app.core.tenancy import TenantContext
 from app.core.tenant_config import load_tenant, tenant_dirs
 
@@ -126,3 +128,46 @@ def me(ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(t
             db.scalar(select(FeatureFlag.enabled).where(FeatureFlag.key == "growth"))
         ),
     )
+
+
+class PreferencesIO(BaseModel):
+    language: Literal["en", "hi-Latn", "hi"]
+
+
+def _own_customer(ctx: TenantContext, db: Session) -> Customer:
+    """The caller's own customer record (found by their login), else 404: staff and users
+    without a customer record have no preferences, and no id from the request is used."""
+    customer = db.scalar(select(Customer).where(Customer.user_id == ctx.user_id))
+    if ctx.role != "customer" or customer is None:
+        raise not_found()
+    return customer
+
+
+@router.get("/me/preferences")
+def get_preferences(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> PreferencesIO:
+    return PreferencesIO(language=_own_customer(ctx, db).preferred_language)
+
+
+@router.put("/me/preferences")
+def set_preferences(
+    body: PreferencesIO,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> PreferencesIO:
+    """The customer's own choice of language for the messages we send them (S5.6)."""
+    customer = _own_customer(ctx, db)
+    if customer.preferred_language != body.language:
+        audit.record(
+            db,
+            ctx.tenant_id,
+            actor_type="user",
+            actor_id=ctx.user_id,
+            event="customer.language_changed",
+            entity_type="customer",
+            entity_id=customer.id,
+            payload={"before": customer.preferred_language, "after": body.language},
+        )
+        customer.preferred_language = body.language
+    return PreferencesIO(language=customer.preferred_language)
