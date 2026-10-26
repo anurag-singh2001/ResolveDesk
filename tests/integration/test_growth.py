@@ -16,6 +16,7 @@ from app.core.db import tenant_session
 from app.core.models import (
     GROWTH_MODELS,
     Campaign,
+    CampaignApproval,
     CampaignMember,
     Consent,
     Customer,
@@ -546,3 +547,35 @@ def test_expired_approvals_cannot_be_renewed_by_the_same_approver(app_engine, gt
     cid, hq, _ = approved_campaign(app_engine, cfg, tid, as_of, approve_both=False)
     with pytest.raises(camp.AlreadyDecided):
         decide_as(app_engine, tid, hq, cid, now=datetime.now(UTC) + timedelta(hours=30))
+
+
+def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
+    """The dev clock offset is display-only: a campaign's proposal expiry and its approvals are
+    stamped in real time, like case approvals (hard rule 6), so they expire on schedule."""
+    import app.api.deps as deps
+
+    cfg, tid, as_of = gt
+    if not cfg.feature_flags.get("growth"):
+        pytest.skip("growth is off for this tenant")
+    hq_email = next(u.email for u in cfg.users if u.role == "hq_owner")
+    headers = login(api, cfg.slug, hq_email)
+    signal_id = make_signal(app_engine, tid, as_of)
+    try:
+        deps.advance_clock(timedelta(days=15))
+        made = api.post(f"/growth/signals/{signal_id}/campaign", json={}, headers=headers)
+        if made.status_code == 422:
+            pytest.skip("history too small for an audience at this scale")
+        assert made.status_code == 201, made.text
+        cid = uuid.UUID(made.json()["id"])
+        yes = api.post(f"/growth/campaigns/{cid}/approve", json={"decision": "approved"},
+                       headers=headers)  # fmt: skip
+        assert yes.status_code == 200, yes.text
+    finally:
+        deps.reset_clock()
+    now = datetime.now(UTC)
+    with tenant_session(tid, app_engine) as s:
+        campaign = s.get(Campaign, cid)
+        approval = s.scalar(select(CampaignApproval).where(CampaignApproval.campaign_id == cid))
+        assert abs(campaign.expires_at - (now + camp.PROPOSAL_TTL)) < timedelta(minutes=2)
+        assert abs(now - approval.decided_at) < timedelta(minutes=2)
+        assert approval.expires_at <= now + camp.APPROVAL_TTL + timedelta(minutes=2)

@@ -3,7 +3,7 @@ disabled module answers 404, like any other thing that isn't there."""
 
 import logging
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
@@ -141,7 +141,8 @@ def propose_campaign(
     now: datetime = Depends(get_clock),
 ) -> CampaignOut:
     try:
-        c = camp.propose(db, ctx, signal_id, now, body.offer_paise, body.window_days)
+        # A write: proposal expiry is stamped in real time, never the dev clock (DECISIONS.md).
+        c = camp.propose(db, ctx, signal_id, datetime.now(UTC), body.offer_paise, body.window_days)
     except camp.NotFound:
         raise not_found() from None
     except ProposalError as exc:
@@ -186,7 +187,8 @@ def approve_campaign(
     now: datetime = Depends(get_clock),
 ) -> CampaignOut:
     try:
-        _, ready = camp.decide(db, ctx, campaign_id, body.decision, now)
+        # Approvals, their expiry and the sends run in real time; `now` is for display only.
+        _, ready = camp.decide(db, ctx, campaign_id, body.decision, datetime.now(UTC))
     except camp.NotFound:
         raise not_found() from None
     except camp.AlreadyDecided as exc:
@@ -196,7 +198,7 @@ def approve_campaign(
     except camp.NotEligible as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     if ready:
-        background.add_task(_send, engine, ctx.tenant_id, campaign_id, now)
+        background.add_task(_send, engine, ctx.tenant_id, campaign_id, datetime.now(UTC))
     return _campaign_out(db, camp.load_campaign(db, ctx, campaign_id), now)
 
 
