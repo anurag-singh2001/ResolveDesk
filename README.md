@@ -90,9 +90,10 @@ make api                   # terminal 1: API on :8000
 make web-install web       # terminal 2: web app on http://localhost:5173
 ```
 
-**After pulling new code**, run `make migrate`, then refresh the tenant packs:
-`uv run python -m scripts.seed all --seed 42 --no-history`. Otherwise new settings never
-reach the demo database (this is what once left a voucher stuck at *processing*).
+**After pulling new code**, run `make migrate`. With `APP_ENV=dev` it also runs `make refresh`,
+which re-applies the tenant packs, settings and policies from `tenants/` (idempotent; it never
+touches order history and does nothing when `APP_ENV` is not `dev`). Without that, new settings
+never reach the demo database (this is what once left a voucher stuck at *processing*).
 `make sweep` finishes or reconciles any interrupted payout.
 
 LLM choice: `LLM_PROVIDER=groq`, `LLM_FALLBACK_PROVIDER=gemini` and `ENGINE_MODE=agents`
