@@ -33,6 +33,10 @@ settings:
   fair_use_max_grants_30d: {kind: limit, default: 3}
   loyalty_credit_max_points: {kind: limit, default: 500}
   approval_expiry_minutes: {kind: limit, default: 240}
+  # Growth campaigns: the most one may cost (offer x treatment audience; lower only), and the
+  # share of the audience held out unmessaged so lift can be measured.
+  growth_campaign_budget_paise: {kind: limit, default: 1000000}
+  growth_holdout_percent: {kind: value, default: 10}
   refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
   late_delivery_tiers:
     kind: value

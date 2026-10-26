@@ -15,6 +15,9 @@ from app.core.models import (
     Approval,
     AuditEvent,
     Brand,
+    Campaign,
+    CampaignApproval,
+    CampaignMember,
     Case,
     CatalogueItem,
     Consent,
@@ -32,9 +35,11 @@ from app.core.models import (
     MembershipLocation,
     Organization,
     Payment,
+    PlaybookEntry,
     PolicyChunk,
     PolicyDocument,
     RefundOperation,
+    Signal,
     TenantSetting,
     Ticket,
     TicketMessage,
@@ -217,6 +222,7 @@ def _seed_commerce(s, t: SeededTenant) -> None:
         TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
     )
     _seed_engine(s, t, customer_id, order_id, now)
+    _seed_growth(s, t, customer_id, now)
 
 
 def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
@@ -292,6 +298,84 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
     s.add(Verification(tenant_id=tid, execution_id=execution_id, status="unknown"))
     s.add(DomainEvent(tenant_id=tid, event="test.created", entity_id=case_id))
     s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
+
+
+def _seed_growth(s, t: SeededTenant, customer_id, now) -> None:
+    """One row in every growth table."""
+    tid = t.tenant_id
+    signal_id, campaign_id = uuid.uuid4(), uuid.uuid4()
+    digest = "0" * 64
+    s.add(
+        Signal(
+            id=signal_id,
+            tenant_id=tid,
+            location_id=t.location_id,
+            metric="repeat_rate",
+            baseline_start=now - timedelta(days=49),
+            recent_start=now - timedelta(days=21),
+            recent_end=now,
+            baseline_bp=4000,
+            recent_bp=3000,
+            baseline_n=100,
+            recent_n=100,
+            drop_bp=1000,
+            diagnosis={"findings": [], "hypotheses": []},
+            diagnosis_source="template",
+        )
+    )
+    s.flush()
+    s.add(
+        Campaign(
+            id=campaign_id,
+            tenant_id=tid,
+            signal_id=signal_id,
+            location_id=t.location_id,
+            created_by=t.user_id,
+            params={"offer_paise": 5000, "window_days": 14},
+            audience_sha=digest,
+            payload_hash=digest,
+            budget_paise=5000,
+            status="pending_approval",
+            expires_at=now + timedelta(hours=48),
+        )
+    )
+    s.flush()
+    s.add(
+        CampaignMember(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            customer_id=customer_id,
+            arm="treatment",
+            idempotency_key=f"C-{campaign_id}:{customer_id}:send:1",
+        )
+    )
+    s.add(
+        CampaignApproval(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            payload_hash=digest,
+            decision="approved",
+            decided_by=t.user_id,
+            role="hq_owner",
+            decided_at=now,
+            expires_at=now + timedelta(hours=24),
+        )
+    )
+    s.add(
+        PlaybookEntry(
+            tenant_id=tid,
+            campaign_id=campaign_id,
+            location_id=t.location_id,
+            verdict="inconclusive",
+            treatment_n=1,
+            treatment_repeat=0,
+            holdout_n=0,
+            holdout_repeat=0,
+            uplift_bp=0,
+            confidence_note="n too small",
+            lesson="none",
+        )
+    )
 
 
 def _cleanup(engine: Engine, t: SeededTenant, maint_engine: Engine) -> None:
