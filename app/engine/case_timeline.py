@@ -88,7 +88,14 @@ def case_timeline(session: Session, case: Case, now: datetime | None = None) -> 
         .order_by(ActionProposal.created_at, ActionProposal.id)
     )
     for proposal in proposals:
-        steps += _proposal_steps(session, proposal, now)
+        # A proposal's steps are causal (proposed → approved → executed), but their stamps
+        # come from two clocks: created_at from the database, decided_at/expires_at from the
+        # app server. A server clock a second behind would sort "Approved" before "Proposed";
+        # never let a step in the chain go back in time.
+        chain = _proposal_steps(session, proposal, now)
+        for i in range(1, len(chain)):
+            chain[i] = replace(chain[i], at=max(chain[i].at, chain[i - 1].at))
+        steps += chain
     # Server-default stamps (transaction start) can be a hair before opened_at (set in Python
     # in the same transaction): nothing is shown before "received". The sort is stable, so
     # steps with the same time keep the order they were built in.

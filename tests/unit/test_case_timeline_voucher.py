@@ -46,3 +46,25 @@ def test_in_flight_or_waiting_adds_no_step():
     assert _steps(_execution("unknown")) == []
     assert _steps(_execution("submitted")) == []
     assert _steps(None) == []
+
+
+def test_a_proposal_chain_never_goes_back_in_time(monkeypatch):
+    """created_at comes from the database clock, decided_at from the app server's: a server
+    a second behind must not show "Approved" before "Remedy proposed"."""
+    import app.engine.case_timeline as ct
+
+    def chain(_session, _proposal, _now):
+        return [
+            ct.TimelineStep(NOW, "awaiting_approval", "Remedy proposed", "p"),
+            ct.TimelineStep(NOW - timedelta(seconds=1), "processing", "Approved", "a"),
+            ct.TimelineStep(NOW - timedelta(seconds=1), "escalated", "Passed to our team", "e"),
+        ]
+
+    class _S:
+        def scalars(self, _query):
+            return [SimpleNamespace(id="p")] if "action_proposals" in str(_query) else []
+
+    monkeypatch.setattr(ct, "_proposal_steps", chain)
+    case = SimpleNamespace(id="c", opened_at=NOW - timedelta(minutes=1))
+    stages = [s.stage for s in ct.case_timeline(_S(), case, NOW)]
+    assert stages[-3:] == ["awaiting_approval", "processing", "escalated"]
