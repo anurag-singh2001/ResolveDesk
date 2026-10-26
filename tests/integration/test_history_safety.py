@@ -9,6 +9,7 @@ from app.core.db import tenant_session
 from app.core.models import (
     COMMERCE_MODELS,
     ENGINE_MODELS,
+    GROWTH_MODELS,
     Brand,
     Customer,
     LineItem,
@@ -27,7 +28,7 @@ from tests.helpers import HISTORY_SCALE
 
 COMMERCE_TABLES = {m.__tablename__ for m in COMMERCE_MODELS}
 # Reseeding clears engine tables before commerce tables, so they may reference commerce rows.
-RESEED_CLEARED = COMMERCE_TABLES | {m.__tablename__ for m in ENGINE_MODELS}
+RESEED_CLEARED = COMMERCE_TABLES | {m.__tablename__ for m in ENGINE_MODELS + GROWTH_MODELS}
 
 
 def test_only_reseed_cleared_tables_reference_commerce_tables(app_engine):

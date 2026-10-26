@@ -739,6 +739,152 @@ class PolicyChunk(TenantOwned, Base):
     meta: Mapped[dict] = mapped_column("metadata", JSONB, nullable=False, server_default="{}")
 
 
+# --- Growth (PROJECT.md section 17) ----------------------------------------------------
+
+
+class Signal(TenantOwned, Base):
+    """A flagged metric drop at one location. Rates are basis points (integers, no floats)."""
+
+    __tablename__ = "signals"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_signals_tenant_id"),
+        # One signal per location, metric and recent window: re-running the job is a no-op.
+        UniqueConstraint(
+            "tenant_id", "location_id", "metric", "recent_end", name="uq_signals_window"
+        ),
+        _fk("location_id", "locations"),
+        CheckConstraint("status IN ('open', 'actioned', 'dismissed')", name="ck_signals_status"),
+    )
+
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    metric: Mapped[str] = mapped_column(String(32), nullable=False)
+    baseline_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recent_start: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    recent_end: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    baseline_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    recent_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    baseline_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    recent_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    drop_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False, server_default="open")
+    diagnosis: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    diagnosis_source: Mapped[str] = mapped_column(String(16), nullable=False)  # template | llm
+
+
+CAMPAIGN_STATUSES = (
+    "('pending_approval', 'approved', 'executing', 'sent', 'rejected', 'expired', 'measured')"
+)
+
+
+class Campaign(TenantOwned, Base):
+    """A win-back proposal bound to a payload hash. The hash covers the signal, location, params
+    and the exact audience (treatment + holdout ids), so an approval can't be replayed against
+    a different audience or offer. Only `status` and `sent_at` change after creation."""
+
+    __tablename__ = "campaigns"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_campaigns_tenant_id"),
+        UniqueConstraint("tenant_id", "id", "payload_hash", name="uq_campaigns_id_hash"),
+        UniqueConstraint("tenant_id", "signal_id", name="uq_campaigns_one_per_signal"),
+        _fk("signal_id", "signals"),
+        _fk("location_id", "locations"),
+        _fk("created_by", "users"),
+        CheckConstraint("payload_hash ~ '^[0-9a-f]{64}$'", name="ck_campaigns_hash"),
+        CheckConstraint(f"status IN {CAMPAIGN_STATUSES}", name="ck_campaigns_status"),
+        CheckConstraint("budget_paise >= 0", name="ck_campaigns_budget"),
+    )
+
+    signal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    params: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    audience_sha: Mapped[str] = mapped_column(String(64), nullable=False)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    budget_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class CampaignMember(TenantOwned, Base):
+    """One audience member, assigned to treatment or holdout when the proposal is made."""
+
+    __tablename__ = "campaign_members"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "campaign_id", "customer_id", name="uq_campaign_member"),
+        UniqueConstraint("tenant_id", "idempotency_key", name="uq_campaign_member_key"),
+        _fk("campaign_id", "campaigns", ondelete="CASCADE"),
+        _fk("customer_id", "customers"),
+        CheckConstraint("arm IN ('treatment', 'holdout')", name="ck_campaign_members_arm"),
+        CheckConstraint(
+            "send_status IN ('pending', 'submitted', 'processing', 'succeeded', 'failed', "
+            "'unknown')",
+            name="ck_campaign_members_send_status",
+        ),
+        # Holdout members are never contacted.
+        CheckConstraint(
+            "arm = 'treatment' OR send_status = 'pending'", name="ck_campaign_members_holdout"
+        ),
+    )
+
+    campaign_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    arm: Mapped[str] = mapped_column(String(10), nullable=False)
+    send_status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="pending")
+    idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
+    provider_reference: Mapped[str | None] = mapped_column(String(120))
+
+
+class CampaignApproval(TenantOwned, Base):
+    """One decision per (campaign, user), bound to the hash that user saw. Never edited."""
+
+    __tablename__ = "campaign_approvals"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "campaign_id", "decided_by", name="uq_campaign_approver"),
+        ForeignKeyConstraint(
+            ["tenant_id", "campaign_id", "payload_hash"],
+            ["campaigns.tenant_id", "campaigns.id", "campaigns.payload_hash"],
+            ondelete="CASCADE",
+        ),
+        _fk("decided_by", "users"),
+        CheckConstraint("decision IN ('approved', 'rejected')", name="ck_campaign_approvals_dec"),
+        CheckConstraint("expires_at > decided_at", name="ck_campaign_approvals_expiry"),
+    )
+
+    campaign_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    payload_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    decision: Mapped[str] = mapped_column(String(16), nullable=False)
+    decided_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    role: Mapped[str] = mapped_column(String(24), nullable=False)
+    decided_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class PlaybookEntry(TenantOwned, Base):
+    """What a measured campaign taught us: one row per campaign."""
+
+    __tablename__ = "playbook_entries"
+    __table_args__ = (
+        UniqueConstraint("tenant_id", "campaign_id", name="uq_playbook_one_per_campaign"),
+        _fk("campaign_id", "campaigns", ondelete="CASCADE"),
+        _fk("location_id", "locations"),
+        CheckConstraint(
+            "verdict IN ('worked', 'did_not_work', 'inconclusive')", name="ck_playbook_verdict"
+        ),
+    )
+
+    campaign_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    location_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    verdict: Mapped[str] = mapped_column(String(16), nullable=False)
+    treatment_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    treatment_repeat: Mapped[int] = mapped_column(Integer, nullable=False)
+    holdout_n: Mapped[int] = mapped_column(Integer, nullable=False)
+    holdout_repeat: Mapped[int] = mapped_column(Integer, nullable=False)
+    uplift_bp: Mapped[int] = mapped_column(Integer, nullable=False)
+    confidence_note: Mapped[str] = mapped_column(Text, nullable=False)
+    lesson: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 # Loaded from tenant folders (the loader syncs these and only these).
 CONFIG_MODELS = [
     Organization,
@@ -782,6 +928,8 @@ AUTH_MODELS = [LoginFailure]
 APPEND_ONLY_MODELS = [AuditEvent]
 # Policy documents + chunks (written by app/rag/ingest.py, not the tenant loader).
 POLICY_MODELS = [PolicyDocument, PolicyChunk]
+# Growth tables reference commerce rows (customers, locations): reseeding clears them first.
+GROWTH_MODELS = [Signal, Campaign, CampaignMember, CampaignApproval, PlaybookEntry]
 # Parents before children: cleanup code deletes in reverse order.
 TENANT_MODELS = (
     CONFIG_MODELS
@@ -789,6 +937,7 @@ TENANT_MODELS = (
     + POLICY_MODELS
     + COMMERCE_MODELS
     + ENGINE_MODELS
+    + GROWTH_MODELS
     + APPEND_ONLY_MODELS
 )
 TENANT_TABLES = [m.__tablename__ for m in TENANT_MODELS]
