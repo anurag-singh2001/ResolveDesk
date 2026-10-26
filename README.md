@@ -195,7 +195,7 @@ hid a refund the provider had confirmed.
 - English only; one channel (web).
 - The voucher check trusts the provider's confirmed status (there is no amount to compare).
 - Privacy (DPDP): prompts get order facts but no contact details (emails and phone numbers
-  in customer messages are masked). `make retention` redacts message text and contact data
+  in customer messages are masked). `make retention` (dry run; `APPLY=1` to redact, irreversible) redacts message text and contact data
   on cases finished more than `support_retention_days` ago (default 365, never lower; provisional,
   not legal advice; legal hold is set in the DB only). Consent records, access/erasure
   requests and vendor DPAs are not built; they are needed before real customer data.

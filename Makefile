@@ -27,9 +27,9 @@ sweep:
 seed:
 	uv run python -m scripts.seed $(TENANT) --seed $(SEED)
 
-# DPDP retention (S5.1): its own target, not part of `sweep`; see docs/DECISIONS.md.
+# DPDP retention (S5.1): dry run by default; `make retention APPLY=1` really redacts (irreversible).
 retention:
-	uv run python -m scripts.retention
+	uv run python -m scripts.retention $(if $(APPLY),--apply,)
 
 api:
 	uv run uvicorn app.main:app --reload --port 8000
