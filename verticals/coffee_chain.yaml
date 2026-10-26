@@ -23,6 +23,10 @@ features:
 settings:
   # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
   business_timezone: {kind: value, default: "Asia/Kolkata"}
+  # DPDP retention (S5.1, provisional): days after a case resolves/closes before its message
+  # text and the customer's contact data are redacted. The job never goes below 365 (the
+  # one-year floor), so a lower value is ignored.
+  support_retention_days: {kind: value, default: 365}
   refund_max_percent: {kind: limit, default: 100}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}

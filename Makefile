@@ -3,7 +3,7 @@ TENANT ?= all
 SEED ?= 42
 T ?=
 
-.PHONY: up down db-check migrate refresh seed sweep api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
+.PHONY: up down db-check migrate refresh seed sweep retention api flight test test-tenant test-isolation test-chaos eval lint ui llm-smoke web web-install web-build web-test
 
 db-check:
 	uv run python -m scripts.db_check
@@ -26,6 +26,10 @@ sweep:
 
 seed:
 	uv run python -m scripts.seed $(TENANT) --seed $(SEED)
+
+# DPDP retention (S5.1): dry run by default; `make retention APPLY=1` really redacts (irreversible).
+retention:
+	uv run python -m scripts.retention $(if $(APPLY),--apply,)
 
 api:
 	uv run uvicorn app.main:app --reload --port 8000

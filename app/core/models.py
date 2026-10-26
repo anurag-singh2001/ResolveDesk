@@ -481,6 +481,8 @@ class Case(TenantOwned, Base):
     status: Mapped[str] = mapped_column(String(24), nullable=False)
     channel: Mapped[str] = mapped_column(String(16), nullable=False)
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # DB/admin only (no API path): the retention job skips held cases (migration 0017).
+    legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
 
 
 class WorkflowRun(TenantOwned, Base):
