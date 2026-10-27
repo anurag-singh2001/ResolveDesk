@@ -21,6 +21,7 @@ Overview of all sprints: docs/sprints/README.md.
 | 3 | 2026-11-02 → 2026-11-04 (closed early 2026-10-26) | UI + evals (pulled into Sprint 2) + E8 growth; human items carried over |
 | 4 | 2026-10-26 → 2026-10-27 (closed 2026-10-27) | Spec gaps to a complete v1 (E9) + ship (E7 remainder) |
 | 5 | 2026-10-27 (built overnight, closed 2026-10-27, pushed 1d917f8) | Privacy basics (DPDP retention, consent, access/erasure), growth chaos test, approvals filter, grievance SLA display, Hindi templates; see docs/sprints/sprint-5.md |
+| 6 | 2026-10-27 → 2026-10-28 | Hardening and handover: clean full-suite run, deadlock repro, eval re-run, CI, runbook + scenario catalogue, cleanup; see docs/sprints/sprint-6.md |
 
 ---
 
@@ -109,3 +110,12 @@ Builders: Sonnet; each story safety-reviewed. Research: docs/research/dpdp-and-h
 - [x] S5.5 Privacy contact and grievance target (est S) — done when: contact is a tenant setting shown to customers, staff see the target marker, tests for both tenants -- verified 2026-10-27: 74efee9, rework 7aa7444 after MEDIUM (baseline pipeline could reclassify a privacy_request into a payout); no migration
 - [x] S5.6 Hindi templates (est M) — done when: en / hi-Latn / hi templates by customer preferred_language, templated never generated, English fallback, tests for both tenants -- verified 2026-10-27: 7e881a6, follow-ups 4a228cc; migration 0019; translations reviewed vs rule 7. Wording needs a native-speaker review (human)
 - Remaining human-only: E0.3 rotate Neon owner password; E7.2 copy .env into the clean clone and see an AI proposal; confirm provisional decisions (365-day retention floor; privacy contact label, 30-day internal target vs 90-day ceiling; support needs no consent record; Hinglish/Devanagari native review; GST/accounting retention for order references unresearched).
+
+## E11 · Hardening and handover — Sprint 6
+Scope approved by the user 2026-10-27. No new product features. Never drop tests or safety review.
+- [ ] S6.1 (est S, main session) One clean full-suite run on the final head — done when: `pytest -m "not chaos and not live"` in ONE process on a quiet DB reports 0 failed, recorded with counts; README Tests line updated
+- [ ] S6.2 (est M, Sonnet builder) Deadlock reproduction test for the S5.2 customer lock — done when: a test fails on the pre-fix lock mode/order and passes on the current code, both tenants
+- [ ] S6.3 (est S, eval-runner/main) Eval re-run incl. the 3 Hinglish/Hindi scenarios on a scratch DB — done when: report under evals/reports/ with per-tenant table, over-rule 0, injections held; README Evals table updated
+- [ ] S6.4 (est M, Sonnet builder) CI on GitHub Actions — done when: workflow runs ruff, unit tests and web tests + build on push/PR without secrets; green on the pushed branch
+- [ ] S6.5 (est M, main session) Demo runbook + scenario catalogue — done when: docs/RUNBOOK.md (start/stop, reset, demo steps, troubleshooting incl. stale vite, memory, Neon drops) and docs/SCENARIOS.md exist and every scenario cites a test or eval id
+- [ ] S6.6 (est S, main session) Cleanup — done when: only neondb/resolvedesk_test remain (scratch DBs resolvedesk_b1..b7 dropped after S6.1-S6.3) and `git worktree list` shows the main checkout only
