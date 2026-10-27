@@ -40,6 +40,7 @@ from app.agents.schemas import Classification, ResolutionDraft
 from app.core import audit, events
 from app.core.business_time import business_date
 from app.core.db import tenant_session
+from app.core.i18n import case_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -506,6 +507,8 @@ def _finish(
             return
         case.status = status
         if ticket:
+            if need:  # the question in the customer's own language (code-owned template)
+                ticket = question_for(need, case_language(s, case))
             ticket_id = s.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
             if ticket_id is not None:
                 s.add(TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="system",

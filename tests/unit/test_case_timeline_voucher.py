@@ -53,7 +53,7 @@ def test_a_proposal_chain_never_goes_back_in_time(monkeypatch):
     a second behind must not show "Approved" before "Remedy proposed"."""
     import app.engine.case_timeline as ct
 
-    def chain(_session, _proposal, _now):
+    def chain(_session, _proposal, _now, _lang):
         return [
             ct.TimelineStep(NOW, "awaiting_approval", "Remedy proposed", "p"),
             ct.TimelineStep(NOW - timedelta(seconds=1), "processing", "Approved", "a"),
@@ -66,5 +66,5 @@ def test_a_proposal_chain_never_goes_back_in_time(monkeypatch):
 
     monkeypatch.setattr(ct, "_proposal_steps", chain)
     case = SimpleNamespace(id="c", opened_at=NOW - timedelta(minutes=1))
-    stages = [s.stage for s in ct.case_timeline(_S(), case, NOW)]
+    stages = [s.stage for s in ct.case_timeline(_S(), case, NOW, "en")]
     assert stages[-3:] == ["awaiting_approval", "processing", "escalated"]

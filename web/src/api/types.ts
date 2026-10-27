@@ -61,6 +61,13 @@ export interface Categories {
   free_text: boolean;
 }
 
+/** The customer's own choice of language for messages we send them (S5.6). */
+export type Language = "en" | "hi-Latn" | "hi";
+
+export interface Preferences {
+  language: Language;
+}
+
 export interface PrivacyContact {
   name: string;
   email: string;

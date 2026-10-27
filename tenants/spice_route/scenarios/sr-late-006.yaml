@@ -1,0 +1,12 @@
+id: sr-late-006
+tenant: spice_route
+kind: hinglish
+message: Mera order bahut der se aaya, app ne jo time bataya tha usse kaafi late. Kuch refund mil sakta hai kya?
+order:
+  select: most_late
+expect:
+  category: late_delivery
+  outcome: proposed
+  action: refund
+  amount: exact
+note: 'S5.6: Hinglish (Roman) variant of sr-late-001; same order selector and remedy'

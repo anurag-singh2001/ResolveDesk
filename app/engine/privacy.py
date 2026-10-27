@@ -16,6 +16,7 @@ from sqlalchemy import Engine, select
 from app.core import audit
 from app.core.business_time import business_date
 from app.core.db import tenant_session
+from app.core.i18n import format_date, t
 from app.core.models import AuditEvent, Case
 from app.core.settings_resolver import effective_settings
 
@@ -30,20 +31,16 @@ def target_date(opened_at: datetime, settings: dict[str, Any]) -> date:
     return business_date(opened_at, settings) + timedelta(days=settings["grievance_target_days"])
 
 
-def _fmt(d: date) -> str:
-    return f"{d.day} {d:%b %Y}"  # month name, never 10/11
-
-
-def customer_message(opened_at: datetime, settings: dict[str, Any]) -> str:
+def customer_message(opened_at: datetime, settings: dict[str, Any], language: object = None) -> str:
     """Template only: no model text, no promise beyond our own target."""
     name, email = settings.get("privacy_contact_name"), settings.get("privacy_contact_email")
     contact = f"{name} ({email})" if name and email else (email or name)
-    reach = f"You can also reach our privacy contact: {contact}. " if contact else ""
-    return (
-        "We have received your privacy request and passed it to a member of our team. "
-        f"{reach}"
-        f"Our internal target is to respond by {_fmt(target_date(opened_at, settings))}."
-    )
+    parts = [t("privacy.received", language)]
+    if contact:
+        parts.append(t("privacy.reach", language, contact=contact))
+    when = format_date(target_date(opened_at, settings), language)  # month name, never 10/11
+    parts.append(t("privacy.target", language, date=when))
+    return " ".join(parts)
 
 
 def flag_due_soon(engine: Engine, tenant_id: uuid.UUID, now: datetime) -> list[str]:

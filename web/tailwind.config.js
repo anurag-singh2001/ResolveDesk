@@ -22,6 +22,10 @@ export default {
           "-apple-system",
           "Segoe UI",
           "Roboto",
+          // Devanagari (Hindi) text: system fonts, so no empty boxes on Windows or Android.
+          "Noto Sans Devanagari",
+          "Nirmala UI",
+          "Mangal",
           "sans-serif",
         ],
       },
