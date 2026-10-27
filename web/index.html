@@ -6,14 +6,18 @@
     <meta name="theme-color" content="#0a0a0a" />
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%230a0a0a'/><path d='M10 17l4 4 8-9' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>" />
     <script>
-      // Set the theme class before first paint (no flash). Dark is the default.
+      // Set the theme class before first paint (no flash). System is the default.
       (function () {
-        var t = "dark";
+        var pref = "system";
         try {
           var s = localStorage.getItem("resolvedesk.theme");
-          if (s === "light" || s === "dark") t = s;
+          if (s === "light" || s === "dark") pref = s;
         } catch (e) {}
-        document.documentElement.classList.toggle("dark", t === "dark");
+        var dark = pref === "dark";
+        if (pref === "system") {
+          dark = !window.matchMedia || window.matchMedia("(prefers-color-scheme: dark)").matches;
+        }
+        document.documentElement.classList.toggle("dark", dark);
       })();
     </script>
     <title>ResolveDesk</title>

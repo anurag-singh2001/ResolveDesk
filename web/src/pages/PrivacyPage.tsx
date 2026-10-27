@@ -35,17 +35,17 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
 
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Offers and promotions</h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <h2 className="font-montserrat text-base font-semibold text-foreground">Offers and promotions</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
         Help with an order never needs this. Turn it on only if you want offers from us; turn it off any time, in one click.
       </p>
       {error && <Alert>{error}</Alert>}
-      <ul className="mt-3 divide-y divide-slate-100">
+      <ul className="mt-3 divide-y divide-border">
         {data.consents.map((c) => {
           const label = `Marketing messages on ${CHANNEL_LABEL[c.channel] ?? c.channel}`;
           return (
             <li key={`${c.purpose}-${c.channel}`} className="flex items-center justify-between gap-3 py-3">
-              <label htmlFor={`consent-${c.purpose}-${c.channel}`} className="text-sm text-slate-800">
+              <label htmlFor={`consent-${c.purpose}-${c.channel}`} className="text-sm text-foreground">
                 {label}
               </label>
               <input
@@ -62,7 +62,7 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
         })}
       </ul>
       {data.history.length > 0 && (
-        <details className="mt-2 text-sm text-slate-600">
+        <details className="mt-2 text-sm text-muted-foreground">
           <summary className="cursor-pointer">History of your choices</summary>
           <ul className="mt-2 space-y-1">
             {data.history.map((h, i) => (
@@ -101,8 +101,8 @@ function ErasureCard() {
 
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Erase my data</h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <h2 className="font-montserrat text-base font-semibold text-foreground">Erase my data</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
         We remove your name, contact details and message text. Records of payments and refunds are kept, and the
         request waits while any case or refund of yours is still open.
       </p>
@@ -110,8 +110,8 @@ function ErasureCard() {
       {data && (
         <div className="mt-3 text-sm" data-testid="erasure-status">
           <Badge tone={STATUS[data.status].tone}>{STATUS[data.status].label}</Badge>
-          <span className="ml-2 text-slate-500">asked on {when(data.requested_at)}</span>
-          {data.reason && <p className="mt-2 text-slate-700">{data.reason}</p>}
+          <span className="ml-2 text-muted-foreground">asked on {when(data.requested_at)}</span>
+          {data.reason && <p className="mt-2 text-foreground">{data.reason}</p>}
         </div>
       )}
       {!active && (
@@ -163,13 +163,13 @@ export function PrivacyPage() {
           <ConsentCard data={current} onChange={setLatest} />
         )}
         <Card className="p-5">
-          <h2 className="text-base font-semibold text-slate-900">Download my data</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="font-montserrat text-base font-semibold text-foreground">Download my data</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             A copy of your details, orders, cases and choices, and the companies that process data for us.
           </p>
           {dlError && <Alert>{dlError}</Alert>}
           <div className="mt-3">
-            <Button variant="secondary" loading={downloading} onClick={() => void download()}>
+            <Button variant="outline" loading={downloading} onClick={() => void download()}>
               Download my data
             </Button>
           </div>

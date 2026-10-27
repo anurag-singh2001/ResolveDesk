@@ -48,7 +48,7 @@ export function ReportProblemPage() {
 
   return (
     <>
-      <Link to={`/orders/${o.id}`} className="mb-4 inline-flex text-sm text-slate-500 hover:text-slate-900">
+      <Link to={`/orders/${o.id}`} className="mb-4 inline-flex text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground">
         ← Order {o.external_ref}
       </Link>
       <PageHeader title="Report a problem" subtitle={`Order ${o.external_ref} · ${formatPaise(o.total_paise)}`} />
@@ -63,7 +63,7 @@ export function ReportProblemPage() {
                   {categoryLabel(c)}
                 </option>
               ))}
-              {free_text && <option value={FREE_TEXT}>Not sure — just describe it</option>}
+              {free_text && <option value={FREE_TEXT}>Not sure, just describe it</option>}
             </select>
           </Field>
           <Field label="Tell us what happened" htmlFor="message" hint={`${message.length}/${MAX_LEN}`}>
@@ -77,12 +77,12 @@ export function ReportProblemPage() {
               placeholder="For example: the order arrived 40 minutes late and the fries were missing."
             />
           </Field>
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-muted-foreground">
             We check your report against the order's records. A refund is always approved by a person, and we
             only tell you it's done once the payment is confirmed.
           </p>
           <div className="flex justify-end gap-2">
-            <Link to={`/orders/${o.id}`} className="inline-flex items-center rounded-lg px-3.5 py-2 text-sm font-medium text-slate-600 hover:bg-slate-100">
+            <Link to={`/orders/${o.id}`} className="inline-flex h-8 items-center rounded-md px-2.5 text-sm font-medium text-muted-foreground transition-colors duration-200 hover:bg-muted hover:text-foreground">
               Cancel
             </Link>
             <Button type="submit" loading={submitting}>

@@ -26,7 +26,7 @@ export function CasesPage() {
         actions={
           staff ? (
             <div className="flex items-center gap-2">
-              <label htmlFor="stage-filter" className="text-sm text-slate-600">
+              <label htmlFor="stage-filter" className="text-sm text-muted-foreground">
                 Stage
               </label>
               <select id="stage-filter" className={inputClass + " w-48"} value={stage} onChange={(e) => setStage(e.target.value)}>
@@ -51,23 +51,23 @@ export function CasesPage() {
         </EmptyState>
       ) : (
         <Card className="overflow-hidden">
-          <ul className="divide-y divide-slate-100">
+          <ul className="divide-y divide-border">
             {rows.map((c) => (
               <li key={c.id}>
                 <Link
                   to={`/cases/${c.id}`}
-                  className="flex flex-col gap-2 px-4 py-3.5 transition hover:bg-slate-50 focus-visible:bg-slate-50 focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4"
+                  className="flex flex-col gap-2 px-4 py-3.5 transition-colors duration-200 hover:bg-muted focus-visible:bg-muted focus-visible:outline-none sm:flex-row sm:items-center sm:gap-4"
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="text-sm font-medium text-slate-900">{categoryLabel(c.category)}</span>
-                      <span className="font-mono text-xs text-slate-500">{c.order_ref ?? shortId(c.transaction_id)}</span>
+                      <span className="text-sm font-medium text-foreground">{categoryLabel(c.category)}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{c.order_ref ?? shortId(c.transaction_id)}</span>
                     </div>
-                    <p className="mt-0.5 truncate text-sm text-slate-500">{c.message}</p>
+                    <p className="mt-0.5 truncate text-sm text-muted-foreground">{c.message}</p>
                   </div>
                   <div className="flex items-center gap-3 sm:justify-end">
-                    {c.amount_paise != null && <span className="text-sm font-medium tabular-nums text-slate-700">{formatPaise(c.amount_paise)}</span>}
-                    {c.created_at && <span className="hidden text-xs text-slate-500 md:inline">{formatDateTime(c.created_at)}</span>}
+                    {c.amount_paise != null && <span className="font-mono text-sm tabular-nums text-foreground">{formatPaise(c.amount_paise)}</span>}
+                    {c.created_at && <span className="hidden font-mono text-xs tabular-nums text-muted-foreground md:inline">{formatDateTime(c.created_at)}</span>}
                     <StageBadge stage={c.stage} />
                   </div>
                 </Link>

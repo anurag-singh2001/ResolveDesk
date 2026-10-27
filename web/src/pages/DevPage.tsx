@@ -63,7 +63,7 @@ function ServiceCard({ service, current, onSaved }: { service: string; current: 
   return (
     <Card className="p-4">
       <form onSubmit={submit} aria-label={`Chaos settings for ${service}`}>
-        <h2 className="text-sm font-semibold capitalize text-slate-900">{service}</h2>
+        <h2 className="font-montserrat text-sm font-semibold capitalize text-foreground">{service}</h2>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {RATE_FIELDS.map(([key, label, hint]) => (
             <Field key={key} label={label} htmlFor={`${service}-${key}`} hint={hint}>
@@ -80,10 +80,10 @@ function ServiceCard({ service, current, onSaved }: { service: string; current: 
           </div>
         )}
         <div className="mt-4 flex gap-2">
-          <Button type="submit" loading={busy} aria-label={`Apply ${service}`}>
+          <Button type="submit" variant="soft" loading={busy} aria-label={`Apply ${service}`}>
             Apply
           </Button>
-          <Button type="button" variant="secondary" disabled={busy} aria-label={`Reset ${service}`} onClick={() => void save({})}>
+          <Button type="button" variant="outline" disabled={busy} aria-label={`Reset ${service}`} onClick={() => void save({})}>
             Reset
           </Button>
         </div>
@@ -131,8 +131,8 @@ function ClockCard() {
 
   return (
     <Card className="p-4">
-      <h2 className="text-sm font-semibold text-slate-900">Simulated clock</h2>
-      <p className="mt-1 text-sm text-slate-600">
+      <h2 className="font-montserrat text-sm font-semibold text-foreground">Simulated clock</h2>
+      <p className="mt-1 text-sm text-muted-foreground">
         Moves the time shown, not when approvals expire. It affects what screens report (up to 60 days ahead, for every business on
         this server); approvals and payments still run on real time. Reset puts it back.
       </p>
@@ -141,25 +141,25 @@ function ClockCard() {
       ) : error != null && shown == null ? (
         <div className="mt-3">
           <Alert>{errorMessage(error)}</Alert>
-          <Button className="mt-2" variant="secondary" onClick={reload}>
+          <Button className="mt-2" variant="outline" onClick={reload}>
             Retry
           </Button>
         </div>
       ) : (
         <>
-          <p className="mt-3 text-sm text-slate-900">
+          <p className="mt-3 text-sm text-foreground">
             Simulated now: <span data-testid="clock-now">{shown ? new Date(shown.now).toLocaleString() : ""}</span>{" "}
-            <span className="text-slate-500" data-testid="clock-offset">
+            <span className="font-mono tabular-nums text-muted-foreground" data-testid="clock-offset">
               (offset {shown?.offset_seconds ?? 0}s)
             </span>
           </p>
           <div className="mt-3 flex flex-wrap gap-2">
             {CLOCK_STEPS.map(([label, secs]) => (
-              <Button key={label} variant="secondary" disabled={busy} onClick={() => void move(() => api.advanceClock(secs))}>
+              <Button key={label} variant="outline" disabled={busy} onClick={() => void move(() => api.advanceClock(secs))}>
                 {label}
               </Button>
             ))}
-            <Button variant="secondary" disabled={busy} onClick={() => void move(() => api.resetClock())}>
+            <Button variant="outline" disabled={busy} onClick={() => void move(() => api.resetClock())}>
               Reset clock
             </Button>
           </div>
@@ -213,10 +213,10 @@ export function DevPage() {
       ) : (
         <div className="space-y-6">
           <Card className="p-4">
-            <h2 className="text-sm font-semibold text-slate-900">Presets</h2>
+            <h2 className="font-montserrat text-sm font-semibold text-foreground">Presets</h2>
             <div className="mt-3 flex flex-wrap gap-2">
               {PRESETS.filter((p) => data && p.service in data).map((p) => (
-                <Button key={p.label} variant="secondary" onClick={() => void preset(p.service, p.settings)}>
+                <Button key={p.label} variant="outline" onClick={() => void preset(p.service, p.settings)}>
                   {p.label}
                 </Button>
               ))}
@@ -228,8 +228,8 @@ export function DevPage() {
           ))}
 
           <Card className="p-4">
-            <h2 className="text-sm font-semibold text-slate-900">Recovery sweep</h2>
-            <p className="mt-1 text-sm text-slate-600">
+            <h2 className="font-montserrat text-sm font-semibold text-foreground">Recovery sweep</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
               Finishes approved work that never ran, checks unfinished payments with the provider, and hands stuck cases to a person.
               Safe to run any time.
             </p>
@@ -246,12 +246,12 @@ export function DevPage() {
 
           <ClockCard />
 
-          <Card className="p-4 text-sm text-slate-600">
-            <h2 className="text-sm font-semibold text-slate-900">Reseed</h2>
+          <Card className="p-4 text-sm text-muted-foreground">
+            <h2 className="font-montserrat text-sm font-semibold text-foreground">Reseed</h2>
             <p className="mt-1">
               There is no reseed button here: it is too destructive for a web button. From a terminal, run{" "}
-              <code className="rounded bg-slate-100 px-1">make seed TENANT=all</code> to reload the demo data and{" "}
-              <code className="rounded bg-slate-100 px-1">make sweep</code> to run the sweeper for every business.
+              <code className="rounded bg-muted px-1 font-mono">make seed TENANT=all</code> to reload the demo data and{" "}
+              <code className="rounded bg-muted px-1 font-mono">make sweep</code> to run the sweeper for every business.
             </p>
           </Card>
         </div>

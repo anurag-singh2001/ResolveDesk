@@ -16,7 +16,8 @@ export function OrdersPage() {
 
   return (
     <>
-      <PageHeader title="My orders" subtitle="Pick an order to see what was delivered or to report a problem." />
+      <PageHeader title="My orders" subtitle="Pick an order to see what was delivered, or"
+        highlight="report a problem in one step" />
       {loading ? (
         <Loading label="Loading your orders…" />
       ) : error ? (
@@ -29,19 +30,19 @@ export function OrdersPage() {
             <li key={o.id}>
               <Link
                 to={`/orders/${o.id}`}
-                className="block rounded-xl focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent-600"
+                className="block rounded-xl"
               >
-                <Card className="h-full p-4 transition hover:border-accent-200 hover:shadow">
+                <Card className="h-full p-4">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <div className="font-mono text-sm font-semibold text-slate-900">{o.external_ref}</div>
-                      <div className="mt-0.5 truncate text-sm text-slate-500">{placeLine(o) || "Order"}</div>
+                      <div className="font-mono text-sm font-medium text-foreground">{o.external_ref}</div>
+                      <div className="mt-0.5 truncate text-sm text-muted-foreground">{placeLine(o) || "Order"}</div>
                     </div>
                     <OrderStatusBadge status={o.status} />
                   </div>
                   <div className="mt-4 flex items-end justify-between">
-                    <span className="text-xs text-slate-500">{formatDateTime(o.placed_at)}</span>
-                    <span className="text-base font-semibold tabular-nums text-slate-900">{formatPaise(o.total_paise)}</span>
+                    <span className="font-mono text-xs tabular-nums text-muted-foreground">{formatDateTime(o.placed_at)}</span>
+                    <span className="font-mono text-base tabular-nums text-foreground">{formatPaise(o.total_paise)}</span>
                   </div>
                 </Card>
               </Link>
