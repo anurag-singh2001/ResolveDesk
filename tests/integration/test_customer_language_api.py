@@ -9,6 +9,8 @@ from app.core.db import tenant_session
 from app.core.i18n import LANGUAGES, MONEY_STATUS_KEYS, TEMPLATES, t
 from app.core.models import AuditEvent
 from app.core.money import format_inr
+from mocks.base import Chaos
+from mocks.registry import get_mock, merchant_id_for
 from tests.helpers import login
 from tests.integration.test_cases_api import _open, clean_mocks, flow  # noqa: F401
 
@@ -107,6 +109,38 @@ def test_a_customers_choice_does_not_leak_to_another_customer(api, flow, choose)
         pytest.skip("tenant has a single customer")
     other = login(api, flow["cfg"].slug, others[0].email)
     assert api.get("/me/preferences", headers=other).json() == {"language": "en"}
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_processing_after_a_timeout_is_worded_in_the_chosen_language(api, flow, choose, lang):
+    """Approved but the provider has not confirmed: processing, never the success wording."""
+    choose(lang)
+    opened = _open(api, flow)
+    mid = merchant_id_for(flow["tid"])
+    get_mock("payment").set_chaos(Chaos(accept_then_timeout_rate=1.0), mid)
+    try:
+        api.post(
+            f"/approvals/{opened['proposal_id']}/decision",
+            headers=flow["hq"],
+            json={"decision": "approved"},
+        )
+        got = api.get(f"/cases/{opened['id']}", headers=flow["customer"]).json()
+    finally:
+        get_mock("payment").set_chaos(Chaos(), mid)
+    assert got["stage"] == "processing"
+    amount = format_inr(got["amount_paise"])
+    assert got["message"] == t("status.refund_processing", lang, amount=amount)
+    assert got["message"] != t("status.refund_confirmed", lang, amount=amount)
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_escalated_is_worded_in_the_chosen_language(api, flow, choose, lang):
+    choose(lang)
+    opened = _open(api, flow, category="payment_issue")
+    assert opened["stage"] == "escalated"
+    assert opened["message"] == t("status.escalated_team", lang)
+    steps = api.get(f"/cases/{opened['id']}/timeline", headers=flow["customer"]).json()
+    assert steps[0]["title"] == t("tl.received.title", lang)
 
 
 def test_the_five_statuses_are_distinct_in_every_language():

@@ -46,9 +46,12 @@ _CASE_EVENTS = {
 def _remedy(proposal: ActionProposal, lang: str) -> str:
     amount = proposal.amount_paise
     key = f"remedy.{proposal.action}"
+    label = proposal.action.replace("_", " ")
     if amount and key in TEMPLATES:
         return t(key, lang, amount=format_inr(amount))
-    return t("remedy.other", lang, label=proposal.action.replace("_", " "))
+    if amount:  # an action without its own wording still states its amount
+        return t("remedy.other_amount", lang, label=label, amount=format_inr(amount))
+    return t("remedy.other", lang, label=label)
 
 
 def case_timeline(

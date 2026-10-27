@@ -104,3 +104,41 @@ def test_privacy_message_is_translated_and_keeps_the_contact_and_date():
     assert "Asha (asha@example.com)" in hi and "26 नवंबर 2026" in hi
     latn = customer_message(opened, settings, "hi-Latn")
     assert "Asha (asha@example.com)" in latn and latn != en
+
+
+# Wording that says money moved / a voucher exists. Written out per language and checked against
+# the success templates, so a drift in either place fails.
+_SUCCESS_PHRASES = {
+    "en": ("has been processed by", "worth ₹1.00 has been issued"),
+    "hi-Latn": ("process kar diya", "jaari kar diya"),
+    "hi": ("प्रोसेस कर दिया", "जारी कर दिया"),
+}
+_SUCCESS_KEYS = ("status.refund_confirmed", "status.voucher_issued")
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_success_wording_appears_only_in_the_success_templates(lang):
+    phrases = _SUCCESS_PHRASES[lang]
+    rendered = {k: v[lang].format(**{**_SAMPLE, "amount": "₹1.00"}) for k, v in TEMPLATES.items()}
+    assert phrases[0] in rendered["status.refund_confirmed"]
+    assert phrases[1] in rendered["status.voucher_issued"]
+    for key, text in rendered.items():
+        has = any(p in text for p in phrases)
+        assert has == (key in _SUCCESS_KEYS), (key, lang)
+    for key in ("status.refund_processing", "status.voucher_processing", "status.approved_pending"):
+        for p in phrases:
+            assert p not in rendered[key], (key, lang)
+
+
+def test_a_remedy_always_states_its_amount_in_every_language():
+    from types import SimpleNamespace
+
+    from app.engine.case_timeline import _remedy
+
+    amount = format_inr(34900)
+    for action in ("refund", "free_item_voucher", "loyalty_credit", "send_status_update", "x_y"):
+        for lang in LANGUAGES:
+            text = _remedy(SimpleNamespace(action=action, amount_paise=34900), lang)
+            assert amount in text, (action, lang)
+    assert _remedy(SimpleNamespace(action="x_y", amount_paise=34900), "en") == "a x y of ₹349.00"
+    assert _remedy(SimpleNamespace(action="x_y", amount_paise=None), "en") == "a x y"

@@ -137,7 +137,7 @@ class PreferencesIO(BaseModel):
 def _own_customer(ctx: TenantContext, db: Session) -> Customer:
     """The caller's own customer record (found by their login), else 404: staff and users
     without a customer record have no preferences, and no id from the request is used."""
-    customer = db.scalar(select(Customer).where(Customer.user_id == ctx.user_id))
+    customer = db.scalar(select(Customer).where(Customer.user_id == ctx.user_id).limit(1))
     if ctx.role != "customer" or customer is None:
         raise not_found()
     return customer

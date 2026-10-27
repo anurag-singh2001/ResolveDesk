@@ -233,6 +233,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "{amount} ka loyalty credit",
         "hi": "{amount} का लॉयल्टी क्रेडिट",
     },
+    "remedy.other_amount": {
+        "en": "a {label} of {amount}",
+        "hi-Latn": "{amount} ka {label}",
+        "hi": "{amount} का {label}",
+    },
     "remedy.other": {
         "en": "a {label}",
         "hi-Latn": "ek {label}",
