@@ -1,5 +1,7 @@
 # ResolveDesk
 
+[![CI](https://github.com/anurag-singh2001/ResolveDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/anurag-singh2001/ResolveDesk/actions/workflows/ci.yml)
+
 AI customer support for multi-outlet food businesses that **proposes** a remedy, lets a
 person (or a tight auto-approve rule) **decide**, and only then lets code **pay out** — once,
 with a stable idempotency key, and tells the customer only what the payment provider has
@@ -151,31 +153,44 @@ also has a **Simulated clock** (+1h to +15 days, reset) to see approvals expire 
 
 ## Evals
 
-`make eval` runs 31 scenarios (late, missing, wrong item, quality, payment, status,
-needs-info, prompt injection) per tenant, for the agent pipeline and a one-call baseline.
-Groq gpt-oss-120b main / 20b classifier, Gemini fallback, tuning set (12–13 per tenant):
+`make eval` runs 36 scenarios (late, missing, wrong item, quality, payment, status, loyalty,
+privacy requests, needs-info, prompt injection, and Hinglish / Devanagari Hindi messages) per
+tenant, for the agent pipeline and a one-call baseline. Groq gpt-oss-120b main / 20b classifier,
+Gemini fallback, tuning set (14 BrewCo, 16 Spice Route). It refuses to reseed the demo database:
+point it at a scratch one.
 
-| tenant | pipeline | 2026-10-25 pass | 2026-10-26 pass | over the rule | injections held |
-| --- | --- | --- | --- | --- | --- |
-| brewco | agents | 100% | 100% | 0 | 2/2 |
-| brewco | one-call baseline | 91% | 100% | 0 | 2/2 |
-| spice_route | agents | 91% | 100% | 0 | 1/1 |
-| spice_route | one-call baseline | 75% | 100% | 0 | 1/1 |
+| tenant | pipeline | 2026-10-25 | 2026-10-26 | 2026-10-27 | over the rule | injections held |
+| --- | --- | --- | --- | --- | --- | --- |
+| brewco | agents | 100% | 100% | 100% | 0 | 2/2 |
+| brewco | one-call baseline | 91% | 100% | 78% | 0 | 2/2 |
+| spice_route | agents | 91% | 100% | 93% | 0 | 1/1 |
+| spice_route | one-call baseline | 75% | 100% | 93% | 0 | 1/1 |
 
 "Over the rule" counts proposals the business rule would not allow (target 0; the code would
-block them anyway). Read the percentages as direction, not precision: the set is small, the
-second run reused cached LLM replies, and the first run's baseline misses were mostly
-provider failures (Groq errors) rather than wrong answers. `sr-quality-002` (cold, soggy
-biryani, once filed as wrong item in a demo) is in the second run and now passes.
+block them anyway). Read the percentages as direction, not precision: the set is small and one
+synthetic seed. The 2026-10-26 run reused cached LLM replies; the 2026-10-27 run made fresh calls
+(report `evals/reports/eval-20261027-143533.md`). Its one agent miss, `sr-quality-002`, proposed
+a ₹60 voucher where the rule allows ₹150: under the rule, so safe, but not the expected amount.
+The baseline's misses were two "ask for more detail" answers, one escalation of a wrong-item case
+and one provider failure (Groq rate limit, Gemini error). The three new Hinglish / Hindi
+scenarios (`sr-late-006`, `sr-missing-004` in Devanagari, `bc-missing-004`) passed on both
+pipelines; the older Hinglish `bc-wrong-002` failed on the baseline only.
 
 ## Tests
 
 `make test` (both tenants, every test), `make test-isolation`, `make test-chaos`, `make lint`,
-`make web-test`. Last full run (2026-10-26, after the growth module): 1020 passed, 10 skipped
-(shape-specific, e.g. a tenant without lateness tiers), 2 failed; chaos 1 of 2 failed. All three
-failures were fixed in `e047336` and their suites re-run green (chaos 2 passed; the affected
-integration and unit suites 591 passed). The chaos failure was a real one: an escalated case
-hid a refund the provider had confirmed.
+`make web-test`. Last full run (2026-10-27, one process, after Sprints 4 and 5): 1312 passed,
+12 skipped (shape-specific, e.g. a tenant without lateness tiers or without the growth flag),
+2 failed. Both failures were the admin-sweep test expecting an out-of-date list of report
+fields after two parallel branches each added one; fixed in the next commit and re-run green
+(14 passed, with the deadlock reproduction tests). Chaos: green three times in a row (3 passed,
+1 skipped each). Web: 83 passed.
+
+**CI.** GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request with
+no secrets and no database: `ruff check`, `ruff format --check`, the unit tests
+(`tests/unit`) and, for the web app, `npm ci`, the vitest suite and a production build. The
+DB-backed integration, isolation and chaos suites need Neon, so they run locally
+(`make test`, `make test-isolation`, `make test-chaos`).
 
 ## Tradeoffs
 

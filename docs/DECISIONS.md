@@ -373,7 +373,7 @@ Format:
 
 ## 2026-10-27 - Customer lock: exclusive, and case before customer (S5.2 re-review)
 - Decision: `cases.lock_customer` takes the customer row FOR UPDATE (not FOR SHARE), and `add_reply` locks the case before the customer.
-- Why: `approvals.auto_decide` takes the same customer row FOR UPDATE later in `open_case`'s transaction; two concurrent reports of one customer each holding a share lock and waiting to upgrade is a deadlock. The graph's propose step locks case then customer, so `add_reply` must use the same order. Erasure locks only the customer, so it cannot form a cycle with either. The concurrency test is a smoke test: it did not reproduce the deadlock without the fix (the reproduction needs the auto-approve path), so the safety rests on the lock-order argument.
+- Why: `approvals.auto_decide` takes the same customer row FOR UPDATE later in `open_case`'s transaction; two concurrent reports of one customer each holding a share lock and waiting to upgrade is a deadlock. The graph's propose step locks case then customer, so `add_reply` must use the same order. Erasure locks only the customer, so it cannot form a cycle with either. The first concurrency test was only a smoke test (it did not reach the auto-approve path). Update 2026-10-27 (S6.2): tests/integration/test_customer_lock_deadlock.py now reproduces it: with the old FOR SHARE lock, two voucher reports of one customer raise DeadlockDetected, and the old reply lock order deadlocks against the graph's order; the current code passes both.
 - Alternative rejected: keeping FOR SHARE for throughput (auto_decide already serializes per customer, so nothing is gained).
 
 ## 2026-10-27 - Hindi customer templates (S5.6) - provisional, pending the owner's confirmation

@@ -12,7 +12,7 @@ You may only write `docs/EPICS.md` and `docs/sprints/**`. Never edit app code, t
 
 ## Meetups (write each as a dated section in the current sprint file)
 - **Planning**: sprint goal (one line), dates, stories pulled from EPICS.md with owner agent, done-when check, estimate (S/M/L). Flag anything not fitting the sprint.
-- **Stand-up**: per story: done / next / blocked. Max 10 lines.
+- **Stand-up**: per story: done / next / blocked. Max 10 lines for the per-story summary. STAND-UP RULE (also in docs/EPICS.md "Working agreement"): every stand-up must also collect, from EVERY participant who worked since the last stand-up (main session/Opus coordinator, each Sonnet builder by story id, safety-reviewer, test-runner, eval-runner, business-analyst, scrum-master itself, and the human owner), three items: Done (what they finished since the last stand-up, with evidence: commit hash, test counts, report path), Next (what they will do before the next stand-up), Blocked (anything blocking, or "none"). Evidence comes from git log and reports, never self-claims; a participant with nothing gets "no activity". The human owner's line lists the human-only items waiting on them. Format as a table: Participant | Done (evidence) | Next | Blocked. Hold stand-ups at the start of each working session, after each batch of merges, and at sprint close.
 - **Review**: for every story claimed done, run its done-when check yourself (`make test`, `make test-isolation`, `make lint`, `git log`) or cite the report that proves it. Only then tick `[x]` in EPICS.md with the commit hash. Unverified = stays `[~]`.
 - **Retro**: what went well, what hurt, one action for next sprint.
 
