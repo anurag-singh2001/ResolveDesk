@@ -80,3 +80,21 @@ def test_overlong_passwords_are_refused_not_truncated():
     assert not verify_password(long + "y", stored)
     with pytest.raises(ValueError):
         hash_password(long + "y", rounds=4)
+
+
+def test_cors_allows_every_method_the_api_uses():
+    """S5.6 added PUT /me/preferences but CORS allowed only GET and POST, so the browser's
+    preflight failed ("Could not save your choice") while API tests passed. Every method a
+    route uses must pass the preflight from the web origin."""
+    app = create_app()
+    client = TestClient(app)
+    allowed = get_settings().web_origin_list[0]
+    # The OpenAPI schema lists every endpoint, including those in included routers.
+    methods = {m.upper() for ops in app.openapi()["paths"].values() for m in ops}
+    assert "PUT" in methods
+    for method in sorted(methods):
+        resp = client.options(
+            "/health", headers={"Origin": allowed, "Access-Control-Request-Method": method}
+        )
+        assert resp.status_code == 200, method
+        assert resp.headers.get("access-control-allow-origin") == allowed, method
