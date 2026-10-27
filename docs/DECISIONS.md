@@ -381,3 +381,8 @@ Format:
 - Why: a per-customer field respects the customer's choice (the Zomato 2021 incident is the cautionary case) and a template table keeps hard rule 7 true in every language; reusing the existing text sources avoids a second code path.
 - Alternative rejected: a per-tenant language (one customer base is mixed); model-translated replies (facts could drift, and they cannot be tested exhaustively); Devanagari digits (extra risk of misreading an amount).
 - Open: whether Hinglish or Devanagari should be the suggested Hindi variant, and a native-speaker review of the wording.
+
+## 2026-10-28 - Web UI follows the ChaiUI rules through the Tailwind 3 route
+- Decision: `web/` is restyled to the ChaiUI rules by hand on Tailwind 3.4: the tokens from `references/tokens.css` live as CSS variables in `web/src/index.css` (`:root` light, `.dark`), mapped in `tailwind.config.js` (`darkMode: 'class'`); the `@utility` blocks become plain classes (`highlight`, `card-chai`, `btn-asym`, `btn-asym-mirror`) in `@layer components`. Dark is the default, the class sits on `<html>` and an inline script in `index.html` sets it before paint. Old button names still work (primary = solid, secondary = outline, ghost = quiet) so pages keep compiling while they are restyled one by one. Status is coloured text on a thin outline, never a filled pill.
+- Why: the owner approved the ChaiUI direction; a Tailwind 3 project cannot take the v4 registry items as they are.
+- Alternative rejected: `npx shadcn add @chaiui/*` (pulls radix, lucide, framer-motion and a Tailwind 4 upgrade, so new dependencies and a bigger blast radius); keeping the indigo accent (fights the "orange or cream only" rule).

@@ -2,19 +2,22 @@ import { stepperModel } from "../lib/stages";
 import type { Step, Tone } from "../lib/stages";
 import { cx } from "./ui";
 
-const DOT: Record<Tone, string> = {
-  neutral: "bg-slate-500 ring-slate-200",
-  accent: "bg-accent-600 ring-accent-100",
-  success: "bg-emerald-600 ring-emerald-100",
-  warning: "bg-amber-500 ring-amber-100",
-  danger: "bg-rose-600 ring-rose-100",
-  info: "bg-sky-600 ring-sky-100",
+// Neutral stepper: the current step is ink/white, done steps are muted, warning states are yellow text.
+const CURRENT: Record<Tone, string> = {
+  neutral: "bg-neutral-900 text-white dark:bg-white dark:text-black",
+  accent: "bg-neutral-900 text-white dark:bg-white dark:text-black",
+  success: "bg-neutral-900 text-white dark:bg-white dark:text-black",
+  warning: "border border-yellow-600/60 text-yellow-700 dark:border-yellow-400/60 dark:text-yellow-400",
+  info: "border border-yellow-600/60 text-yellow-700 dark:border-yellow-400/60 dark:text-yellow-400",
+  danger: "border border-border text-muted-foreground",
 };
+
+const LABEL_WARN = "text-yellow-700 dark:text-yellow-400";
 
 function Marker({ step, index }: { step: Step; index: number }) {
   if (step.state === "done") {
     return (
-      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-white" aria-hidden="true">
+      <span className="flex h-7 w-7 items-center justify-center rounded-full border border-border text-muted-foreground" aria-hidden="true">
         <svg viewBox="0 0 20 20" className="h-4 w-4" fill="currentColor">
           <path d="M16.7 5.3a1 1 0 0 1 0 1.4l-8 8a1 1 0 0 1-1.4 0l-4-4a1 1 0 1 1 1.4-1.4L8 12.6l7.3-7.3a1 1 0 0 1 1.4 0Z" />
         </svg>
@@ -23,7 +26,7 @@ function Marker({ step, index }: { step: Step; index: number }) {
   }
   if (step.state === "current") {
     return (
-      <span className={cx("flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold text-white ring-4", DOT[step.tone])} aria-hidden="true">
+      <span className={cx("flex h-7 w-7 items-center justify-center rounded-full font-mono text-xs font-semibold", CURRENT[step.tone])} aria-hidden="true">
         {index + 1}
       </span>
     );
@@ -31,8 +34,8 @@ function Marker({ step, index }: { step: Step; index: number }) {
   return (
     <span
       className={cx(
-        "flex h-7 w-7 items-center justify-center rounded-full border-2 bg-white text-xs font-medium",
-        step.state === "skipped" ? "border-dashed border-slate-200 text-slate-300" : "border-slate-300 text-slate-400",
+        "flex h-7 w-7 items-center justify-center rounded-full border font-mono text-xs",
+        step.state === "skipped" ? "border-dashed border-border text-muted-foreground/50" : "border-border text-muted-foreground",
       )}
       aria-hidden="true"
     >
@@ -65,8 +68,8 @@ export function StageStepper({ stage }: { stage: string }) {
               <span
                 aria-hidden="true"
                 className={cx(
-                  "absolute hidden h-0.5 sm:left-[calc(50%+1.25rem)] sm:right-[calc(-50%+1.25rem)] sm:top-3.5 sm:block",
-                  steps[i + 1].state === "done" || steps[i + 1].state === "current" ? "bg-emerald-500" : "bg-slate-200",
+                  "absolute hidden h-px sm:left-[calc(50%+1.25rem)] sm:right-[calc(-50%+1.25rem)] sm:top-3.5 sm:block",
+                  steps[i + 1].state === "done" || steps[i + 1].state === "current" ? "bg-muted-foreground/60" : "bg-border",
                 )}
               />
             )}
@@ -74,7 +77,11 @@ export function StageStepper({ stage }: { stage: string }) {
             <span
               className={cx(
                 "text-sm",
-                step.state === "current" ? "font-semibold text-slate-900" : step.state === "done" ? "text-slate-700" : "text-slate-400",
+                step.state === "current"
+                  ? cx("font-semibold", step.tone === "warning" || step.tone === "info" ? LABEL_WARN : "text-foreground")
+                  : step.state === "done"
+                    ? "text-muted-foreground"
+                    : "text-muted-foreground/60",
                 step.state === "skipped" && "line-through",
               )}
             >

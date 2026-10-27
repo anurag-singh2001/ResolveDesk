@@ -1,20 +1,128 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@200..800&family=Montserrat:wght@400..800&family=Onest:wght@400..700&family=Geist+Mono:wght@400..600&family=Noto+Sans+Devanagari:wght@400..700&display=swap");
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
-/* Typography for the rendered manuals (Help page). */
+/* ChaiUI tokens (references/tokens.css), Tailwind 3 route: plain CSS variables mapped in tailwind.config.js. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --brand: oklch(66.6% 0.179 58.318);
+
+  --highlight: oklch(0.476 0.114 61.907); /* yellow-800 */
+  --card-edge: rgb(120 53 15 / 0.15); /* amber-900/15 */
+  --card-edge-hover: rgb(120 53 15 / 0.25);
+  --card-fill: rgb(255 255 255 / 0.7);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --brand: oklch(75% 0.183 55.934);
+
+  --highlight: oklch(0.954 0.038 75.164); /* orange-100 */
+  --card-edge: rgb(255 247 237 / 0.15); /* orange-50/15 */
+  --card-edge-hover: rgb(255 247 237 / 0.3);
+  --card-fill: rgb(0 0 0 / 0.1);
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background font-sans text-foreground antialiased;
+  }
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
 @layer components {
+  /* The highlight phrase: one per paragraph. */
+  .highlight {
+    font-family: "Montserrat", ui-sans-serif, system-ui, sans-serif;
+    font-weight: 500;
+    letter-spacing: -0.025em;
+    text-transform: capitalize;
+    color: var(--highlight);
+  }
+
+  /* The warm hairline card: hairline only, faint fill, a little blur. */
+  .card-chai {
+    border-radius: calc(var(--radius) + 4px);
+    border: 1px solid var(--card-edge);
+    background: var(--card-fill);
+    backdrop-filter: blur(4px);
+    transition: border-color 300ms, opacity 300ms;
+  }
+  .card-chai:hover {
+    border-color: var(--card-edge-hover);
+  }
+
+  /* Asymmetric corners: solid takes top-right + bottom-left, outline the mirror. */
+  .btn-asym {
+    border-radius: 0 var(--radius) 0 var(--radius);
+  }
+  .btn-asym-mirror {
+    border-radius: var(--radius) 0 var(--radius) 0;
+  }
+
+  /* Live dot for the processing status. */
+  .live-dot {
+    animation: chai-pulse 1.6s ease-in-out infinite;
+  }
+
+  /* Typography for the rendered manuals (Help page). */
   .manual {
-    @apply max-w-3xl text-[0.95rem] leading-7 text-slate-700;
+    @apply max-w-3xl text-[0.95rem] leading-7 text-muted-foreground;
   }
   .manual h1 {
-    @apply mb-4 text-2xl font-semibold tracking-tight text-slate-900;
+    @apply mb-4 text-2xl font-medium tracking-tight text-foreground;
   }
   .manual h2 {
-    @apply mb-3 mt-10 border-t border-slate-100 pt-6 text-lg font-semibold text-slate-900;
+    @apply mb-3 mt-10 border-t border-border pt-6 text-lg font-medium text-foreground;
   }
   .manual h3 {
-    @apply mb-2 mt-6 text-base font-semibold text-slate-900;
+    @apply mb-2 mt-6 font-montserrat text-base font-semibold text-foreground;
   }
   .manual p {
     @apply my-3;
@@ -26,24 +134,45 @@
     @apply my-3 list-decimal space-y-1 pl-6;
   }
   .manual strong {
-    @apply font-semibold text-slate-900;
+    @apply font-semibold text-foreground;
   }
   .manual code {
-    @apply rounded bg-slate-100 px-1 py-0.5 font-mono text-[0.85em] text-slate-800;
+    @apply rounded bg-muted px-1 py-0.5 font-mono text-[0.85em] text-foreground;
   }
   .manual blockquote {
-    @apply my-4 rounded-r-lg border-l-4 border-accent-200 bg-accent-50 px-4 py-2 text-slate-700;
+    @apply my-4 rounded-r-lg border-l border-card-edge px-4 py-2 text-foreground;
   }
   .manual table {
     @apply my-4 w-full border-collapse text-sm;
   }
   .manual th {
-    @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left font-medium text-slate-700;
+    @apply border-b border-border px-3 py-2 text-left text-xs font-medium text-muted-foreground;
   }
   .manual td {
-    @apply border-b border-slate-100 px-3 py-2 align-top;
+    @apply border-b border-border px-3 py-2 align-top;
   }
   .manual a {
-    @apply font-medium text-accent-700 underline;
+    @apply font-medium text-foreground underline underline-offset-2 hover:text-brand;
+  }
+}
+
+@keyframes chai-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
