@@ -5,6 +5,14 @@ Backlog and status for the whole project. Owned by the `scrum-master` agent; the
 Status: `[ ]` todo · `[~]` in progress · `[x]` done **and** done-when verified (commit hash in brackets).
 A story is never ticked on a claim alone; the scrum master runs or cites the check.
 
+## Working agreement: stand-up rule
+Overview of all sprints: docs/sprints/README.md.
+- Every stand-up collects from EVERY participant who worked since the last one: main session/Opus coordinator, each Sonnet builder (by story id), safety-reviewer, test-runner, eval-runner, business-analyst, scrum-master, and the human owner.
+- Each gives three items: Done (with evidence: commit hash, test counts, report path), Next (before the next stand-up), Blocked (or "none"). Evidence comes from git log and reports, never self-claims; no work means "no activity".
+- The owner's line lists the human-only items waiting on them.
+- Written as a table (Participant | Done (evidence) | Next | Blocked) in the current sprint file.
+- When: start of each working session, after each batch of merges, and at sprint close.
+
 | Sprint | Dates | Goal |
 | --- | --- | --- |
 | 0 | 2026-10-23 → 2026-10-24 | Tools, process, research, project skeleton |

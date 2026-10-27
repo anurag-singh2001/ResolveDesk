@@ -70,3 +70,22 @@ Evidence only; "no data" where none was recorded.
 | test-runner (haiku) | no data | no data | no data | n/a | n/a | |
 | eval-runner (haiku) | no eval run this sprint | n/a | n/a | n/a | no data | |
 | business-analyst (sonnet) | docs/research/dpdp-and-hindi.md (da590d6) | n/a | n/a | n/a | n/a | legal points provisional |
+
+## Stand-up 2026-10-27 evening (post-close)
+First stand-up under the new stand-up rule (docs/EPICS.md "Working agreement"). Evidence from git log and the Review section above.
+
+| Participant | Done (evidence) | Next | Blocked |
+| --- | --- | --- | --- |
+| Opus coordinator (main session) | Merged all S5 branches; fixes bfe1b30 (audit-scan false positive), 0c410a7 (exclusive customer lock after deadlock finding), 989cf8f (privacy page: no "as the law requires" claim); chaos x3 on 989cf8f (3 passed, 1 skipped each); test merged to main at 9f596aa; 7-batch verification on 1d917f8 (see Review) | Support the owner's human items; any follow-ups the owner picks | none |
+| Builder S5.1 (Sonnet) | 6e28e19, rework 7616458 and d3e434e; migration 0017; 52 tests | none, story closed | none |
+| Builder S5.2 (Sonnet) | 4524060, rework 6d892a5; migration 0018; 40 tests | none, story closed | none |
+| Builder S5.3 (Sonnet) | c9ee4c0, no bug found; chaos 3 passed, 1 skipped | none, story closed | none |
+| Builder S5.4 (Sonnet) | 8ff8434, 6592bd9; web 83 passed | none, story closed | none |
+| Builder S5.5 (Sonnet) | 74efee9, rework 7aa7444 | none, story closed | none |
+| Builder S5.6 (Sonnet) | 7e881a6, 4a228cc; migration 0019 | none, story closed | none |
+| safety-reviewer | Reviewed all six stories: 2 HIGH (S5.1), 2 MEDIUM + 1 new on re-review (S5.2), 1 MEDIUM (S5.5), all fixed; S5.3, S5.4 clean; S5.6 translations clean vs rule 7 | Review any follow-up touching money, approvals, tenancy, RLS or migrations | none |
+| test-runner | No separate reports recorded; final counts are in the Review section (unit 411, isolation 206, batches above) | On request | none |
+| eval-runner | no activity (no eval run this sprint) | On request | none |
+| business-analyst | docs/research/dpdp-and-hindi.md (da590d6) | On request; GST/accounting retention for order references is unresearched | none |
+| scrum-master | Closed Sprints 4 and 5: reviews, retros, scorecards, ticks (close commit 2d2d08d; S5.3 tick d4097ec; S4.5 tick 61362cc); this stand-up and docs/sprints/README.md | Run the next stand-up under the rule | none |
+| Owner (human) | Approvals given today (push when green, test merged to main) | E0.3 rotate Neon owner password; E7.2 copy .env into clean clone and see an AI proposal; confirm provisional decisions (365-day floor; privacy contact label, 30-day target vs 90-day ceiling; no consent record for support; native review of Hinglish/Devanagari; GST retention) | Waiting on the owner for all of these |
