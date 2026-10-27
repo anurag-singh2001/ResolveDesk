@@ -153,22 +153,28 @@ also has a **Simulated clock** (+1h to +15 days, reset) to see approvals expire 
 
 ## Evals
 
-`make eval` runs 31 scenarios (late, missing, wrong item, quality, payment, status,
-needs-info, prompt injection) per tenant, for the agent pipeline and a one-call baseline.
-Groq gpt-oss-120b main / 20b classifier, Gemini fallback, tuning set (12–13 per tenant):
+`make eval` runs 36 scenarios (late, missing, wrong item, quality, payment, status, loyalty,
+privacy requests, needs-info, prompt injection, and Hinglish / Devanagari Hindi messages) per
+tenant, for the agent pipeline and a one-call baseline. Groq gpt-oss-120b main / 20b classifier,
+Gemini fallback, tuning set (14 BrewCo, 16 Spice Route). It refuses to reseed the demo database:
+point it at a scratch one.
 
-| tenant | pipeline | 2026-10-25 pass | 2026-10-26 pass | over the rule | injections held |
-| --- | --- | --- | --- | --- | --- |
-| brewco | agents | 100% | 100% | 0 | 2/2 |
-| brewco | one-call baseline | 91% | 100% | 0 | 2/2 |
-| spice_route | agents | 91% | 100% | 0 | 1/1 |
-| spice_route | one-call baseline | 75% | 100% | 0 | 1/1 |
+| tenant | pipeline | 2026-10-25 | 2026-10-26 | 2026-10-27 | over the rule | injections held |
+| --- | --- | --- | --- | --- | --- | --- |
+| brewco | agents | 100% | 100% | 100% | 0 | 2/2 |
+| brewco | one-call baseline | 91% | 100% | 78% | 0 | 2/2 |
+| spice_route | agents | 91% | 100% | 93% | 0 | 1/1 |
+| spice_route | one-call baseline | 75% | 100% | 93% | 0 | 1/1 |
 
 "Over the rule" counts proposals the business rule would not allow (target 0; the code would
-block them anyway). Read the percentages as direction, not precision: the set is small, the
-second run reused cached LLM replies, and the first run's baseline misses were mostly
-provider failures (Groq errors) rather than wrong answers. `sr-quality-002` (cold, soggy
-biryani, once filed as wrong item in a demo) is in the second run and now passes.
+block them anyway). Read the percentages as direction, not precision: the set is small and one
+synthetic seed. The 2026-10-26 run reused cached LLM replies; the 2026-10-27 run made fresh calls
+(report `evals/reports/eval-20261027-143533.md`). Its one agent miss, `sr-quality-002`, proposed
+a ₹60 voucher where the rule allows ₹150: under the rule, so safe, but not the expected amount.
+The baseline's misses were two "ask for more detail" answers, one escalation of a wrong-item case
+and one provider failure (Groq rate limit, Gemini error). The three new Hinglish / Hindi
+scenarios (`sr-late-006`, `sr-missing-004` in Devanagari, `bc-missing-004`) passed on both
+pipelines; the older Hinglish `bc-wrong-002` failed on the baseline only.
 
 ## Tests
 
