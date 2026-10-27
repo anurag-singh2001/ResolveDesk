@@ -20,10 +20,14 @@ UNCLASSIFIED = "unknown"  # ticket category until the agent pipeline classifies 
 
 
 def lock_customer(session: Session, where, user_id: uuid.UUID) -> Customer:
-    """Share-lock the customer row so a case write and an erasure of that customer
+    """Lock the customer row so a case write and an erasure of that customer
     (data_rights.run_erasure holds the row FOR UPDATE) serialize: either the erasure waits and
-    then sees this case, or this write waits and then finds the account erased."""
-    customer = session.scalar(select(Customer).where(where).with_for_update(read=True))
+    then sees this case, or this write waits and then finds the account erased.
+
+    FOR UPDATE, not FOR SHARE: approvals.auto_decide later takes the same row FOR UPDATE in
+    the same transaction, and a share-then-exclusive upgrade deadlocks two concurrent cases of
+    one customer. Lock order everywhere: case (if any) before customer, as the graph does."""
+    customer = session.scalar(select(Customer).where(where).with_for_update())
     erased = session.scalar(select(User.erased_at).where(User.id == user_id))
     if customer is None or erased is not None:
         raise CaseNotFound("account not found")
@@ -170,11 +174,12 @@ def add_reply(
     ticket (the graph re-reads the whole conversation when it resumes) and note it in the audit
     trail. The caller has already checked the case is theirs. The row lock makes the status check
     race-free; the graph's own resume claim makes a double submit continue the thread once."""
+    # Case before customer: the graph's propose step locks in that order too.
+    locked = session.scalar(select(Case).where(Case.id == case.id).with_for_update())
     try:
         lock_customer(session, Customer.id == case.customer_id, ctx.user_id)
     except CaseNotFound:
         raise NotAwaitingInfo("this account has been erased") from None
-    locked = session.scalar(select(Case).where(Case.id == case.id).with_for_update())
     if locked is None or locked.status != "awaiting_info":
         raise NotAwaitingInfo("this case is not waiting for more information")
     ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == case.id))

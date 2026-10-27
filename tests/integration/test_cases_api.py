@@ -548,3 +548,48 @@ def test_timeline_ends_voucher_issued_once_the_provider_confirms(api, app_engine
         )
     finally:
         reset_mocks()
+
+
+def test_one_customer_opening_two_cases_at_once_does_not_deadlock(
+    api, app_engine, maint_engine, flow
+):
+    """Concurrency smoke test for the customer lock (S5.2). It does not reliably reproduce the
+    share-then-exclusive deadlock the review found (that needs the auto-approve path to take
+    the customer row again); the fix is the lock mode and order in cases.lock_customer, whose
+    reasoning is in DECISIONS.md. This guards that two reports of one customer still work."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    f = flow
+    with tenant_session(f["tid"], app_engine) as s:
+        customer_id = s.scalar(
+            select(Transaction.customer_id).where(Transaction.id == f["order_id"])
+        )
+        other = s.scalar(
+            select(Transaction.id)
+            .where(Transaction.customer_id == customer_id, Transaction.id != f["order_id"])
+            .order_by(Transaction.placed_at.desc())
+            .limit(1)
+        )
+    if other is None:
+        pytest.skip("the demo customer has a single order")
+
+    def report(order_id):
+        return api.post(
+            "/cases",
+            headers=f["customer"],
+            json={
+                "transaction_id": str(order_id),
+                "category": "missing_items",
+                "message": "One item was missing from my order.",
+            },
+        ).status_code
+
+    try:
+        for _ in range(3):  # a few rounds: a deadlock is a race
+            with ThreadPoolExecutor(2) as pool:
+                assert list(pool.map(report, [f["order_id"], other])) == [201, 201]
+    finally:
+        with tenant_session(f["tid"], maint_engine) as s:
+            cases = select(Case.id).where(Case.tenant_id == f["tid"], Case.transaction_id == other)
+            s.execute(delete(Ticket).where(Ticket.tenant_id == f["tid"], Ticket.case_id.in_(cases)))
+            s.execute(delete(Case).where(Case.tenant_id == f["tid"], Case.transaction_id == other))
