@@ -103,8 +103,8 @@ function ErasureCard() {
     <Card className="p-5">
       <h2 className="text-base font-semibold text-slate-900">Erase my data</h2>
       <p className="mt-1 text-sm text-slate-600">
-        We remove your name, contact details and message text. Records of payments and refunds are kept as the law requires,
-        and the request waits while any case or refund of yours is still open.
+        We remove your name, contact details and message text. Records of payments and refunds are kept, and the
+        request waits while any case or refund of yours is still open.
       </p>
       {failure && <Alert>{failure}</Alert>}
       {data && (
