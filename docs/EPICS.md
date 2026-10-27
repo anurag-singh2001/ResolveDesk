@@ -13,6 +13,23 @@ Overview of all sprints: docs/sprints/README.md.
 - Written as a table (Participant | Done (evidence) | Next | Blocked) in the current sprint file.
 - When: start of each working session, after each batch of merges, and at sprint close.
 
+## Working agreement: story template and Definition of Done (from Sprint 7)
+Roadmap and velocity: docs/ROADMAP.md. Story points (SP) are Fibonacci 1/2/3/5/8/13, re-estimated only at Sprint Planning; carry-over keeps its points; stories over 8 SP are split.
+
+Story template (full version in the sprint file at planning):
+- `S<sprint>.<n> Title (SP, owner agent)`
+- User story: As a <role> I want <capability> so that <benefit>.
+- Acceptance criteria: Given / When / Then bullets.
+- Dependencies, and whether safety review is required.
+
+Definition of Done (all must hold before `[x]`):
+- Tests added and passing for both tenants (tests never name a tenant).
+- `make lint` clean.
+- Safety review done where required (money, approvals, tenancy, RLS, migrations, customer text, platform role).
+- Docs and manuals updated (README, RUNBOOK, SCENARIOS, DECISIONS as relevant).
+- Browser walkthrough done for UI stories.
+- CI green on the pushed branch.
+
 | Sprint | Dates | Goal |
 | --- | --- | --- |
 | 0 | 2026-10-23 → 2026-10-24 | Tools, process, research, project skeleton |
@@ -22,6 +39,12 @@ Overview of all sprints: docs/sprints/README.md.
 | 4 | 2026-10-26 → 2026-10-27 (closed 2026-10-27) | Spec gaps to a complete v1 (E9) + ship (E7 remainder) |
 | 5 | 2026-10-27 (built overnight, closed 2026-10-27, pushed 1d917f8) | Privacy basics (DPDP retention, consent, access/erasure), growth chaos test, approvals filter, grievance SLA display, Hindi templates; see docs/sprints/sprint-5.md |
 | 6 | 2026-10-27 → 2026-10-28 | Hardening and handover: clean full-suite run, deadlock repro, eval re-run, CI, runbook + scenario catalogue, cleanup; see docs/sprints/sprint-6.md |
+| 7 | 2026-10-28 → 2026-10-29 | Staff can handle every case; fair remedies; auto language; designs ready for approval; see docs/sprints/sprint-7.md |
+| 8 | TBD | Transparency + privacy rework + demo controls; UI foundation (after design approval) |
+| 9 | TBD | Platform portal backbone |
+| 10 | TBD | Scenario lab + metrics API + dashboards |
+| 11 | TBD | HQ marketing module |
+| 12 | TBD | UI revamp completion, polish, full walkthrough, merge to main |
 
 ---
 
@@ -120,3 +143,57 @@ Scope approved by the user 2026-10-27. No new product features. Never drop tests
 - [x] S6.5 (est M, main session) Demo runbook + scenario catalogue — done when: docs/RUNBOOK.md (start/stop, reset, demo steps, troubleshooting incl. stale vite, memory, Neon drops) and docs/SCENARIOS.md exist and every scenario cites a test or eval id -- verified 2026-10-27: docs/SCENARIOS.md and docs/RUNBOOK.md, c41abfd
 - [x] S6.6 (est S, main session) Cleanup — done when: only neondb/resolvedesk_test remain (scratch DBs resolvedesk_b1..b7 dropped after S6.1-S6.3) and `git worktree list` shows the main checkout only -- verified 2026-10-27: scratch DBs resolvedesk_b1..b7 dropped (only neondb, postgres, resolvedesk_test remain, per main session); `git worktree list` re-checked by scrum-master at 23492bb shows the main checkout only
 - Remaining human-only after Sprint 6: E0.3 rotate Neon owner password; E7.2 copy .env into the clean clone; confirm provisional decisions; native-speaker review of Hinglish/Devanagari; approve merge test to main (main session merges on the user's go).
+
+---
+
+# v2 roadmap (Sprints 7-12, approved by the owner 2026-10-28; see docs/ROADMAP.md)
+Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Given/When/Then criteria are written at Sprint Planning in the sprint file. SP are Fibonacci and fixed at planning. "Safety" = safety review required.
+
+## E12 · Staff case handling and hierarchy -- Sprint 7
+- [ ] S7.1 Case page shows the order and the customer's words (3 SP, Sonnet builder) -- done when: staff case page shows items, totals, promised/delivered times and the customer's exact message; order scoped by visible_orders; tests both tenants; walkthrough
+- [ ] S7.2 Routing by hierarchy (5 SP, Sonnet builder, Safety) -- done when: cases.owner_user_id (migration) assigned to the location manager on escalation; franchisee sees their locations, HQ all; needs_hq goes to HQ; other-tenant/other-location 404; tests both tenants
+- [ ] S7.3 Escalation queue (3 SP, Sonnet builder) -- done when: "With our team" list scoped by role showing reason, wait time, owner, with filters; tests both tenants
+- [ ] S7.4 Re-run the AI (3 SP, Sonnet builder) -- done when: button and sweeper retry for AI-unavailable/ProviderFailed escalations, idempotent, tests both tenants
+- [ ] S7.5 Staff categorise and propose (8 SP, Sonnet builder, Safety) -- done when: staff set category and remedy within the rule via create_proposal, same checks/approval/execution, single verified payout; tests both tenants; safety clean
+- [ ] S7.6 Templated staff replies and close-with-reason (5 SP, Sonnet builder, Safety: customer text) -- done when: template picker, optional free text labelled "from our team", close reasons (resolved, no remedy, duplicate, unreachable), audited and in customer timeline
+- [ ] S7.7 Clear up O0005779 (1 SP, main session) -- done when: the case is resolved via S7.4 and verified in the UI
+
+## E13 · Fair remedies -- Sprint 7
+- [ ] S7.8 Size vouchers to the order (3 SP, Sonnet builder, Safety: money) -- done when: voucher = min(cap, voucher_percent of affected item/order, order total); test for the Rs 149 order; both tenants
+- [ ] S7.9 Customer chooses voucher or refund where the rule allows (5 SP, Sonnet builder, Safety: money) -- done when: pack remedies accept options; customer picks on report form/case page; code enforces limits; both tenants
+- [ ] S7.10 Approver switches the remedy within limits (5 SP, Sonnet builder, Safety) -- done when: switch supersedes the proposal, stays hash-bound, limits enforced, audited; both tenants
+- [ ] S7.11 Fair-use shown as a warning (1 SP, Sonnet builder) -- done when: "Repeat claimant: N in 30 days, needs a person" replaces the red "failed"; web test
+
+## E14 · Language auto-detection -- Sprint 7
+- [ ] S7.12 Detect the customer's language from their message (5 SP, Sonnet builder, Safety: customer text) -- done when: Devanagari -> hi, Roman Hindi -> hi-Latn via classifier field plus heuristic fallback; cases.language (migration); Help picker removed; eval scenarios per language; both tenants
+
+## E19 · UI/UX revamp -- design Sprint 7, build Sprints 8-12 (no UI build before the owner approves the designs)
+- [ ] S7.D1 Design system in Claude Design (5 SP, main session + design tooling) -- done when: colours, type scale, spacing, components, both themes, Devanagari support delivered and shown to the owner
+- [ ] S7.D2 Wireframes for every page and role (8 SP, main session + design tooling) -- done when: customer, staff and platform-portal wireframes and persona flows delivered; owner approval recorded (gate for S8.7)
+- [ ] S8.7 UI foundation: app shell, tokens, components (8 SP provisional, Sonnet builder) -- done when: shell and shared components built from approved designs, browser walkthrough; SP re-estimated at Sprint 8 planning
+
+## E15 · Transparency: rules and policies -- Sprint 8
+- [ ] S8.1 Policies endpoint and pages (5 SP, Sonnet builder) -- done when: GET /policies returns current documents and sections; customer "Our policies" page and staff view; both tenants
+- [ ] S8.2 Plain-language rules summary (5 SP, Sonnet builder) -- done when: summary generated from pack remedies, settings resolver and late tiers, "what you get when..." per category with dates in force; both tenants
+- [ ] S8.3 Every decision links to its source (3 SP, Sonnet builder) -- done when: citations open the exact policy section; remedy line names the rule that set the amount
+
+## E16 · Privacy rework and Demo controls -- Sprint 8
+- [ ] S8.4 Research what customers and owners need from privacy (2 SP, business-analyst) -- done when: report in docs/research/ benchmarking Swiggy, Zomato, Starbucks India against DPDP basics
+- [ ] S8.5 Rework the Privacy page (5 SP, Sonnet builder, Safety: customer data) -- done when: readable "what we hold" with purposes, consent as benefits, erasure in account settings, readable export; both tenants
+- [ ] S8.6 Rename and explain the Dev panel (3 SP, Sonnet builder) -- done when: "Demo controls" with one-line help per control, guarded reset-demo, link to platform portal
+
+## E17 · Platform owner portal -- Sprints 9-10
+- [ ] S9.1 Platform-admin login and read-only cross-tenant metrics path (8 SP, Sonnet builder, Safety) -- done when: separate platform_admin principal from env; dedicated DB role reads only aggregate SECURITY DEFINER views, never raw customer rows; isolation tests; safety clean
+- [ ] S9.2 Persist LLM usage (5 SP, Sonnet builder) -- done when: llm_usage and job_runs tables record calls, tokens, cost, provider, failures, latency per run; both tenants
+- [ ] S9.3 Job scheduler inside the app (5 SP, Sonnet builder) -- done when: asyncio loop runs sweep, retention dry run, growth nightly, pack refresh on intervals, records job_runs, dev-safe toggles
+- [ ] S9.4 Logs and alerts (5 SP, Sonnet builder) -- done when: structured error log table and rule-based alerts (job failed, provider failure rate, escalation spike, eval regression, stuck sweep/chaos)
+- [ ] S9.5 Portal UI (8 SP, Sonnet builder) -- done when: health, jobs, logs, alerts, AI performance pages built from approved designs; browser walkthrough
+- [ ] S10.1 Scenario lab (8 SP, Sonnet builder) -- done when: create/edit validated scenario YAML, run a subset on a scratch DB, compare with last report
+
+## E18 · Analytics, visualisation and HQ marketing -- Sprints 10-11
+- [ ] S10.2 Metrics API with hierarchy and time series (8 SP, Sonnet builder, Safety: tenancy) -- done when: daily/weekly series by location, franchisee, brand, HQ for cases, spend, refund vs voucher, decision time, SLA, repeat rate, AI accuracy, orders/AOV; scope tests both tenants
+- [ ] S10.3 Dashboards with Recharts (8 SP, Sonnet builder) -- done when: location manager, franchisee and HQ views with drill-down; browser walkthrough per role
+- [ ] S11.1 Marketing research (3 SP, business-analyst) -- done when: report in docs/research/ on HQ marketing needs mapped to stories
+- [ ] S11.2 Segments and cohorts (8 SP, Sonnet builder) -- done when: segments/cohorts built from consented data, both tenants
+- [ ] S11.3 Campaign calendar and offer ROI with holdout attribution (8 SP, Sonnet builder, Safety: consent/messaging) -- done when: calendar over existing growth campaigns; ROI against a holdout
+- [ ] S11.4 Brand-level growth signals (5 SP, Sonnet builder) -- done when: brand signals shown to HQ; both tenants

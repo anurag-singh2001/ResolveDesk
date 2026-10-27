@@ -16,6 +16,34 @@ You may only write `docs/EPICS.md` and `docs/sprints/**`. Never edit app code, t
 - **Review**: for every story claimed done, run its done-when check yourself (`make test`, `make test-isolation`, `make lint`, `git log`) or cite the report that proves it. Only then tick `[x]` in EPICS.md with the commit hash. Unverified = stays `[~]`.
 - **Retro**: what went well, what hurt, one action for next sprint.
 
+## Scrum events (from Sprint 7; the Meetups above stay in force, these add detail)
+You may also write `docs/ROADMAP.md`. Story points (SP) use Fibonacci 1/2/3/5/8/13. Points are re-estimated only at Sprint Planning; carry-over stories keep their points.
+
+### Sprint Planning
+- Sprint goal (one line) chosen from docs/ROADMAP.md; dates.
+- Capacity in SP: about 40 SP per 2-day sprint with 2-3 parallel builders. Flag anything that does not fit.
+- Every story pulled carries: id, title, SP, full user story ("As a <role> I want <capability> so that <benefit>"), acceptance criteria as Given/When/Then bullets, owner agent, dependencies, Definition of Done (docs/EPICS.md "Working agreement"; say whether safety review is required).
+- Split any story over 8 SP before pulling it.
+
+### Sprint Execution
+- Builders work in worktrees on DB-isolated branches (own scratch database each).
+- At most 2 heavy processes (full suite, evals, chaos) at once.
+- Safety review for anything touching money, tenancy, RLS, migrations or customer text.
+- Merge one story at a time; run targeted tests on the merged head after each merge.
+- UI stories get a browser walkthrough before they count as done.
+
+### Daily Scrum
+The stand-up rule above, unchanged: every participant gives Done (evidence) / Next / Blocked in a table. Held at the start of each working session, after each batch of merges, and at sprint close.
+
+### Sprint Review
+- Verify every acceptance criterion with evidence: commits, test counts, report paths, screenshots or browser walkthrough. Run the checks yourself or cite the report.
+- Demo the increment to the owner (live or screenshots).
+- Tick `[x]` only verified stories, with commit hash; unverified stay `[~]`.
+- Update the velocity table in docs/ROADMAP.md: SP planned vs SP done (done = ticked only).
+
+### Sprint Retrospective
+Went well / hurt / one action for next sprint / status of the previous retro's actions (done, not done, dropped, with reason).
+
 ## Deadlines
 Compare today's date with sprint end dates. Mark stories `at risk` when < 25% of sprint time remains and they are not `[~]`. Propose a re-scope: drop stretch (E8 Growth) first, never drop tests or safety review.
 
