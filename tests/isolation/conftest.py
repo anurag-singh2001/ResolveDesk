@@ -21,7 +21,9 @@ from app.core.models import (
     Case,
     CatalogueItem,
     Consent,
+    ConsentEvent,
     Customer,
+    DataRequest,
     DomainEvent,
     Execution,
     FeatureFlag,
@@ -214,6 +216,21 @@ def _seed_commerce(s, t: SeededTenant) -> None:
                 channel="whatsapp",
                 purpose="marketing",
                 granted=True,
+            ),
+            ConsentEvent(
+                tenant_id=tid,
+                customer_id=customer_id,
+                channel="whatsapp",
+                purpose="marketing",
+                granted=True,
+                source="customer",
+                notice_version="v1",
+            ),
+            DataRequest(
+                tenant_id=tid,
+                customer_id=customer_id,
+                kind="erasure",
+                status="pending_approval",
             ),
         ]
     )

@@ -96,7 +96,7 @@ def load_context(
         .scalar_subquery()
     )
     rows = session.execute(
-        select(User.tenant_id, Membership.id, Membership.role, brands, locations)
+        select(User.tenant_id, Membership.id, Membership.role, brands, locations, User.erased_at)
         .outerjoin(Membership, Membership.user_id == User.id)
         .where(User.id == user_id)
     ).all()
@@ -104,7 +104,9 @@ def load_context(
         return None
     if len(rows) != 1 or rows[0][1] is None:  # unique in the schema; fail closed
         return None
-    _, membership_id, role, brand_ids, location_ids = rows[0]
+    _, membership_id, role, brand_ids, location_ids, erased_at = rows[0]
+    if erased_at is not None:  # erased (DPDP): the account is dead, whatever token is presented
+        return None
     return TenantContext(
         tenant_id=tenant_id,
         user_id=user_id,

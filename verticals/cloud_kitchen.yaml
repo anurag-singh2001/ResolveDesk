@@ -34,6 +34,14 @@ settings:
   # text and the customer's contact data are redacted. The job never goes below 365 (the
   # one-year floor), so a lower value is ignored.
   support_retention_days: {kind: value, default: 365}
+  # DPDP s.11 access (S5.2, provisional): who else processes a customer's data. Shown in the
+  # customer data export. A tenant can replace the list if its provider set differs.
+  data_processors:
+    kind: value
+    default:
+      - {name: "Google (Gemini)", role: "AI model provider", data: "case text sent for classification and drafting"}
+      - {name: "Groq", role: "AI model provider", data: "case text sent for classification and fallback drafting"}
+      - {name: "Neon", role: "database host", data: "all stored records"}
   refund_max_percent: {kind: limit, default: 50}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}

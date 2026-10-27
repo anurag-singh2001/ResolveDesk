@@ -242,11 +242,18 @@ def _sync_demo_passwords(session: Session, cfg: TenantConfig, tid: uuid.UUID) ->
             )
         )
     }
+    erased = set(
+        session.scalars(
+            select(User.id).where(User.id.in_(list(ids.values())), User.erased_at.is_not(None))
+        )
+    )
     for user in cfg.users:
         password = cfg.demo_password_for(user)
         if password is None:
             continue
         uid = ids[user.email]
+        if uid in erased:  # an erased account never gets a password back
+            continue
         current = stored.get(uid, (None, False))
         if not demo_on:
             wanted = (None, False)

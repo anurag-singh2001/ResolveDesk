@@ -20,6 +20,7 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     func,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -123,6 +124,9 @@ class User(TenantOwned, Base):
     # The hash is of a demo password from the tenant folder: only accepted while demo
     # accounts are enabled (DEMO_AUTH on, not prod), even if the hash is still stored.
     password_is_demo: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Set by the erasure flow (migration 0018): the account is dead; load_context refuses it,
+    # so a token issued earlier stops working on its next request.
+    erased_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class LoginFailure(TenantOwned, Base):
@@ -457,6 +461,55 @@ class Consent(TenantOwned, Base):
     channel: Mapped[str] = mapped_column(String(16), nullable=False)  # whatsapp | sms | email
     purpose: Mapped[str] = mapped_column(String(16), nullable=False)  # marketing | service
     granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+
+
+class ConsentEvent(TenantOwned, Base):
+    """Append-only history of consent decisions (migration 0018). `consents` holds the current
+    state; each grant or withdrawal also adds a row here, so a withdrawal never overwrites the
+    evidence that consent was given. The app role may only INSERT/SELECT."""
+
+    __tablename__ = "consent_events"
+    # RESTRICT: evidence must not vanish with a customer row. Owner-run reseed and test cleanup
+    # delete the events first (TENANT_MODELS order); the app role can delete neither.
+    __table_args__ = (_fk("customer_id", "customers", ondelete="RESTRICT"),)
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    channel: Mapped[str] = mapped_column(String(16), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(16), nullable=False)
+    granted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)  # customer | erasure
+    notice_version: Mapped[str] = mapped_column(String(16), nullable=False)
+
+
+class DataRequest(TenantOwned, Base):
+    """A customer's erasure request (migration 0018). Staff see it; only code executes it.
+    `deferred` always carries a reason code, so a request is never silently dropped."""
+
+    __tablename__ = "data_requests"
+    __table_args__ = (
+        _fk("customer_id", "customers", ondelete="CASCADE"),
+        # One active request per customer, enforced by the database.
+        Index(
+            "uq_data_requests_active",
+            "tenant_id",
+            "customer_id",
+            unique=True,
+            postgresql_where=text("status IN ('pending_approval', 'deferred')"),
+        ),
+        CheckConstraint("kind IN ('erasure')", name="ck_data_requests_kind"),
+        CheckConstraint(
+            "status IN ('pending_approval', 'deferred', 'completed')",
+            name="ck_data_requests_status",
+        ),
+    )
+
+    customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
+    kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    status: Mapped[str] = mapped_column(String(24), nullable=False)
+    reason_code: Mapped[str | None] = mapped_column(String(32))
+    deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 # --- Engine (PROJECT.md section 7 "Engine", "Money", "Trust") ---------------------------
@@ -913,6 +966,8 @@ COMMERCE_MODELS = [
     Ticket,
     TicketMessage,
     Consent,
+    ConsentEvent,
+    DataRequest,
 ]
 # Cases, proposals, approvals, executions and the refund ledger: they reference commerce rows,
 # so reseeding history (dev only) clears them first.

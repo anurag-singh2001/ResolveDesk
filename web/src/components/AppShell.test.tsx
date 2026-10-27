@@ -21,7 +21,7 @@ async function navLabels(role: Role, path = "/") {
 
 describe("role-based navigation", () => {
   it("customers see their orders and cases", async () => {
-    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Help"]);
+    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Privacy & data", "Help"]);
     expect(await screen.findByRole("heading", { name: "My orders" })).toBeInTheDocument();
   });
 

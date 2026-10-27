@@ -234,3 +234,35 @@ export interface ClockState {
   now: string;
   offset_seconds: number;
 }
+
+export interface ConsentState {
+  purpose: string;
+  channel: string;
+  granted: boolean;
+  updated_at: string | null;
+}
+
+export interface ConsentEvent {
+  purpose: string;
+  channel: string;
+  granted: boolean;
+  source: string;
+  notice_version: string;
+  at: string;
+}
+
+export interface Consents {
+  notice_version: string;
+  consents: ConsentState[];
+  history: ConsentEvent[];
+}
+
+export interface ErasureRequest {
+  id: string;
+  kind: string;
+  status: "pending_approval" | "deferred" | "completed";
+  reason: string | null;
+  deferred_until: string | null;
+  requested_at: string;
+  completed_at: string | null;
+}
