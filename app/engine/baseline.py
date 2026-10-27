@@ -37,6 +37,7 @@ from app.engine.graph import (
     retrieve_policies,
     store_proposal,
 )
+from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.resolver import Remedy, decide_remedy
 
 BaselineState = CaseState  # ids and codes only; ceilings, evidence, text live in deps.scratch
@@ -78,6 +79,10 @@ def build_baseline_graph(deps: Deps, checkpointer=None):
             categories, vocabulary = list(pack.issue_categories), dict(pack.vocabulary)
             actions = enabled_actions(pack.actions)
             _, facts = order_facts(s, uuid.UUID(order_id))
+            filed = s.get(Case, case_id).category
+        if filed == PRIVACY_CATEGORY:  # customer-filed: never reclassified, no LLM call (S5.5)
+            w["reason"] = ESCALATION_REASON
+            return {"category": filed, "outcome": "escalated", "step_count": step}
         ceilings = w["ceilings"]
         offered = {c["action"] for c in ceilings.values() if c["action"] in actions}
         schemas = {name: actions[name].Input.model_json_schema() for name in sorted(offered)}

@@ -113,7 +113,11 @@ def release_refund(
         s.execute(
             update(Execution)
             .where(Execution.proposal_id == proposal_id, Execution.status.notin_(TERMINAL))
-            .values(status="failed", error="released by operator: provider has no record")
+            .values(
+                status="failed",
+                error="released by operator: provider has no record",
+                never_sent=True,
+            )
         )
         _audit(s, ctx, proposal_id, "refund.released",
                {"previous_status": check.ledger_status,

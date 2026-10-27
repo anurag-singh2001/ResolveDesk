@@ -16,6 +16,8 @@ feature_flags:
 # Overrides of vertical-pack settings. Limits may only be lowered at brand/location level.
 settings:
   org:
+    privacy_contact_name: Privacy desk, Spice Route Foods
+    privacy_contact_email: privacy@spiceroute.test
     refund_channel: tenant_gateway
     # Mirrors policies late_delivery_v3 (orders before 2026-10-26) and _v4 (from 2026-10-26).
     # Dates are quoted ISO strings; an order is judged by the tiers in force when placed.

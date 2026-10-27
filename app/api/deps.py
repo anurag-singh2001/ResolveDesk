@@ -1,13 +1,15 @@
 """FastAPI dependencies: the tenant comes from the verified token, never from the request."""
 
+import threading
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import Engine
 from sqlalchemy.orm import Session
 
+from app.config import get_settings
 from app.core.auth import AuthError, read_token
 from app.core.db import get_engine, tenant_session
 from app.core.tenancy import TenantContext, load_context
@@ -22,9 +24,40 @@ def get_db_engine() -> Engine:
     return get_engine()
 
 
+MAX_CLOCK_OFFSET = timedelta(days=60)
+CLOCK_ENVS = frozenset({"dev", "test"})  # the only environments where the offset exists
+_clock_lock = threading.Lock()
+_clock_offset = timedelta(0)
+
+
+def clock_offset() -> timedelta:
+    with _clock_lock:
+        return _clock_offset
+
+
+def advance_clock(by: timedelta) -> timedelta:
+    """Move the simulated clock forward, capped at MAX_CLOCK_OFFSET and never below zero, so
+    simulated time can never be earlier than real time. Returns the new offset."""
+    global _clock_offset
+    with _clock_lock:
+        _clock_offset = min(max(_clock_offset + by, timedelta(0)), MAX_CLOCK_OFFSET)
+        return _clock_offset
+
+
+def reset_clock() -> None:
+    global _clock_offset
+    with _clock_lock:
+        _clock_offset = timedelta(0)
+
+
 def get_clock() -> datetime:
-    """Now, as a dependency so tests can move time (e.g. past the login lockout window)."""
-    return datetime.now(UTC)
+    """Now, as a dependency so tests can move time (e.g. past the login lockout window).
+    In dev/test the dev panel's offset (POST /admin/clock) is added; in any other APP_ENV
+    the offset is ignored."""
+    now = datetime.now(UTC)
+    if get_settings().app_env in CLOCK_ENVS:
+        now += clock_offset()
+    return now
 
 
 def _request_session(

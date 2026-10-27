@@ -21,12 +21,17 @@ async function navLabels(role: Role, path = "/") {
 
 describe("role-based navigation", () => {
   it("customers see their orders and cases", async () => {
-    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Help"]);
+    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Privacy & data", "Help"]);
     expect(await screen.findByRole("heading", { name: "My orders" })).toBeInTheDocument();
   });
 
-  it.each<Role>(["location_manager", "franchisee_owner", "hq_owner"])("%s sees approvals and cases", async (role) => {
-    expect(await navLabels(role)).toEqual(["Approvals", "Cases", "Help"]);
+  it("location managers see approvals and cases", async () => {
+    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases", "Help"]);
+    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+  });
+
+  it.each<Role>(["franchisee_owner", "hq_owner"])("%s also sees insights", async (role) => {
+    expect(await navLabels(role)).toEqual(["Approvals", "Cases", "Insights", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
@@ -49,5 +54,23 @@ describe("role-based navigation", () => {
   it("renders the role's manual on the Help page", async () => {
     await navLabels("location_manager", "/help");
     expect(await screen.findByRole("heading", { name: "Location manager guide" })).toBeInTheDocument();
+  });
+});
+
+describe("privacy contact", () => {
+  it("links the tenant's privacy contact in the footer and shows it on the Help page", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /orders": { body: [] },
+      "GET /cases": { body: [] },
+      "GET /meta/privacy": { body: { name: "Privacy desk", email: "privacy@acme.test" } },
+    });
+    renderApp("/help");
+    expect(await screen.findByRole("link", { name: "privacy@acme.test" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Privacy contact" })).toHaveAttribute(
+      "href",
+      "mailto:privacy@acme.test",
+    );
   });
 });

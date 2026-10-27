@@ -11,6 +11,9 @@ const ICON: Record<NavItem["icon"], string> = {
   cases: "M4 5h16v11H8l-4 4V5Z",
   approvals: "M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Z",
   dev: "M8 9l-4 3 4 3m8-6l4 3-4 3M14 6l-4 12",
+  insights: "M4 20V10m6 10V4m6 16v-7m4 7H2",
+  growth: "M3 17l6-6 4 4 8-8m0 0h-5m5 0v5",
+  privacy: "M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Zm-2 8.5h4v3h-4v-3Z",
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5V14m0 3h.01",
 };
 
@@ -40,7 +43,8 @@ export function AppShell() {
   if (!me) return null;
   // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
-  const base = navFor(me.role);
+  const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
+  const base = navFor(me.role, me.growth_enabled === true);
   const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
@@ -114,6 +118,17 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <footer className="mx-auto max-w-7xl border-t border-slate-200 px-4 py-4 text-xs text-slate-500 sm:px-6">
+        {privacy && privacy.email ? (
+          <a href={`mailto:${privacy.email}`} title={privacy.name} className="underline hover:text-slate-700">
+            Privacy contact
+          </a>
+        ) : (
+          <NavLink to="/help" className="underline hover:text-slate-700">
+            Privacy contact
+          </NavLink>
+        )}
+      </footer>
     </div>
   );
 }

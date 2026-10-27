@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.core import audit
 from app.core.models import Campaign, CampaignMember, PlaybookEntry, Transaction
+from app.core.money import format_inr
 from app.core.tenancy import TenantContext
 from app.modules.growth.campaigns import GrowthError, load_campaign
 
@@ -135,7 +136,7 @@ def measure(
         confidence_note=v.note,
         lesson=_lesson(
             v,
-            f"(offer {campaign.params['offer_paise']} paise, "
+            f"(offer {format_inr(campaign.params['offer_paise'])}, "
             f"{campaign.params['window_days']}-day window)",
         ),
     )

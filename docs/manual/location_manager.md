@@ -33,6 +33,8 @@ shows:
 
 Click **Review** (or the card, on a phone) to open it.
 
+Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*). The Outlet menu only lists your own outlets. Your choices stay in the page address, so a reload keeps them. If nothing matches, the page says so.
+
 ## Reviewing a proposal
 
 The review page shows everything you need to decide:
@@ -94,6 +96,12 @@ record of every step: who or what acted, when, and the details. Personal details
 | Declined | No remedy was approved. |
 | With our team | Escalated to a person, for example when the facts are unclear. |
 | Closed | Finished with no further action. |
+
+## Growth
+
+If **Growth** is in your menu, you can see outlets with falling repeat customers and propose or
+approve a win-back campaign for your outlet. Sending needs two different approvers, one of them
+an HQ owner; the screen shows who has approved so far and any reason the system refuses.
 
 ## What the AI does and doesn't do
 

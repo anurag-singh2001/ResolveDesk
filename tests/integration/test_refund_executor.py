@@ -609,3 +609,44 @@ def test_a_confirmed_refund_stays_confirmed_when_another_proposal_escalates_the_
         assert case.status == "escalated"  # a person still looks at the refused one
         assert (status.stage, status.proposal_id) == ("confirmed", str(used[-1]))
     assert len(provider_ops(w)) == len(used)
+
+
+def test_refused_refund_is_never_sent_and_verified_as_such(app_engine, world):
+    from app.engine.verifier import verify_refund
+
+    w = world
+    used, remaining = [], w["total"]
+    while remaining > 0:
+        amount = min(w["cap"], remaining)
+        used.append(propose(app_engine, w, amount))
+        approve(app_engine, w, used[-1])
+        remaining -= amount
+    late = propose(app_engine, w, 1)
+    approve(app_engine, w, late)
+    for pid in used:
+        execute_refund(app_engine, w["hq"], pid)
+    with pytest.raises(ExecutionRefused):
+        execute_refund(app_engine, w["hq"], late)
+    with tenant_session(w["tid"], app_engine) as s:
+        assert s.scalar(select(Execution.never_sent).where(Execution.proposal_id == late)) is True
+        for pid in used:
+            assert (
+                s.scalar(select(Execution.never_sent).where(Execution.proposal_id == pid)) is False
+            )
+    verdict = verify_refund(app_engine, w["hq"], late)
+    assert (verdict.status, verdict.detail.startswith("never sent")) == ("verified", True)
+
+
+def test_a_refund_the_provider_declined_was_sent_and_is_verified_against_it(app_engine, world):
+    from app.engine.verifier import verify_refund
+
+    w = world
+    pid = propose(app_engine, w, small(w))
+    approve(app_engine, w, pid)
+    get_mock("payment").set_chaos(Chaos(error_rate=1.0), merchant_id_for(w["tid"]))
+    assert execute_refund(app_engine, w["hq"], pid).status == "failed"
+    get_mock("payment").set_chaos(Chaos(), merchant_id_for(w["tid"]))
+    with tenant_session(w["tid"], app_engine) as s:
+        assert s.scalar(select(Execution.never_sent).where(Execution.proposal_id == pid)) is False
+    verdict = verify_refund(app_engine, w["hq"], pid)
+    assert (verdict.status, verdict.detail) == ("verified", "provider confirms the refund failed")

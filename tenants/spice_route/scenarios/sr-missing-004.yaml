@@ -1,0 +1,12 @@
+id: sr-missing-004
+tenant: spice_route
+kind: hinglish
+message: मेरे पैकेट में एक आइटम नहीं था, कृपया उसके पैसे वापस कर दीजिए।
+order:
+  select: shortfall
+expect:
+  category: missing_items
+  outcome: proposed
+  action: refund
+  amount: exact
+note: 'S5.6: Devanagari Hindi message; classification must still work'

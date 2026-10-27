@@ -19,15 +19,18 @@ import logging
 import math
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, Field
-from sqlalchemy import Engine, select, text
+from sqlalchemy import Engine, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.core.business_time import DEFAULT_TIMEZONE
 from app.core.db import tenant_session
-from app.core.models import Location, Signal
+from app.core.models import Location, Signal, Transaction
+from app.core.settings_resolver import effective_settings
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +133,20 @@ def read_location(
     )
 
 
+def data_as_of(session: Session, tenant_id: uuid.UUID, now: datetime) -> datetime:
+    """When the job measures up to: the local midnight after the newest order, never later than
+    `now`. A nightly job reads the latest complete day of data; with live orders that is today,
+    and with a fixed demo history it is the history's last day (not an empty recent window)."""
+    latest = session.scalar(
+        select(func.max(Transaction.placed_at)).where(Transaction.tenant_id == tenant_id)
+    )
+    if latest is None:
+        return now
+    tz = ZoneInfo(effective_settings(session).get("business_timezone") or DEFAULT_TIMEZONE)
+    midnight = datetime.combine(latest.astimezone(tz).date() + timedelta(days=1), time(0), tz)
+    return min(now, midnight)
+
+
 def readings(session: Session, tenant_id: uuid.UUID, as_of: datetime) -> list[Reading]:
     """Every location of the tenant (RLS limits the query; the filter is a second layer)."""
     ids = session.scalars(
@@ -171,13 +188,20 @@ def gather_evidence(session: Session, tenant_id: uuid.UUID, r: Reading) -> dict:
     }
 
 
+def format_pct(bp: int) -> str:
+    """Basis points -> "12.3" (one decimal, half up) with integer maths. The web headline
+    (GrowthPage.tsx pct) uses the same rule, so the two never disagree on a figure."""
+    tenths = (abs(bp) + 5) // 10
+    return f"{'-' if bp < 0 else ''}{tenths // 10}.{tenths % 10}"
+
+
 def template_diagnosis(evidence: dict) -> Diagnosis:
     """Deterministic summary: states only the numbers above (hard rule 7 for staff-facing text)."""
     base, recent = evidence["baseline"], evidence["recent"]
     findings = [
-        f"Repeat-customer rate fell from {base['repeat_bp'] / 100:.1f}% "
-        f"({base['orders']} orders) to {recent['repeat_bp'] / 100:.1f}% "
-        f"({recent['orders']} orders): a drop of {evidence['drop_bp'] / 100:.1f} points."
+        f"Repeat-customer rate fell from {format_pct(base['repeat_bp'])}% "
+        f"({base['orders']} orders) to {format_pct(recent['repeat_bp'])}% "
+        f"({recent['orders']} orders): a drop of {format_pct(evidence['drop_bp'])} points."
     ]
     hypotheses = []
     before, after = evidence["tickets_baseline"], evidence["tickets_recent"]

@@ -30,7 +30,7 @@ export function configureClient(opts: { getToken: TokenGetter; onUnauthorized: U
 }
 
 export interface RequestOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   body?: unknown;
   /** Public endpoints (login, businesses): no token, and a 401 is a normal answer. */
   anonymous?: boolean;

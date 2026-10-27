@@ -1,0 +1,277 @@
+# ruff: noqa: F811 (pytest fixtures imported from test_agent_graph)
+"""S4.1: POST /cases/{id}/messages - the customer answers a needs-info question, for every
+tenant (scripted LLMs; no tenant is named)."""
+
+import threading
+import uuid
+from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime, timedelta
+
+import pytest
+from sqlalchemy import func, select
+
+import app.engine.graph as graph
+import app.engine.needs as needs
+from app.api import routes_cases
+from app.config import get_settings
+from app.core.db import tenant_session
+from app.core.models import ActionProposal, AuditEvent, Case, Ticket, TicketMessage
+from app.engine import agent_runner
+from app.engine.sweeper import sweep_tenant
+from mocks.registry import reset_mocks
+from tests.helpers import login
+from tests.integration.test_agent_graph import (  # noqa: F401 (fixtures)
+    FakeBudget,
+    FakeLLM,
+    _classify,
+    _refund,
+    case,
+    policies_loaded,
+)
+from tests.integration.test_workflow_resume import _deps
+
+REPLY = "The costliest item was missing."
+
+
+@pytest.fixture(autouse=True)
+def clean_mocks():
+    reset_mocks()
+    yield
+    reset_mocks()
+
+
+@pytest.fixture
+def waiting(api, app_engine, case, policies_loaded, tenant, monkeypatch):
+    """A free-text case paused at its question, the owner's login and scripted models."""
+    clf = FakeLLM({"Classification": [_classify(needs=["which item"]), _classify()]})
+    res = FakeLLM({"ResolutionDraft": [_refund(case)]})
+    first = graph.run_case(
+        _deps(app_engine, clf, res), case["tid"], case["case_id"], "Something was wrong.",
+        FakeBudget([clf, res]),
+    )  # fmt: skip
+    assert first["outcome"] == "awaiting_info"
+    monkeypatch.setattr(agent_runner, "_deps", lambda engine, budget: _deps(engine, clf, res))
+    agents = get_settings().model_copy(update={"engine_mode": "agents"})
+    monkeypatch.setattr(routes_cases, "get_settings", lambda: agents)
+    cfg = policies_loaded[tenant.name]
+    customers = [u for u in cfg.users if u.role == "customer"]
+    return {
+        "owner": login(api, cfg.slug, customers[0].email),
+        "other_customer": login(api, cfg.slug, customers[1].email),
+        "hq": login(api, cfg.slug, next(u.email for u in cfg.users if u.role == "hq_owner")),
+        "other_tenant": next(
+            login(api, c.slug, next(u.email for u in c.users if u.role == "customer"))
+            for c in policies_loaded.values()
+            if c.slug != cfg.slug
+        ),
+        "clf": clf,
+        "res": res,
+        "url": f"/cases/{case['case_id']}/messages",
+    }
+
+
+def _proposals(app_engine, case) -> int:
+    with tenant_session(case["tid"], app_engine) as s:
+        return s.scalar(
+            select(func.count()).select_from(ActionProposal).where(
+                ActionProposal.case_id == case["case_id"]
+            )
+        )  # fmt: skip
+
+
+def test_a_reply_continues_the_case_and_shows_in_the_timeline(api, app_engine, case, waiting):
+    resp = api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    assert resp.status_code == 201, resp.text
+    # The response is the state at submit time; the resume runs in the background after it.
+    now = api.get(f"/cases/{case['case_id']}", headers=waiting["owner"]).json()
+    assert now["stage"] == "awaiting_approval"  # the graph resumed and proposed
+    assert REPLY in waiting["clf"].calls[1][1][-1].content  # the model input carries the reply
+    assert _proposals(app_engine, case) == 1
+    with tenant_session(case["tid"], app_engine) as s:
+        bodies = s.scalars(
+            select(TicketMessage.body).join(Ticket).where(Ticket.case_id == case["case_id"])
+        ).all()
+    assert REPLY in bodies
+    steps = api.get(f"/cases/{case['case_id']}/timeline", headers=waiting["owner"]).json()
+    assert "You replied" in [s["title"] for s in steps]
+
+
+def test_a_second_reply_does_not_make_a_second_proposal(api, app_engine, case, waiting):
+    first = api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    again = api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    assert first.status_code == 201
+    assert again.status_code == 409
+    assert _proposals(app_engine, case) == 1
+
+
+def test_a_racing_reply_resumes_the_thread_only_once(app_engine, case, waiting):
+    """Two replies that both passed the status check: the graph's claim lets one through."""
+    deps = _deps(app_engine, waiting["clf"], waiting["res"])
+    one = graph.resume_case(deps, case["tid"], case["case_id"], "info", {"kind": "info"})
+    two = graph.resume_case(deps, case["tid"], case["case_id"], "info", {"kind": "info"})
+    assert one["outcome"] != "skipped" and two["outcome"] == "skipped"
+    assert _proposals(app_engine, case) == 1
+
+
+@pytest.mark.parametrize("who", ["other_customer", "other_tenant"])
+def test_someone_elses_case_is_a_404(api, app_engine, case, waiting, who):
+    resp = api.post(waiting["url"], headers=waiting[who], json={"message": REPLY})
+    assert resp.status_code == 404
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(Case, case["case_id"]).status == "awaiting_info"
+
+
+def test_unknown_case_is_a_404_and_staff_cannot_reply(api, case, waiting):
+    missing = api.post(
+        f"/cases/{uuid.uuid4()}/messages", headers=waiting["owner"], json={"message": REPLY}
+    )
+    assert missing.status_code == 404
+    staff = api.post(waiting["url"], headers=waiting["hq"], json={"message": REPLY})
+    assert staff.status_code == 403
+
+
+def test_a_case_not_waiting_for_info_is_a_409(api, app_engine, case, waiting):
+    with tenant_session(case["tid"], app_engine) as s:
+        s.get(Case, case["case_id"]).status = "investigating"
+    resp = api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    assert resp.status_code == 409
+    assert "waiting" in resp.json()["detail"]
+
+
+def test_an_empty_reply_is_rejected(api, waiting):
+    resp = api.post(waiting["url"], headers=waiting["owner"], json={"message": ""})
+    assert resp.status_code == 422
+
+
+def test_concurrent_replies_resume_once_and_keep_both_messages(
+    api, app_engine, case, waiting, monkeypatch
+):
+    """Two replies posted at the same moment: the row lock admits both, both words are kept,
+    and the graph claim lets exactly one resume the thread (one proposal)."""
+    real = routes_cases.resume_info
+    gate = threading.Barrier(2, timeout=30)
+    outcomes = []
+
+    def together(*args):  # both background tasks start the resume at the same moment
+        gate.wait()
+        out = real(*args)
+        outcomes.append(out["outcome"])
+        return out
+
+    monkeypatch.setattr(routes_cases, "resume_info", together)
+    messages = ["First: the costliest item was missing.", "Second: the biggest dish was missing."]
+
+    def post(text):
+        return api.post(
+            waiting["url"], headers=waiting["owner"], json={"message": text}
+        ).status_code
+
+    with ThreadPoolExecutor(2) as pool:
+        codes = list(pool.map(post, messages))
+    assert codes == [201, 201]
+    assert outcomes.count("skipped") == 1 and len(outcomes) == 2
+    assert _proposals(app_engine, case) == 1
+    with tenant_session(case["tid"], app_engine) as s:
+        bodies = s.scalars(
+            select(TicketMessage.body).join(Ticket).where(Ticket.case_id == case["case_id"])
+        ).all()
+        assert s.get(Case, case["case_id"]).status != "awaiting_info"
+    assert all(m in bodies for m in messages)
+
+
+def _lose_the_resume(monkeypatch):
+    monkeypatch.setattr(routes_cases, "resume_info", lambda *a: {"outcome": "skipped"})
+
+
+def _later():
+    return datetime.now(UTC) + timedelta(minutes=5)
+
+
+def _status(app_engine, case) -> str:
+    with tenant_session(case["tid"], app_engine) as s:
+        return s.get(Case, case["case_id"]).status
+
+
+def test_the_sweeper_resumes_a_reply_whose_resume_was_lost(
+    api, app_engine, case, waiting, monkeypatch
+):
+    _lose_the_resume(monkeypatch)
+    resp = api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    assert resp.status_code == 201
+    assert _status(app_engine, case) == "awaiting_info"  # nothing moved
+    # Too fresh: the reply's own background task may still be running it.
+    assert sweep_tenant(app_engine, case["tid"]).replies_resumed == []
+    report = sweep_tenant(app_engine, case["tid"], now=_later())
+    assert report.replies_resumed == [str(case["case_id"])]
+    assert _status(app_engine, case) == "awaiting_approval"
+    assert _proposals(app_engine, case) == 1
+    # Running it again changes nothing: the reply is taken up.
+    assert sweep_tenant(app_engine, case["tid"], now=_later()).replies_resumed == []
+    assert _proposals(app_engine, case) == 1
+
+
+def test_the_sweeper_escalates_a_reply_with_no_thread_to_resume(
+    api, app_engine, case, waiting, monkeypatch
+):
+    _lose_the_resume(monkeypatch)
+    api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    graph._prune(_deps(app_engine, waiting["clf"], waiting["res"]), case["tid"], case["case_id"])
+    sweep_tenant(app_engine, case["tid"], now=_later())
+    with tenant_session(case["tid"], app_engine) as s:
+        assert s.get(Case, case["case_id"]).status == "escalated"
+        reasons = s.scalars(
+            select(AuditEvent.payload["reason"].astext).where(
+                AuditEvent.entity_id == case["case_id"], AuditEvent.event == "case.escalated"
+            )
+        ).all()
+    assert any("could not be resumed" in r for r in reasons)
+    assert _proposals(app_engine, case) == 0
+
+
+def test_an_error_before_the_claim_is_retried_not_escalated(
+    api, app_engine, case, waiting, monkeypatch
+):
+    """Safety review of F2: a transient error (say the database blipped while reading the
+    checkpoint) must not hand a healthy case to a person; the next sweep resumes it."""
+    _lose_the_resume(monkeypatch)
+    api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    with monkeypatch.context() as m:
+
+        def blip(*a, **k):
+            raise ConnectionError("database blip")
+
+        m.setattr(graph, "open_checkpointer", blip)
+        assert sweep_tenant(app_engine, case["tid"], now=_later()).replies_resumed == []
+    assert _status(app_engine, case) == "awaiting_info"  # not escalated, nothing lost
+    assert sweep_tenant(app_engine, case["tid"], now=_later()).replies_resumed == [
+        str(case["case_id"])
+    ]
+    assert _proposals(app_engine, case) == 1
+
+
+def test_a_skipped_resume_is_logged(api, case, waiting, monkeypatch):
+    _lose_the_resume(monkeypatch)
+    warned = []
+    monkeypatch.setattr(routes_cases.log, "warning", lambda msg, *args: warned.append(msg % args))
+    api.post(waiting["url"], headers=waiting["owner"], json={"message": REPLY})
+    assert any("did not resume" in w for w in warned)
+
+
+def test_the_customer_is_told_what_we_need_in_status_and_timeline(api, case, waiting):
+    """The question is a code-owned template picked by the need code, never model text."""
+    base = f"/cases/{case['case_id']}"
+    status = api.get(base, headers=waiting["owner"]).json()
+    assert status["stage"] == "awaiting_info"
+    assert needs.QUESTIONS[needs.NEED_DETAILS] in status["message"]
+    steps = api.get(f"{base}/timeline", headers=waiting["owner"]).json()
+    asked = [s for s in steps if s["stage"] == "awaiting_info"]
+    assert [s["text"] for s in asked] == [needs.QUESTIONS[needs.NEED_DETAILS]]
+    assert asked[0]["title"] == "Question for you"
+
+
+def test_need_codes_map_to_templates_and_unknown_codes_to_a_generic_sentence():
+    assert needs.question_for(needs.NEED_ORDER) == needs.QUESTIONS[needs.NEED_ORDER]
+    for odd in (None, "", "which_item_is_it", 7, "<script>"):
+        assert needs.question_for(odd) == needs.GENERIC_QUESTION
+    assert needs.need_from_payload({"reason": "x"}) is None
+    assert needs.need_from_payload(None) is None

@@ -3,7 +3,9 @@ import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/session";
 import { AppShell } from "./components/AppShell";
 import { EmptyState, Loading } from "./components/ui";
-import { homePath, isStaff } from "./lib/roles";
+import { canSeeGrowth, canSeeInsights, homePath, isStaff } from "./lib/roles";
+import { GrowthPage } from "./pages/GrowthPage";
+import { InsightsPage } from "./pages/InsightsPage";
 import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
 import { CasePage } from "./pages/CasePage";
@@ -13,6 +15,7 @@ import { HelpPage } from "./pages/HelpPage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { PrivacyPage } from "./pages/PrivacyPage";
 import { ReportProblemPage } from "./pages/ReportProblemPage";
 
 /** Hides screens a role has no use for. Access itself is enforced by the API on every call. */
@@ -53,11 +56,14 @@ export function App() {
         <Route path="/orders" element={<Only when={customer}><OrdersPage /></Only>} />
         <Route path="/orders/:orderId" element={<Only when={customer}><OrderDetailPage /></Only>} />
         <Route path="/orders/:orderId/report" element={<Only when={customer}><ReportProblemPage /></Only>} />
+        <Route path="/privacy" element={<Only when={customer}><PrivacyPage /></Only>} />
         <Route path="/cases" element={<CasesPage />} />
         <Route path="/cases/:caseId" element={<CasePage />} />
         <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
-        <Route path="/dev" element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
+        <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
+        <Route path="/growth" element={<Only when={canSeeGrowth(me.role, me.growth_enabled)}><GrowthPage /></Only>} />
+        <Route path="/dev"element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>

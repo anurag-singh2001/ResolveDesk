@@ -46,6 +46,11 @@ Click a card to open the order. The order page shows:
 
 You go straight to the **case page** for your report.
 
+**Privacy requests.** To ask about your personal data, pick **Privacy request** as the category. It is
+never handled by the assistant: it goes straight to a member of our team, and the case page names our
+**Privacy contact** and the date by which we aim to respond. That date is our own internal target, not a
+legal deadline. The Privacy contact is also linked in the footer of every page and on the **Help** page.
+
 ## My cases and the case page
 
 **My cases** lists every problem you have reported, newest first, with its current stage. Click
@@ -60,6 +65,10 @@ The case page shows:
 
 While the case is *Investigating* or *Processing*, the page updates by itself every few seconds.
 If it takes more than two minutes, click **Refresh** to check again.
+
+If the case is **Awaiting info**, we have asked you a question and a **Your reply** box appears on
+the case page. Type your answer and press **Send reply**; the case carries on by itself and the
+timeline shows "You replied".
 
 ### What each stage means
 
@@ -92,3 +101,38 @@ If it takes more than two minutes, click **Refresh** to check again.
 - It **never promises money** before the payment provider confirms it. If the case says
   *Processing*, the refund is on its way but not yet confirmed.
 - It only ever looks at **your** orders.
+
+## Privacy and data
+
+Open **Privacy & data** in the menu.
+
+- **Offers and promotions.** Help with an order never needs your permission for offers. If you
+  want offers on WhatsApp, turn the switch on; to stop them, turn it off. One click either way,
+  and it applies to the next message we would send. **History of your choices** lists each
+  change with its date.
+- **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
+  companies that process data for us (such as the AI providers and the database host).
+- **Erase my data.** Click **Request erasure**. A person reviews it, and then your name, contact
+  details and message text are removed. Records of payments and refunds are kept. The page shows
+  the request's status: **Waiting for review**, **Completed**, or **Deferred** with the reason
+  (for example a case or refund of yours is still open, or we must keep records for one year after
+  your last activity). A deferred request is not dropped; ask the business to review it again
+  once the reason has passed.
+
+## Language for our messages
+
+On the **Help** page, under **Language for our messages**, you can choose how we write to you
+about a report: **English**, **Hinglish** (Hindi in English letters) or **हिन्दी** (Devanagari).
+The status of your report, its history and the questions we ask you then appear in that language.
+
+- The choice is yours alone. We never pick a language for you from your name or where you live.
+  Until you choose, we write in English.
+- Only our messages about your reports change. The buttons, menus and headings of this app stay
+  in English.
+- Amounts look the same in every language (for example `₹1,00,000.00`), and dates use a month
+  name (for example `27 Oct 2026`), never numbers like `10/11`.
+- The messages are fixed, pre-written sentences, not generated text. The Hindi and Hinglish
+  versions say exactly what the English ones say, and keep *waiting for approval*, *being
+  processed*, *done*, *failed* and *needs a check* clearly different. If a sentence has no
+  translation, you see it in English.
+- What you type to us can be in any language; the choice above only affects what we send you.

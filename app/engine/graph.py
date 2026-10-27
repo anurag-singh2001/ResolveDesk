@@ -40,6 +40,7 @@ from app.agents.schemas import Classification, ResolutionDraft
 from app.core import audit, events
 from app.core.business_time import business_date
 from app.core.db import tenant_session
+from app.core.i18n import case_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -54,6 +55,8 @@ from app.engine import lifecycle
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
 from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
+from app.engine.needs import NEED_DETAILS, NEED_ORDER, question_for
+from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal
 from app.engine.resolver import Remedy, decide_remedy
 from app.llm.providers import LLMError
@@ -70,15 +73,8 @@ MAX_MESSAGE = 4000
 # Graph supersteps per invoke: the step budget plus code-only nodes and approve re-checks.
 RECURSION_LIMIT = MAX_STEPS + 12
 NO_PAUSED_WORKFLOW = "no paused workflow"
-
-# What we may need from the customer -> the question code sends (no model-written text).
-NEED_ORDER = "order"
-NEED_DETAILS = "details"
-QUESTIONS = {
-    NEED_ORDER: "Which order is this about? Please pick it from your order list.",
-    NEED_DETAILS: "Thanks for telling us. So we can look into it, could you tell us a bit more"
-    " about what went wrong with your order (for example, which item was affected)?",
-}
+# A failure before the claim (e.g. the database blipped): nothing changed, try again later.
+RESUME_ERROR = "resume failed before the claim"
 
 
 class StructuredLLM(Protocol):
@@ -148,6 +144,14 @@ def _step(state: CaseState) -> int:
     return state.get("step_count", 0) + 1
 
 
+def _privacy_guard(w: dict, out: CaseState) -> CaseState:
+    """A privacy/grievance request never reaches the model that drafts remedies (S5.5)."""
+    if out["category"] == PRIVACY_CATEGORY:
+        w["reason"] = ESCALATION_REASON
+        return {**out, "outcome": "escalated"}
+    return out
+
+
 def build_graph(deps: Deps, checkpointer=None):
     def classify(state: CaseState) -> CaseState:
         step = _step(state)
@@ -159,7 +163,7 @@ def build_graph(deps: Deps, checkpointer=None):
             categories, vocabulary = list(pack.issue_categories), dict(pack.vocabulary)
             known = case.category
         if known:  # the customer already chose a category (form): no LLM call needed
-            return {"category": known, "need": None, "step_count": step}
+            return _privacy_guard(w, {"category": known, "need": None, "step_count": step})
         result: Classification = deps.classifier.invoke_structured(
             classifier_messages(message, categories, vocabulary), Classification
         )
@@ -177,7 +181,7 @@ def build_graph(deps: Deps, checkpointer=None):
             s.execute(
                 update(Ticket).where(Ticket.case_id == case_id).values(category=result.category)
             )
-        return {"category": result.category, "need": None, "step_count": step}
+        return _privacy_guard(w, {"category": result.category, "need": None, "step_count": step})
 
     def investigate(state: CaseState) -> CaseState:
         step = _step(state)
@@ -429,9 +433,10 @@ def store_proposal(deps: Deps, state: CaseState) -> CaseState:
 
 
 def ask_customer(deps: Deps, state: CaseState) -> CaseState:
-    question = QUESTIONS[state.get("need") or NEED_DETAILS]
+    need = state.get("need") or NEED_DETAILS
+    question = question_for(need)
     reason = _work(deps, state).get("reason") or question
-    _finish(deps, state, "awaiting_info", reason, ticket=question)
+    _finish(deps, state, "awaiting_info", reason, ticket=question, need=need)
     return {"outcome": "awaiting_info", "step_count": _step(state)}
 
 
@@ -485,7 +490,9 @@ FINISHABLE_FROM = {
 }
 
 
-def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "") -> None:
+def _finish(
+    deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "", need: str = ""
+) -> None:
     """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
     the customer. The event payload carries no reason text (it may quote the model)."""
     tid = uuid.UUID(state["tenant_id"])
@@ -500,13 +507,17 @@ def _finish(deps: Deps, state: CaseState, status: str, reason: str, ticket: str 
             return
         case.status = status
         if ticket:
+            if need:  # the question in the customer's own language (code-owned template)
+                ticket = question_for(need, case_language(s, case))
             ticket_id = s.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
             if ticket_id is not None:
                 s.add(TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="system",
                                     body=ticket, sent_at=now))  # fmt: skip
+        payload = {"reason": reason[:500]}
+        if need:  # a code, not text: the customer-facing question is looked up from it
+            payload["need"] = need
         audit.record(s, tid, actor_type="agent", actor_id=None, event=f"case.{status}",
-                     entity_type="case", entity_id=case.id,
-                     payload={"reason": reason[:500]})  # fmt: skip
+                     entity_type="case", entity_id=case.id, payload=payload)  # fmt: skip
         events.emit(s, tid, f"case.{status}", case.id, {"run_id": state.get("run_id")})
 
 
@@ -785,8 +796,8 @@ def resume_case(
             )
     except Exception as exc:
         log.exception("could not resume case %s", case_id)
-        if run_id is None:  # nothing was claimed or resumed
-            return {"outcome": "skipped", "reason": NO_PAUSED_WORKFLOW}
+        if run_id is None:  # nothing was claimed or resumed: the thread may well be fine
+            return {"outcome": "skipped", "reason": RESUME_ERROR}
         # Claimed, then failed (e.g. the connection dropped): a person takes over, so the
         # case is never left in 'investigating' with the reply unread.
         final, paused = {"outcome": "escalated", "reason": f"internal error: {type(exc).__name__}",

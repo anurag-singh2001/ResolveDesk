@@ -225,6 +225,7 @@ def _record_refusal(engine, ctx, proposal_id, reason: str) -> bool:
                     idempotency_key=refund_key(proposal_id),
                     status="failed",
                     error=f"refused: {reason}",
+                    never_sent=True,
                 )
             )
             s.flush()

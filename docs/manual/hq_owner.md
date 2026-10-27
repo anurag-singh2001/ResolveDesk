@@ -13,7 +13,7 @@ Five wrong passwords lock the account for a few minutes ("Too many attempts"). "
 ended" means sign in again. Use **Sign out** (top right) on shared devices.
 
 The top bar shows the business, your name, your role badge (**HQ owner**), **Help** and **Sign
-out**. The menu has **Approvals**, **Cases** and **Help**.
+out**. The menu has **Approvals**, **Cases**, **Insights**, **Growth** (if switched on for your business) and **Help**.
 
 ## Approvals
 
@@ -21,6 +21,8 @@ out**. The menu has **Approvals**, **Cases** and **Help**.
 column tells you where each order was made. Each row also shows **category**, **order**,
 **action**, **amount**, **risk** (*Low*, *Medium*, *High*) and **age**; **Checks failed** means it
 can't be approved as it stands.
+
+Use the **Outlet**, **Action** and **Sort** menus above the list to narrow it (sort: *Oldest first*, *Newest first*, *Highest amount*). Your choices stay in the page address, so a reload or a shared link keeps them. If nothing matches, the page says so.
 
 Proposals that a manager or franchisee couldn't approve ("needs a senior approver") wait here for
 you, usually larger refunds.
@@ -69,6 +71,23 @@ details are hidden.
 | Declined | Not approved. |
 | With our team | Handed to a person. |
 | Closed | Finished. |
+
+## Insights
+
+**Insights** (menu) is a read-only table with one row per outlet for the last 30 days: cases
+opened, refunds confirmed (count and total), vouchers issued (count and total), median time to
+decision, and the repeat-customer rate. Money is shown in rupees; **-** means no data yet.
+
+## Growth
+
+Where the business has Growth switched on, a **Growth** menu item appears. It lists outlets whose
+repeat-customer rate has dropped (**Refresh signals** re-runs the check; HQ only). For a signal
+click **Propose win-back campaign**: you see the audience, the **holdout** (customers deliberately
+not contacted, so the result can be judged fairly), the budget and who has approved so far.
+Nothing is sent until **two different people** approve and **at least one is an HQ owner**; you
+can't approve twice. If the system refuses, its reason is shown. After the campaign has run,
+**Measure result** shows the verdict (worked, did not work, or inconclusive) and the lesson
+saved to the playbook. "Possible causes" are hints, not confirmed facts.
 
 ## Dev panel (demo only)
 

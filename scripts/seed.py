@@ -20,6 +20,29 @@ from app.rag.ingest import ingest_policies
 from simulator.load import load_history
 
 
+def refresh_packs(folders, owner_engine, engine, embedder) -> list[str]:
+    """Bring each tenant's pack, config rows, settings and policies up to date with its folder.
+
+    Idempotent (every write is an upsert keyed by a deterministic id) and it never reads or
+    writes order history, so it is safe to run after every pull. Returns one line per tenant.
+    """
+    lines = []
+    for folder in folders:
+        if not (folder / "tenant.yaml").is_file():
+            raise FileNotFoundError(f"no tenant folder: {folder.name}")
+        started = time.perf_counter()
+        cfg = load_tenant(folder)
+        pack = load_pack(cfg.vertical_pack)
+        load_pack_into_db(owner_engine, pack)
+        tid = load_tenant_into_db(engine, cfg, pack)
+        stats = ingest_policies(engine, cfg.slug, folder, embedder)
+        lines.append(
+            f"refreshed {cfg.slug} ({tid}), policies {stats.documents} ({stats.written} written)"
+            f" in {time.perf_counter() - started:.1f}s"
+        )
+    return lines
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("tenant", nargs="?", default="all")

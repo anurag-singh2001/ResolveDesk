@@ -9,6 +9,9 @@
 4. Cases stuck in `investigating` past the agent run TTL (the run died, or never started):
    mark the dead run failed and escalate the case to a person. Escalating, not re-running:
    a maintenance job should not spend LLM budget, and a person sees the case at once.
+5. Cases still `awaiting_info` with a customer reply (`case.info_added`) that no run took up
+   (the reply's background resume was lost or skipped): resume the thread again (idempotent,
+   the graph claims it once); with no paused thread to resume, escalate with a clear reason.
 
 Running it twice, or while a background task runs the same proposal, writes nothing twice:
 the executors serialise on the proposal and resume by key.
@@ -19,13 +22,14 @@ import uuid
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import Engine, select, update
+from sqlalchemy import Engine, func, select, update
 
 from app.core import audit, events
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
     Approval,
+    AuditEvent,
     Case,
     Execution,
     Verification,
@@ -33,11 +37,12 @@ from app.core.models import (
 )
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
-from app.engine.agent_runner import resume_after_decision
+from app.engine.agent_runner import resume_after_decision, resume_info
 from app.engine.dispatch import EXECUTORS, reconcile, run_approved
 from app.engine.executor import TERMINAL
-from app.engine.graph import RUN_TTL, prune_finished
-from app.engine.lifecycle import verify_executed
+from app.engine.graph import NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
+from app.engine.lifecycle import escalate, verify_executed
+from app.engine.privacy import flag_due_soon
 from app.engine.verifier import FINAL
 
 log = logging.getLogger(__name__)
@@ -51,6 +56,8 @@ class SweepReport:
     executed: list[str] = field(default_factory=list)
     reconciled: list[str] = field(default_factory=list)
     escalated_cases: list[str] = field(default_factory=list)
+    replies_resumed: list[str] = field(default_factory=list)
+    grievances_flagged: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
@@ -137,6 +144,14 @@ def sweep_tenant(
         report.escalated_cases = _escalate_stuck_cases(engine, tenant_id, now, run_ttl)
     except Exception:
         log.exception("could not escalate stuck cases for tenant %s", tenant_id)
+    try:
+        report.grievances_flagged = flag_due_soon(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not flag due-soon grievances for tenant %s", tenant_id)
+    try:
+        report.replies_resumed = _recover_replies(engine, tenant_id, now, min_age)
+    except Exception:
+        log.exception("could not recover customer replies for tenant %s", tenant_id)
     # Housekeeping, each best effort: one failing must not stop the other or hide the work
     # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
     try:
@@ -186,6 +201,62 @@ def _resume(engine, tenant_id, case_id, proposal_id) -> dict:
     except Exception:
         log.exception("could not resume the workflow of case %s", case_id)
         return {"outcome": "skipped"}
+
+
+def _unanswered_replies(engine, tenant_id, now, min_age) -> list[uuid.UUID]:
+    """Cases waiting for information whose newest reply is older than min_age and newer than
+    every run of the case: a taken-up reply moves the run (claim, then pause or finish)."""
+    reply_at = (
+        select(func.max(AuditEvent.occurred_at))
+        .where(
+            AuditEvent.tenant_id == tenant_id,
+            AuditEvent.event == "case.info_added",
+            AuditEvent.entity_id == Case.id,
+        )
+        .scalar_subquery()
+    )
+    last_run = (
+        select(func.max(WorkflowRun.updated_at))
+        .where(WorkflowRun.tenant_id == tenant_id, WorkflowRun.case_id == Case.id)
+        .scalar_subquery()
+    )
+    with tenant_session(tenant_id, engine) as s:
+        return list(
+            s.scalars(
+                select(Case.id)
+                .where(
+                    Case.tenant_id == tenant_id,
+                    Case.status == "awaiting_info",
+                    reply_at <= now - min_age,
+                    (last_run.is_(None)) | (last_run < reply_at),
+                )
+                .order_by(reply_at)
+            )
+        )
+
+
+def _recover_replies(engine, tenant_id, now, min_age) -> list[str]:
+    """Re-drive replies whose resume never claimed the run. No transaction is open while the
+    graph runs (it may call the LLM). Per case: a reply with no paused thread to continue
+    (checkpoint pruned; or ENGINE_MODE is not "agents", where replies are never resumed, so a
+    replied case reaches a person after min_age) goes to a person; a busy claim or an error
+    before the claim is left for the next pass. Returns only the cases actually resumed."""
+    recovered = []
+    for case_id in _unanswered_replies(engine, tenant_id, now, min_age):
+        try:
+            out = resume_info(engine, tenant_id, case_id, "")
+            if out.get("outcome") == "skipped" and out.get("reason") == NO_PAUSED_WORKFLOW:
+                escalate(
+                    engine,
+                    tenant_id,
+                    case_id,
+                    "customer replied but the workflow could not be resumed",
+                )
+            elif out.get("outcome") != "skipped":
+                recovered.append(str(case_id))
+        except Exception:
+            log.exception("sweeper: could not recover the reply on case %s", case_id)
+    return recovered
 
 
 def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:

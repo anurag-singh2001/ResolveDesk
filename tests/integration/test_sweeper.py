@@ -303,7 +303,7 @@ def test_a_refund_that_was_never_sent_gets_a_final_verdict_once(app_engine, worl
         approval_id = s.scalar(select(Approval.id).where(Approval.proposal_id == pid))
         s.add(Execution(tenant_id=w["tid"], proposal_id=pid, approval_id=approval_id,
                         idempotency_key=executor.refund_key(pid), status="failed",
-                        error="refused: not_eligible: x"))  # fmt: skip
+                        error="refused: not_eligible: x", never_sent=True))  # fmt: skip
     assert str(pid) in _sweep(app_engine, w).verified
     assert str(pid) not in _sweep(app_engine, w).verified
     with tenant_session(w["tid"], app_engine) as s:
@@ -362,3 +362,29 @@ def test_a_live_run_is_left_alone(app_engine, world):
     assert str(case_id) not in report.escalated_cases
     with tenant_session(w["tid"], app_engine) as s:
         assert s.get(Case, case_id).status == "investigating"
+
+
+def test_migration_backfill_flags_old_never_sent_rows_only(app_engine, world):
+    """0016's backfill SQL flags failed rows that old code marked by error prefix."""
+    import importlib
+
+    from sqlalchemy import text
+
+    backfill = importlib.import_module("migrations.versions.0016_execution_never_sent").BACKFILL
+    w = world
+    rows = []
+    cases = [("refused: x", "failed"), ("released by operator: y", "failed"),
+             ("declined_by_provider", "failed"), ("refused: x", "succeeded")]  # fmt: skip
+    for err, status in cases:
+        _, pid = _approved_proposal(app_engine, w, "refund", {"amount_paise": 100})
+        with tenant_session(w["tid"], app_engine) as s:
+            approval_id = s.scalar(select(Approval.id).where(Approval.proposal_id == pid))
+            s.add(Execution(tenant_id=w["tid"], proposal_id=pid, approval_id=approval_id,
+                            idempotency_key=executor.refund_key(pid), status=status,
+                            error=err))  # fmt: skip
+        rows.append(pid)
+    with tenant_session(w["tid"], app_engine) as s:
+        s.execute(text(backfill))  # RLS limits it to this tenant's rows
+        got = [s.scalar(select(Execution.never_sent).where(Execution.proposal_id == p))
+               for p in rows]  # fmt: skip
+    assert got == [True, True, False, False]

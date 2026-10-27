@@ -147,9 +147,56 @@ class IdempotentMock:
         self._ops: dict[tuple[str, str], Operation] = {}
         self._inflight: dict[tuple[str, str], _InFlight] = {}
         self._clock = time.time
+        self._store = None  # a MockStateStore when MOCK_STATE_FILE is set
+        self._dirty = False  # state changed since the last flush (guarded by _lock)
         self.chaos = ChaosByMerchant()
         if chaos is not None:
             self.chaos.set(chaos)
+
+    # --- optional persistence (see mocks/persist.py) ---------------------------------------
+    request_type: type | None = None  # dataclass of the request, to rebuild it after a reload
+
+    def attach_store(self, store) -> None:
+        self._store = store
+
+    def _decode_request(self, data: dict) -> Any:
+        return self.request_type(**data)
+
+    def _flush(self) -> None:
+        """Ask the store to write soon (coalesced, see mocks/persist.py) if something changed."""
+        with self._lock:
+            dirty, self._dirty = self._dirty, False
+        if dirty and self._store is not None:
+            self._store.request_save()
+
+    def dump_state(self) -> dict:
+        with self._lock:
+            return {
+                "ops": [
+                    {"merchant_id": m, "key": k, "op": asdict(op)}
+                    for (m, k), op in self._ops.items()
+                ],
+                "inflight": [
+                    {"merchant_id": m, "key": k, **asdict(f)}
+                    for (m, k), f in self._inflight.items()
+                ],
+            }
+
+    def load_state(self, data: dict) -> None:
+        ops, inflight = {}, {}
+        for item in data.get("ops", []):
+            raw = dict(item["op"])
+            raw["request"] = self._decode_request(raw["request"])
+            ops[(item["merchant_id"], item["key"])] = Operation(**raw)
+        for item in data.get("inflight", []):
+            inflight[(item["merchant_id"], item["key"])] = _InFlight(
+                sent_at=item["sent_at"],
+                lands_at=item["lands_at"],
+                request_hash=item["request_hash"],
+                request=self._decode_request(item["request"]),
+            )
+        with self._lock:
+            self._ops, self._inflight = ops, inflight
 
     def set_chaos(self, chaos: Chaos, merchant_id: str | None = None) -> None:
         self.chaos.set(chaos, merchant_id)
@@ -166,7 +213,11 @@ class IdempotentMock:
             self._ops.clear()
             self._inflight.clear()
             self._clock = time.time
+            self._dirty = True
         self.chaos.reset()
+        self._flush()
+        if self._store is not None:
+            self._store.flush()  # with a state file configured, this empties it at once
 
     def _land(self, merchant_id: str, key: str) -> None:
         """Apply a late request whose time has come; drop one past the request lifetime.
@@ -177,15 +228,24 @@ class IdempotentMock:
         now = self.now()
         if (merchant_id, key) in self._ops:
             del self._inflight[(merchant_id, key)]  # a later same-key call already applied it
+            self._dirty = True
         elif flight.lands_at - flight.sent_at > self.request_lifetime_s:
             if now - flight.sent_at > self.request_lifetime_s:
                 del self._inflight[(merchant_id, key)]  # expired: it never lands
+                self._dirty = True
         elif now >= flight.lands_at:
             op = self._create(merchant_id, key, flight.request_hash, flight.request)
             self._ops[(merchant_id, key)] = op
             del self._inflight[(merchant_id, key)]
+            self._dirty = True
 
     def _call(self, merchant_id: str, idempotency_key: str, request: Any) -> Operation:
+        try:
+            return self._call_inner(merchant_id, idempotency_key, request)
+        finally:
+            self._flush()  # after the lock is released, also when the call raised
+
+    def _call_inner(self, merchant_id: str, idempotency_key: str, request: Any) -> Operation:
         """Returns a snapshot of the stored operation (safe to read after the lock)."""
         if not idempotency_key:
             raise ValueError("idempotency_key is required")
@@ -204,6 +264,7 @@ class IdempotentMock:
         with self._lock:
             key = (merchant_id, idempotency_key)
             self._land(merchant_id, idempotency_key)
+            self._dirty = True  # every call that gets here changes something we persist
             op = self._ops.get(key)
             if op is None and late:
                 if key not in self._inflight:
@@ -252,13 +313,18 @@ class IdempotentMock:
 
     def get_by_key(self, merchant_id: str, idempotency_key: str) -> Operation | None:
         """Reconciliation: what happened to this key? Never subject to chaos."""
-        with self._lock:
-            self._land(merchant_id, idempotency_key)
-            op = self._ops.get((merchant_id, idempotency_key))
-            if op is None:
-                return None
-            self._advance(op)
-            return dataclasses.replace(op, extra=dict(op.extra))
+        try:
+            with self._lock:
+                self._land(merchant_id, idempotency_key)
+                op = self._ops.get((merchant_id, idempotency_key))
+                if op is None:
+                    return None
+                if op.status == "processing":
+                    self._dirty = True  # polling moves it towards settled
+                self._advance(op)
+                return dataclasses.replace(op, extra=dict(op.extra))
+        finally:
+            self._flush()
 
     def operations(self, merchant_id: str) -> list[Operation]:
         with self._lock:

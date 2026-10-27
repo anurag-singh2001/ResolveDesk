@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import audit, events
-from app.core.models import Case, Customer, Ticket, TicketMessage, Transaction
+from app.core.models import Case, Customer, Ticket, TicketMessage, Transaction, User
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 from app.engine import lifecycle
@@ -17,6 +17,21 @@ OPEN_STATUSES = ("open", "investigating", "awaiting_info", "awaiting_approval", 
 
 
 UNCLASSIFIED = "unknown"  # ticket category until the agent pipeline classifies the case
+
+
+def lock_customer(session: Session, where, user_id: uuid.UUID) -> Customer:
+    """Lock the customer row so a case write and an erasure of that customer
+    (data_rights.run_erasure holds the row FOR UPDATE) serialize: either the erasure waits and
+    then sees this case, or this write waits and then finds the account erased.
+
+    FOR UPDATE, not FOR SHARE: approvals.auto_decide later takes the same row FOR UPDATE in
+    the same transaction, and a share-then-exclusive upgrade deadlocks two concurrent cases of
+    one customer. Lock order everywhere: case (if any) before customer, as the graph does."""
+    customer = session.scalar(select(Customer).where(where).with_for_update())
+    erased = session.scalar(select(User.erased_at).where(User.id == user_id))
+    if customer is None or erased is not None:
+        raise CaseNotFound("account not found")
+    return customer
 
 
 class CaseError(Exception):
@@ -29,6 +44,10 @@ class CaseNotFound(CaseError):
 
 class InvalidCategory(CaseError):
     code = "invalid_category"
+
+
+class NotAwaitingInfo(CaseError):
+    code = "not_awaiting_info"
 
 
 def open_case(
@@ -57,7 +76,7 @@ def open_case(
     )
     if order is None:
         raise CaseNotFound("order not found")
-    customer = session.scalar(select(Customer).where(Customer.user_id == ctx.user_id))
+    customer = lock_customer(session, Customer.user_id == ctx.user_id, ctx.user_id)
     existing = session.scalar(
         select(Case).where(
             Case.customer_id == customer.id,
@@ -146,3 +165,43 @@ def open_case(
         payload={"reason": remedy.reason, "proposal_id": str(proposal_id or "")},
     )
     return case, proposal_id
+
+
+def add_reply(
+    session: Session, ctx: TenantContext, case: Case, message: str, now: datetime
+) -> None:
+    """The customer answers the question a case is waiting on: keep their words on the case's
+    ticket (the graph re-reads the whole conversation when it resumes) and note it in the audit
+    trail. The caller has already checked the case is theirs. The row lock makes the status check
+    race-free; the graph's own resume claim makes a double submit continue the thread once."""
+    # Case before customer: the graph's propose step locks in that order too.
+    locked = session.scalar(select(Case).where(Case.id == case.id).with_for_update())
+    try:
+        lock_customer(session, Customer.id == case.customer_id, ctx.user_id)
+    except CaseNotFound:
+        raise NotAwaitingInfo("this account has been erased") from None
+    if locked is None or locked.status != "awaiting_info":
+        raise NotAwaitingInfo("this case is not waiting for more information")
+    ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
+    if ticket_id is None:
+        raise NotAwaitingInfo("this case has no conversation to add to")
+    session.add(
+        TicketMessage(
+            tenant_id=ctx.tenant_id,
+            ticket_id=ticket_id,
+            author="customer",
+            body=message,
+            sent_at=now,
+        )
+    )
+    # No message text in the audit payload: the words live on the ticket only.
+    audit.record(
+        session,
+        ctx.tenant_id,
+        actor_type="user",
+        actor_id=ctx.user_id,
+        event="case.info_added",
+        entity_type="case",
+        entity_id=case.id,
+        payload={},
+    )

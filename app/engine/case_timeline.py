@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.i18n import TEMPLATES, case_language, t
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -21,6 +22,7 @@ from app.core.models import (
     RefundOperation,
 )
 from app.core.money import format_inr
+from app.engine.needs import need_from_payload, question_for
 
 
 @dataclass(frozen=True)
@@ -31,43 +33,46 @@ class TimelineStep:
     text: str
 
 
-# Case-level audit events -> (stage, title, text). Events not listed are not shown.
+# Case-level audit events -> (stage, title key, text key). Events not listed are not shown.
 _CASE_EVENTS = {
-    "case.awaiting_info": (
-        "awaiting_info",
-        "Question for you",
-        "We asked you for a few more details about this order.",
-    ),
-    "case.escalate": (
-        "escalated",
-        "Passed to our team",
-        "A member of our team will look into this.",
-    ),
-    "case.escalated": (
-        "escalated",
-        "Passed to our team",
-        "A member of our team will look into this.",
-    ),
-    "case.apology": ("closed", "Noted", "Sorry about this. We have noted it with the team."),
+    "case.awaiting_info": ("awaiting_info", "tl.question.title", "tl.question.text"),
+    "case.info_added": ("investigating", "tl.replied.title", "tl.replied.text"),
+    "case.escalate": ("escalated", "tl.passed.title", "status.escalated_team"),
+    "case.escalated": ("escalated", "tl.passed.title", "status.escalated_team"),
+    "case.apology": ("closed", "tl.noted.title", "status.apology_closed"),
 }
 
 
-def _remedy(proposal: ActionProposal) -> str:
-    label = proposal.action.replace("_", " ")
+def _remedy(proposal: ActionProposal, lang: str) -> str:
     amount = proposal.amount_paise
-    return f"a {label} of {format_inr(amount)}" if amount else f"a {label}"
+    key = f"remedy.{proposal.action}"
+    label = proposal.action.replace("_", " ")
+    if amount and key in TEMPLATES:
+        return t(key, lang, amount=format_inr(amount))
+    if amount:  # an action without its own wording still states its amount
+        return t("remedy.other_amount", lang, label=label, amount=format_inr(amount))
+    return t("remedy.other", lang, label=label)
 
 
-def case_timeline(session: Session, case: Case, now: datetime | None = None) -> list[TimelineStep]:
-    """Oldest first. The caller has already checked the case is visible to them."""
+def case_timeline(
+    session: Session, case: Case, now: datetime | None = None, language: str | None = None
+) -> list[TimelineStep]:
+    """Oldest first, in `language` (default: the customer's own choice). The caller has
+    already checked the case is visible to them."""
     now = now or datetime.now(UTC)
+    lang = language or case_language(session, case)
     steps = [
-        TimelineStep(case.opened_at, "received", "Report received", "We received your report."),
+        TimelineStep(
+            case.opened_at,
+            "received",
+            t("tl.received.title", lang),
+            t("tl.received.text", lang),
+        ),
         TimelineStep(
             case.opened_at,
             "investigating",
-            "Looking into it",
-            "We started looking into your order.",
+            t("tl.looking.title", lang),
+            t("tl.looking.text", lang),
         ),
     ]
     events = session.scalars(
@@ -79,7 +84,12 @@ def case_timeline(session: Session, case: Case, now: datetime | None = None) -> 
         )
         .order_by(AuditEvent.occurred_at, AuditEvent.id)
     )
-    steps += [TimelineStep(e.occurred_at, *_CASE_EVENTS[e.event]) for e in events]
+    for e in events:
+        stage, title_key, text_key = _CASE_EVENTS[e.event]
+        text = t(text_key, lang)
+        if e.event == "case.awaiting_info":  # say WHAT we need: a code-owned template
+            text = question_for(need_from_payload(e.payload), lang)
+        steps.append(TimelineStep(e.occurred_at, stage, t(title_key, lang), text))
 
     proposals = session.scalars(
         select(ActionProposal)
@@ -87,7 +97,14 @@ def case_timeline(session: Session, case: Case, now: datetime | None = None) -> 
         .order_by(ActionProposal.created_at, ActionProposal.id)
     )
     for proposal in proposals:
-        steps += _proposal_steps(session, proposal, now)
+        # A proposal's steps are causal (proposed → approved → executed), but their stamps
+        # come from two clocks: created_at from the database, decided_at/expires_at from the
+        # app server. A server clock a second behind would sort "Approved" before "Proposed";
+        # never let a step in the chain go back in time.
+        chain = _proposal_steps(session, proposal, now, lang)
+        for i in range(1, len(chain)):
+            chain[i] = replace(chain[i], at=max(chain[i].at, chain[i - 1].at))
+        steps += chain
     # Server-default stamps (transaction start) can be a hair before opened_at (set in Python
     # in the same transaction): nothing is shown before "received". The sort is stable, so
     # steps with the same time keep the order they were built in.
@@ -96,14 +113,14 @@ def case_timeline(session: Session, case: Case, now: datetime | None = None) -> 
 
 
 def _proposal_steps(
-    session: Session, proposal: ActionProposal, now: datetime
+    session: Session, proposal: ActionProposal, now: datetime, lang: str = "en"
 ) -> list[TimelineStep]:
     steps = [
         TimelineStep(
             proposal.created_at,
             "awaiting_approval",
-            "Remedy proposed",
-            f"We proposed {_remedy(proposal)}.",
+            t("tl.proposed.title", lang),
+            t("tl.proposed.text", lang, remedy=_remedy(proposal, lang)),
         )
     ]
     approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal.id))
@@ -114,8 +131,8 @@ def _proposal_steps(
             TimelineStep(
                 approval.decided_at,
                 "declined",
-                "Not approved",
-                "Your request was reviewed and not approved.",
+                t("tl.declined.title", lang),
+                t("status.declined", lang),
             )
         )
         return steps
@@ -123,14 +140,12 @@ def _proposal_steps(
         TimelineStep(
             approval.decided_at,
             "processing",
-            "Approved",
-            "Approved automatically under the business's rules."
-            if approval.mode == "auto"
-            else "Your request was approved by our team.",
+            t("tl.approved.title", lang),
+            t("tl.approved.auto" if approval.mode == "auto" else "tl.approved.team", lang),
         )
     )
     if proposal.action == "free_item_voucher":
-        return steps + _voucher_steps(session, proposal, approval, now)
+        return steps + _voucher_steps(session, proposal, approval, now, lang)
     if proposal.action != "refund":
         return steps
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
@@ -142,9 +157,8 @@ def _proposal_steps(
             TimelineStep(
                 execution.updated_at,
                 "confirmed",
-                "Refund confirmed",
-                f"Your refund of {format_inr(proposal.amount_paise)} has been processed by "
-                "our payment provider.",
+                t("tl.refund_confirmed.title", lang),
+                t("status.refund_confirmed", lang, amount=format_inr(proposal.amount_paise)),
             )
         )
     elif execution is not None and execution.status == "failed":
@@ -152,9 +166,8 @@ def _proposal_steps(
             TimelineStep(
                 execution.updated_at,
                 "escalated",
-                "Passed to our team",
-                "We could not complete the refund automatically. "
-                "A member of our team will contact you.",
+                t("tl.passed.title", lang),
+                t("status.refund_failed", lang),
             )
         )
     elif execution is None and now >= approval.expires_at:  # same rule as case_status
@@ -162,8 +175,8 @@ def _proposal_steps(
             TimelineStep(
                 approval.expires_at,
                 "escalated",
-                "Passed to our team",
-                "Your refund needs a check by our team before it can continue.",
+                t("tl.passed.title", lang),
+                t("tl.refund_check.text", lang),
             )
         )
     elif ledger is not None and ledger.status == "pending_reconciliation":
@@ -171,15 +184,15 @@ def _proposal_steps(
             TimelineStep(
                 ledger.updated_at,
                 "escalated",
-                "Passed to our team",
-                "Your refund needs a check by our team before it can continue.",
+                t("tl.passed.title", lang),
+                t("tl.refund_check.text", lang),
             )
         )
     return steps
 
 
 def _voucher_steps(
-    session: Session, proposal: ActionProposal, approval: Approval, now: datetime
+    session: Session, proposal: ActionProposal, approval: Approval, now: datetime, lang: str = "en"
 ) -> list[TimelineStep]:
     """Same wording and rules as case_status: issued only once the voucher provider confirmed."""
     execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
@@ -188,8 +201,8 @@ def _voucher_steps(
             TimelineStep(
                 execution.updated_at,
                 "confirmed",
-                "Voucher issued",
-                f"Your voucher worth {format_inr(proposal.amount_paise)} has been issued.",
+                t("tl.voucher_issued.title", lang),
+                t("status.voucher_issued", lang, amount=format_inr(proposal.amount_paise)),
             )
         ]
     if execution is not None and execution.status == "failed":
@@ -197,9 +210,8 @@ def _voucher_steps(
             TimelineStep(
                 execution.updated_at,
                 "escalated",
-                "Passed to our team",
-                "We could not issue the voucher automatically. "
-                "A member of our team will contact you.",
+                t("tl.passed.title", lang),
+                t("status.voucher_failed", lang),
             )
         ]
     if execution is None and now >= approval.expires_at:  # same rule as case_status
@@ -207,8 +219,8 @@ def _voucher_steps(
             TimelineStep(
                 approval.expires_at,
                 "escalated",
-                "Passed to our team",
-                "Your voucher needs a check by our team before it can be issued.",
+                t("tl.passed.title", lang),
+                t("tl.voucher_check.text", lang),
             )
         ]
     return []
