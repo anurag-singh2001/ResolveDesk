@@ -53,8 +53,11 @@ class CaseOut(BaseModel):
     amount_paise: int | None = None
     proposal_id: str | None = None
     created_at: datetime
-    # The customer's own words, oldest first. Filled only on GET /cases/{id} (the caller there
-    # has passed visible_case: the owning customer or staff who can see the order).
+
+
+class CaseDetailOut(CaseOut):
+    # The customer's own words, oldest first. Only on GET /cases/{id}, after visible_case
+    # (the owning customer or staff who can see the order); list responses omit the field.
     customer_messages: list[CustomerMessageOut] = []
 
 
@@ -205,13 +208,14 @@ def get_case(
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
     now: datetime = Depends(get_clock),
-) -> CaseOut:
+) -> CaseDetailOut:
     case = visible_case(db, ctx, case_id)
-    out = _out(db, case, now)
-    out.customer_messages = [
-        CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
-    ]
-    return out
+    return CaseDetailOut(
+        **_out(db, case, now).model_dump(),
+        customer_messages=[
+            CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
+        ],
+    )
 
 
 class TimelineStepOut(BaseModel):
