@@ -668,3 +668,33 @@ def test_baseline_filed_privacy_request_is_not_reclassified(app_engine, case):
     status, proposals = _case(app_engine, case)
     assert status == "escalated" and proposals == []
     assert _stored_category(app_engine, case) == PRIVACY_CATEGORY
+
+
+def _case_language(app_engine, case):
+    with tenant_session(case["tid"], app_engine) as s:
+        return s.get(Case, case["case_id"]).language
+
+
+def test_classifier_language_sets_the_case_language(app_engine, case):
+    clf = FakeLLM({"Classification": [
+        Classification(category="missing_items", confidence=0.9, language="hi-Latn",
+                       language_confidence=0.9)
+    ]})  # fmt: skip
+    _run(app_engine, case, clf, FakeLLM({"ResolutionDraft": [_refund(case)]}))
+    assert _case_language(app_engine, case) == "hi-Latn"
+    assert len(clf.calls) == 1  # the language came with the classification, no extra call
+
+
+def test_a_low_confidence_classifier_language_is_not_trusted(app_engine, case):
+    clf = FakeLLM({"Classification": [
+        Classification(category="missing_items", confidence=0.9, language="hi",
+                       language_confidence=0.3)
+    ]})  # fmt: skip
+    _run(app_engine, case, clf, FakeLLM({"ResolutionDraft": [_refund(case)]}))
+    assert _case_language(app_engine, case) == "en"  # the English message, not a wild guess
+
+
+def test_language_still_set_when_the_classifier_is_unavailable(app_engine, case):
+    clf = FakeLLM({"Classification": [RuntimeError("provider down")]})
+    _run(app_engine, case, clf, FakeLLM({"ResolutionDraft": []}))
+    assert _case_language(app_engine, case) == "en"
