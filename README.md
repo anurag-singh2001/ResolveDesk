@@ -179,11 +179,12 @@ pipelines; the older Hinglish `bc-wrong-002` failed on the baseline only.
 ## Tests
 
 `make test` (both tenants, every test), `make test-isolation`, `make test-chaos`, `make lint`,
-`make web-test`. Last full run (2026-10-26, after the growth module): 1020 passed, 10 skipped
-(shape-specific, e.g. a tenant without lateness tiers), 2 failed; chaos 1 of 2 failed. All three
-failures were fixed in `e047336` and their suites re-run green (chaos 2 passed; the affected
-integration and unit suites 591 passed). The chaos failure was a real one: an escalated case
-hid a refund the provider had confirmed.
+`make web-test`. Last full run (2026-10-27, one process, after Sprints 4 and 5): 1312 passed,
+12 skipped (shape-specific, e.g. a tenant without lateness tiers or without the growth flag),
+2 failed. Both failures were the admin-sweep test expecting an out-of-date list of report
+fields after two parallel branches each added one; fixed in the next commit and re-run green
+(14 passed, with the deadlock reproduction tests). Chaos: green three times in a row (3 passed,
+1 skipped each). Web: 83 passed.
 
 **CI.** GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request with
 no secrets and no database: `ruff check`, `ruff format --check`, the unit tests
