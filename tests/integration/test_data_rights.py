@@ -5,6 +5,8 @@ token minted for them) and removes them afterwards; audit rows stay (append-only
 are on those rows, never on global counts.
 """
 
+import threading
+import time
 import uuid
 from datetime import UTC, datetime
 
@@ -25,10 +27,11 @@ from app.core.models import (
     Transaction,
     User,
 )
-from app.core.tenancy import tenant_id_for
+from app.core.tenancy import load_context, tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
-from app.engine import privacy
-from app.engine.privacy import erasure_block
+from app.engine import data_rights as privacy
+from app.engine.cases import CaseNotFound, open_case
+from app.engine.data_rights import erasure_block
 from app.modules.growth import campaigns as camp
 from app.modules.growth.campaigns import ProposalError
 from app.modules.growth.executor import execute_campaign
@@ -63,6 +66,7 @@ def slug(tenant):
 def people(app_engine, maint_engine, tid, made):  # noqa: F811
     """Make customers who can log in; removes their users afterwards (before `made` cleans)."""
     users: list[uuid.UUID] = []
+    customers: list[uuid.UUID] = []
 
     def make(name="Real Person"):
         with tenant_session(tid, app_engine) as s:
@@ -85,12 +89,15 @@ def people(app_engine, maint_engine, tid, made):  # noqa: F811
             s.add(c)
             s.flush()
             users.append(user.id)
+            customers.append(c.id)
             made["tid"].append(tid)
             made["customers"].append(c.id)
             return c.id, {"Authorization": f"Bearer {issue_token(tid, user.id)}"}
 
     yield make
     with tenant_session(tid, maint_engine) as s:
+        # Consent history is RESTRICTed against customer deletion (owner-level cleanup only).
+        s.execute(delete(ConsentEvent).where(ConsentEvent.customer_id.in_(customers)))
         s.execute(delete(Membership).where(Membership.user_id.in_(users)))
         s.execute(update(Customer).where(Customer.user_id.in_(users)).values(user_id=None))
         s.execute(delete(User).where(User.id.in_(users)))
@@ -404,6 +411,129 @@ def test_customers_cannot_work_requests_and_anonymous_is_refused(api, people):
     assert api.post(f"/data-requests/{uuid.uuid4()}/approve", headers=auth).status_code == 403
     assert api.get("/me/consents").status_code == 401
     assert api.get("/me/data-export").status_code == 401
+
+
+def _erasable(app_engine, tid, made, cid):
+    with tenant_session(tid, app_engine) as s:
+        order = _order(s, tid, made, SimpleId(cid), 400)
+        _case(s, tid, made, SimpleId(cid), status="closed", age_days=400)
+    return order
+
+
+def test_tokens_issued_before_erasure_stop_working(
+    api,
+    app_engine,
+    tid,
+    made,
+    people,
+    tenant,
+    slug,  # noqa: F811
+):
+    cid, auth = people()
+    order = _erasable(app_engine, tid, made, cid)
+    assert api.get("/me/data-export", headers=auth).status_code == 200
+    req = _request(api, auth)
+    hq = staff(api, tenant, slug, "hq_owner")
+    assert _approve(api, hq, req["id"])["status"] == "completed"
+    assert api.get("/me/data-export", headers=auth).status_code == 401
+    assert (
+        api.post("/me/consents/marketing", json={"granted": True}, headers=auth).status_code == 401
+    )
+    body = {"transaction_id": str(order.id), "category": None, "message": "x"}
+    assert api.post("/cases", json=body, headers=auth).status_code == 401
+
+
+def test_a_second_request_returns_the_first_even_when_simultaneous(
+    app_engine,
+    tid,
+    made,
+    people,  # noqa: F811
+):
+    cid, _ = people()
+    ids = []
+
+    def go():
+        with tenant_session(tid, app_engine) as s:
+            ids.append(privacy.request_erasure(s, tid, cid, datetime.now(UTC)).id)
+
+    threads = [threading.Thread(target=go) for _ in range(3)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert len(ids) == 3 and len(set(ids)) == 1
+    with tenant_session(tid, app_engine) as s:
+        rows = s.scalars(select(DataRequest).where(DataRequest.customer_id == cid)).all()
+    assert len(rows) == 1
+
+
+def test_case_writes_serialize_with_erasure(app_engine, tid, made, people):  # noqa: F811
+    """A report that starts while an erasure is in progress waits for it, then finds the
+    account erased; it never lands a case on redacted data."""
+    cid, auth = people()
+    order = _erasable(app_engine, tid, made, cid)
+    with tenant_session(tid, app_engine) as s:
+        user_id = s.get(Customer, cid).user_id
+        ctx = load_context(s, tid, user_id)
+        req_id = privacy.request_erasure(s, tid, cid, datetime.now(UTC)).id
+    result = {}
+
+    def report():
+        try:
+            with tenant_session(tid, app_engine) as s:
+                open_case(
+                    s,
+                    ctx,
+                    transaction_id=order.id,
+                    category=None,
+                    message="late",
+                    now=datetime.now(UTC),
+                )
+            result["out"] = "opened"
+        except CaseNotFound:
+            result["out"] = "refused"
+
+    with tenant_session(tid, app_engine) as s:
+        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC))
+        assert done.status == "completed"
+        t = threading.Thread(target=report)
+        t.start()
+        time.sleep(1.5)
+        assert "out" not in result  # waiting on the customer lock; erasure not yet committed
+    t.join(timeout=30)
+    assert result["out"] == "refused"
+    with tenant_session(tid, app_engine) as s:
+        assert load_context(s, tid, user_id) is None
+
+
+def test_consent_audit_names_the_customer_and_first_decisions_race_safely(
+    api,
+    app_engine,
+    tid,
+    people,  # noqa: F811
+):
+    cid, auth = people()
+    me = api.get("/me", headers=auth).json()["user_id"]
+    api.post("/me/consents/marketing", json={"granted": True}, headers=auth)
+    with tenant_session(tid, app_engine) as s:
+        actors = s.scalars(
+            select(AuditEvent.actor_id).where(
+                AuditEvent.entity_id == cid, AuditEvent.event == "consent.granted"
+            )
+        ).all()
+    assert actors == [me]
+    cid2, _ = people()
+
+    def go(granted):
+        with tenant_session(tid, app_engine) as s:
+            privacy.set_consent(s, tid, cid2, "marketing", "whatsapp", granted)
+
+    threads = [threading.Thread(target=go, args=(g,)) for g in (True, False, True)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    with tenant_session(tid, app_engine) as s:
+        rows = s.scalars(select(Consent).where(Consent.customer_id == cid2)).all()
+        events = s.scalars(select(ConsentEvent).where(ConsentEvent.customer_id == cid2)).all()
+    assert len(rows) == 1  # one row per (customer, channel, purpose), no matter the race
+    assert 1 <= len(events) <= 3
 
 
 def test_unknown_request_is_404_for_the_owner(api, tenant, slug):

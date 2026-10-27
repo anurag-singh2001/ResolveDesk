@@ -43,6 +43,7 @@ export function AppShell() {
   if (!me) return null;
   // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
+  const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
   const base = navFor(me.role, me.growth_enabled === true);
   const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
 
@@ -117,6 +118,17 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
+      <footer className="mx-auto max-w-7xl border-t border-slate-200 px-4 py-4 text-xs text-slate-500 sm:px-6">
+        {privacy && privacy.email ? (
+          <a href={`mailto:${privacy.email}`} title={privacy.name} className="underline hover:text-slate-700">
+            Privacy contact
+          </a>
+        ) : (
+          <NavLink to="/help" className="underline hover:text-slate-700">
+            Privacy contact
+          </NavLink>
+        )}
+      </footer>
     </div>
   );
 }

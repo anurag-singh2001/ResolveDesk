@@ -18,6 +18,8 @@ feature_flags:
 
 settings:
   org:
+    privacy_contact_name: Privacy desk, BrewCo
+    privacy_contact_email: privacy@brewco.test
     voucher_auto_approve_max_paise: 10000
   brands: {}
   locations:

@@ -61,6 +61,11 @@ export interface Categories {
   free_text: boolean;
 }
 
+export interface PrivacyContact {
+  name: string;
+  email: string;
+}
+
 export interface Order {
   id: string;
   external_ref: string;

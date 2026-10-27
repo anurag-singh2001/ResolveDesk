@@ -46,6 +46,11 @@ Click a card to open the order. The order page shows:
 
 You go straight to the **case page** for your report.
 
+**Privacy requests.** To ask about your personal data, pick **Privacy request** as the category. It is
+never handled by the assistant: it goes straight to a member of our team, and the case page names our
+**Privacy contact** and the date by which we aim to respond. That date is our own internal target, not a
+legal deadline. The Privacy contact is also linked in the footer of every page and on the **Help** page.
+
 ## My cases and the case page
 
 **My cases** lists every problem you have reported, newest first, with its current stage. Click

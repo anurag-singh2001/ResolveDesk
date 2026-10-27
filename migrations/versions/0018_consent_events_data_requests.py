@@ -58,8 +58,9 @@ def upgrade() -> None:
     fk = sa.ForeignKeyConstraint(
         ["tenant_id", "customer_id"],
         ["customers.tenant_id", "customers.id"],
-        ondelete="CASCADE",
+        ondelete="RESTRICT",  # evidence must not vanish with a customer row
     )
+    op.add_column("users", sa.Column("erased_at", sa.DateTime(timezone=True), nullable=True))
     op.create_table(
         "consent_events",
         *_base(),
@@ -100,6 +101,13 @@ def upgrade() -> None:
             f"CREATE TRIGGER trg_{table}_updated_at BEFORE UPDATE ON {table} "
             "FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
         )
+    op.create_index(
+        "uq_data_requests_active",
+        "data_requests",
+        ["tenant_id", "customer_id"],
+        unique=True,
+        postgresql_where=sa.text("status IN ('pending_approval', 'deferred')"),
+    )
     # Evidence is never edited (defence in depth on top of the privileges below).
     op.execute(
         "CREATE TRIGGER trg_consent_events_immutable BEFORE UPDATE ON consent_events "
@@ -118,3 +126,4 @@ def downgrade() -> None:
     for table in reversed(TABLES):
         disable_rls(table)
         op.drop_table(table)
+    op.drop_column("users", "erased_at")

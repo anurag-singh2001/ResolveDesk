@@ -12,6 +12,7 @@ issue_categories:
   - wrong_item
   - food_quality
   - payment_issue
+  - privacy_request
 actions: [refund, free_item_voucher, send_status_update]
 # Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
 remedies: {late_delivery: late_tiers, missing_items: refund_missing, wrong_item: voucher, food_quality: voucher}
@@ -22,6 +23,11 @@ features:
 # kind=limit: integer ceiling; a lower level may only lower it (effective = min(parent, override)).
 # kind=value: a lower level replaces it.
 settings:
+  # Privacy contact shown to customers and the INTERNAL response target in days (a product
+  # choice, never described as a legal deadline). Provisional, not legal advice.
+  privacy_contact_name: {kind: value, default: ""}
+  privacy_contact_email: {kind: value, default: ""}
+  grievance_target_days: {kind: limit, default: 30}
   # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
   business_timezone: {kind: value, default: "Asia/Kolkata"}
   # DPDP retention (S5.1, provisional): days after a case resolves/closes before its message

@@ -1,0 +1,10 @@
+id: sr-privacy-001
+tenant: spice_route
+kind: plain
+message: Please tell me what personal data you hold about me and delete my phone number.
+order:
+  select: latest
+expect:
+  category: privacy_request
+  outcome: escalated
+note: Privacy requests never get a payout proposal; a person handles them (S5.5).

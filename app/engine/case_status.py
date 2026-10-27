@@ -20,7 +20,9 @@ from app.core.models import (
     Verification,
 )
 from app.core.money import format_inr
+from app.core.settings_resolver import effective_settings
 from app.engine.needs import latest_question
+from app.engine.privacy import PRIVACY_CATEGORY, customer_message
 
 STAGES = (
     "received",
@@ -56,6 +58,10 @@ def case_status(session: Session, case: Case, now: datetime | None = None) -> Ca
         .order_by(ActionProposal.created_at.desc())
     ).first()
     if proposal is None:
+        if case.status == "escalated" and case.category == PRIVACY_CATEGORY:
+            return CaseStatus(
+                "escalated", customer_message(case.opened_at, effective_settings(session))
+            )
         if case.status == "escalated":
             return CaseStatus("escalated", "A member of our team will look into this.")
         if case.status == "awaiting_info":

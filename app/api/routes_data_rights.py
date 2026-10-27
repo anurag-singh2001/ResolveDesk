@@ -24,7 +24,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import privacy
+from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
 router = APIRouter(tags=["privacy"])
@@ -123,7 +123,9 @@ def set_my_consent(
     customer = own_customer(ctx, db)
     if purpose not in privacy.PURPOSES or body.channel not in privacy.CHANNELS:
         raise not_found()
-    privacy.set_consent(db, ctx.tenant_id, customer.id, purpose, body.channel, body.granted)
+    privacy.set_consent(
+        db, ctx.tenant_id, customer.id, purpose, body.channel, body.granted, actor_id=ctx.user_id
+    )
     db.flush()
     return _consents(db, customer)
 
@@ -218,7 +220,9 @@ def request_erasure(
     ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
 ) -> DataRequestOut:
     customer = own_customer(ctx, db)
-    req = privacy.request_erasure(db, ctx.tenant_id, customer.id, datetime.now(UTC))
+    req = privacy.request_erasure(
+        db, ctx.tenant_id, customer.id, datetime.now(UTC), actor_id=ctx.user_id
+    )
     return _request_out(req)
 
 
