@@ -546,7 +546,8 @@ def test_script_exits_non_zero_when_a_tenant_failed_or_is_missing(monkeypatch):
 
 
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-PHONE = re.compile(r"(?<!\d)(?:\+?91)?[6-9]\d{9}(?!\d)")
+# Word boundaries, not digit-only: a hex hash in a payload can contain ten digits in a row.
+PHONE = re.compile(r"(?<!\w)(?:\+?91)?[6-9]\d{9}(?!\w)")
 
 
 def test_audit_payloads_hold_no_contact_data(app_engine, tid):
