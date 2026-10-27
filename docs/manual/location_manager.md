@@ -15,7 +15,7 @@ for a few minutes. If you see **"Your session has ended"**, sign in again. Click
 right) when you leave a shared device.
 
 The top bar shows your business, your name, your role badge (**Location manager**), **Help** and
-**Sign out**. The left menu (a row of tabs on a phone) has **Approvals**, **Cases** and **Help**.
+**Sign out**. The left menu (a row of tabs on a phone) has **Approvals**, **Cases to handle**, **Cases** and **Help**.
 
 ## Approvals
 
@@ -74,6 +74,14 @@ Messages you may see:
 
 An approval is tied to exactly the proposal you saw. If the proposal changes, or the approval is
 not used within a few hours, it expires and has to be approved again.
+
+## Cases to handle
+
+**Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of your own outlet only. The number next to the menu item is how many are waiting. The oldest wait comes first.
+
+Each row shows the case (category, order and outlet), the **reason** it needs a person, how long it has been **waiting**, its **owner**, the customer's **language**, and the **amount** when a remedy has been proposed. Use **Reason**, **Category** and **Owned by me** to narrow the list. **Open** goes to the approval (when a decision is waiting) or to the case.
+
+Every such case has one owner, chosen automatically when it needs a person: the location manager of the order's outlet; if the outlet has none, its franchisee owner; and HQ when the amount is above the limit an outlet may handle, when there is no outlet, or when nobody else is assigned. You cannot hand a case to someone else; ask your franchisee owner or HQ to change the owner. Being the owner means the case is yours to chase. It does not change who may approve: the approval rules are the same as before.
 
 ## Cases
 

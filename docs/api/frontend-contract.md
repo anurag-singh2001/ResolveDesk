@@ -38,6 +38,14 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 | GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
 | GET | `/cases/{id}/events` | staff | – | raw audit events (redacted) |
 
+### Cases to handle and case owner (S7.2, S7.3) NEW
+| GET | `/cases/queue?reason=&category=&owned_by_me=&limit=` | staff | – | `[queue_item]` oldest wait first. Scope: manager their outlets, franchisee theirs, HQ all (out-of-scope and other-tenant cases are simply absent). `reason` is `escalated` or `awaiting_approval` (else 422). Customers 403 |
+| POST | `/cases/{id}/owner` | franchisee_owner (their outlets), hq_owner | `{user_id}` | `{case_id, owner_user_id}`. 404 if the case is not visible to the caller (another outlet or tenant); 403 for a location manager; 409 if the case does not need a person; 422 if the new owner is not staff, cannot see the case's outlet, or (no outlet) is not HQ. Audited as `case.owner_changed`. Changes responsibility only, never approval rights |
+
+`queue_item` = `{case_id, order_ref, location_name, category, status, reason_kind: escalated | awaiting_approval, reason, waiting_since, waiting_seconds, owner_user_id, owner_name, owned_by_me, language, amount_paise, proposal_id}`. `reason` is the latest `case.escalated` reason (or the pending proposal's reason); show it as plain text. `amount_paise`/`proposal_id` are null when no proposal is pending.
+
+Owner assignment (server side, no client call): when a case becomes `escalated` or `awaiting_approval` it gets `cases.owner_user_id` = the location manager of the order's outlet (lowest user id if several), else that outlet's franchisee owner, else an HQ owner; an amount above `refund_without_escalation_paise`, or no outlet, goes to HQ. An owner already set is kept.
+
 `case` = `{id, transaction_id, order_ref, category, stage, message, action, amount_paise, proposal_id, created_at}` (`order_ref`, `created_at` NEW; `order_ref` is the order's `external_ref` or null; `created_at` is when the case was opened).
 
 Stages (show as a stepper; the happy path is received → investigating → awaiting_approval →

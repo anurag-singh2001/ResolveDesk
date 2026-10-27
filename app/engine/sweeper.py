@@ -43,6 +43,7 @@ from app.engine.executor import TERMINAL
 from app.engine.graph import NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
 from app.engine.privacy import flag_due_soon
+from app.engine.routing import assign_owner
 from app.engine.verifier import FINAL
 
 log = logging.getLogger(__name__)
@@ -290,6 +291,7 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 entity_id=case.id,
                 payload={"reason": "agent run did not finish within the run TTL"},
             )
+            assign_owner(s, tenant_id, case, datetime.now(UTC))
             escalated.append(str(case.id))
     return escalated
 
