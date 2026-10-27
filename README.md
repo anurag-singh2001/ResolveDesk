@@ -1,5 +1,7 @@
 # ResolveDesk
 
+[![CI](https://github.com/anurag-singh2001/ResolveDesk/actions/workflows/ci.yml/badge.svg)](https://github.com/anurag-singh2001/ResolveDesk/actions/workflows/ci.yml)
+
 AI customer support for multi-outlet food businesses that **proposes** a remedy, lets a
 person (or a tight auto-approve rule) **decide**, and only then lets code **pay out** — once,
 with a stable idempotency key, and tells the customer only what the payment provider has
@@ -176,6 +178,12 @@ biryani, once filed as wrong item in a demo) is in the second run and now passes
 failures were fixed in `e047336` and their suites re-run green (chaos 2 passed; the affected
 integration and unit suites 591 passed). The chaos failure was a real one: an escalated case
 hid a refund the provider had confirmed.
+
+**CI.** GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request with
+no secrets and no database: `ruff check`, `ruff format --check`, the unit tests
+(`tests/unit`) and, for the web app, `npm ci`, the vitest suite and a production build. The
+DB-backed integration, isolation and chaos suites need Neon, so they run locally
+(`make test`, `make test-isolation`, `make test-chaos`).
 
 ## Tradeoffs
 
