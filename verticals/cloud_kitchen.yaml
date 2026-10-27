@@ -45,6 +45,8 @@ settings:
   refund_max_percent: {kind: limit, default: 50}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}
+  # A voucher is at most this percent of the order total (100 = never above what was paid).
+  voucher_percent: {kind: limit, default: 100}
   # Rs 150: the largest voucher approved without a person (decision 2026-10-26); lower only.
   voucher_auto_approve_max_paise: {kind: limit, default: 15000}
   # Fair use: at this many refunds/vouchers approved for the customer in 30 days, nothing

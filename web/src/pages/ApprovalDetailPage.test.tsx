@@ -88,6 +88,18 @@ describe("approval detail", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).not.toBeInTheDocument();
   });
 
+  it("shows a failed fair-use check as an amber warning, not a red failure", async () => {
+    setup({ body: {} }, {
+      ...proposal,
+      checks: { within_cap: true, fair_use_ok: false, fair_use_grants_30d: 3, fair_use_max_grants_30d: 3 },
+    });
+    const warning = await screen.findByTestId("fair-use-warning");
+    expect(warning).toHaveTextContent("Repeat claimant: 3 grants in 30 days (limit 3) — a person must decide");
+    const list = screen.getByRole("list", { name: "Checks" });
+    expect(list).not.toHaveTextContent("failed");
+    expect(list).not.toHaveTextContent("✗");
+  });
+
   it("shows amounts, counts and needs_* flags as values, not as passed/failed", async () => {
     setup({ body: {} }, {
       ...proposal,

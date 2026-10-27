@@ -183,7 +183,16 @@ export function ApprovalDetailPage() {
               <p className="mt-2 text-sm text-slate-500">No checks reported.</p>
             ) : (
               <ul className="mt-3 grid gap-2 sm:grid-cols-2" aria-label="Checks">
-                {checks.map(([name, ok]) => (
+                {checks.map(([name, ok]) =>
+                  name === "fair_use_ok" && !ok ? (
+                    // Fair use is a "needs a person" signal, not an invalid proposal (amber, not red).
+                    <li key={name} className="flex items-start gap-2 text-sm sm:col-span-2" data-testid="fair-use-warning">
+                      <span aria-hidden="true" className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">!</span>
+                      <span className="text-amber-800">
+                        Repeat claimant: {String(p.checks?.fair_use_grants_30d ?? "several")} grants in 30 days (limit {String(p.checks?.fair_use_max_grants_30d ?? "set")}) — a person must decide
+                      </span>
+                    </li>
+                  ) : (
                   <li key={name} className="flex items-center gap-2 text-sm">
                     <span
                       aria-hidden="true"
@@ -194,7 +203,8 @@ export function ApprovalDetailPage() {
                     <span className="text-slate-700">{humanize(name)}</span>
                     <span className="sr-only">{ok ? "passed" : "failed"}</span>
                   </li>
-                ))}
+                  ),
+                )}
               </ul>
             )}
             {facts.length > 0 && (
