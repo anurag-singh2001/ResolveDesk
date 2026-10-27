@@ -1,6 +1,6 @@
 # Sprint 5 · Privacy basics and growth hardening
 
-Status: proposed, user to confirm scope. Dates: to be set after Sprint 4 closes (no earlier than 2026-10-28).
+Status: CLOSED 2026-10-27 (built overnight, pushed at 1d917f8). S5.3 carried as [~] (chaos x3 on the final head not run).
 
 ## Planning (draft, 2026-10-27)
 Goal: close the biggest "needed before real customer data" gaps (DPDP), harden the new growth path under failure, and polish staff screens.
@@ -28,13 +28,45 @@ Carried human-only: E0.3 (rotate Neon owner password), E7.2 (copy .env into the 
 Entry rule: Sprint 4 closed (final full suite and chaos green, test to main confirmed).
 
 ## Stand-ups
-(none yet)
+(none written; work ran overnight, state recorded in EPICS.md E10)
 
-## Review
-(pending)
+## Review (2026-10-27)
+Six stories built by Sonnet builders, each safety-reviewed, merged to test, pushed at 1d917f8.
+- S5.1 ticked: 6e28e19, rework 7616458 (2 HIGH), fixes d3e434e; migration 0017; 52 tests.
+- S5.2 ticked: 4524060, rework 6d892a5 (2 MEDIUM), 0c410a7 (deadlock found in re-review); migration 0018; 40 tests. Deadlock safety rests on lock-order reasoning, not a reproducing test.
+- S5.3 stays [~]: c9ee4c0, no bug found, passes one chaos run (3 passed, 1 skipped); done-when needs green x3.
+- S5.4 ticked: 8ff8434, 6592bd9. S5.5 ticked: 74efee9, 7aa7444. S5.6 ticked: 7e881a6, 4a228cc; migration 0019.
+- Research: docs/research/dpdp-and-hindi.md (da590d6).
+
+Final verification on 1d917f8 in 7 sequential batches (memory): unit 411 passed/2 skipped; isolation 206/1 skipped; cases+reply+language+meta 118 passed (b2; the b4 run had transient Neon errors); data rights+retention+privacy 104 passed (b2; the b4 run errored at setup in 42 s, connection); approvals+growth+sweeper 70/2 skipped; refunds+vouchers+resume 116/3 skipped plus 1 transient error that passes alone; agent graph 76. Web 83 passed, ruff clean, single alembic head 0019. No single full-suite run; passes on b2 stand in for the transient b4 failures.
+
+Provisional decisions awaiting the owner (DECISIONS.md, not legal advice): 365-day retention floor; "privacy contact" label, 30-day internal target vs 90-day reported ceiling; support needs no consent record; Hinglish/Devanagari native-speaker review; GST/accounting retention for order references unresearched.
+
+Human-only remaining: E0.3 rotate Neon owner password; E7.2 copy .env into the clean clone; confirm the decisions above.
 
 ## Retro
-(pending)
+Went well
+- Reviewers found real defects in 5 of 6 stories (2 HIGH in S5.1) before merge; each was fixed with rework commits.
+- Research first (dpdp-and-hindi.md) gave builders concrete rules; open legal points logged as provisional instead of guessed.
+
+Hurt
+- Sonnet usage limit hit about 03:40; two builders paused until reset.
+- Memory pressure killed a broad run even with 1 heavy process; verification had to be split into 7 sequential batches.
+- Neon connection drops caused setup errors; reruns moved to another DB, so there is no clean single run.
+- Parallel-branch clashes: S5.2 and S5.5 both created app/engine/privacy.py (renamed data_rights.py); two migrations numbered 0018 (renumbered; S5.6 became 0019).
+- The S5.2 re-review found a new deadlock introduced by the fix; no test reproduces it.
+
+Action for next sprint
+- At planning, reserve the migration number and module name per story before parallel builders start, and run broad suites as sequential batches on a dedicated, stable DB.
 
 ## Scorecard
-(end of sprint)
+Evidence only; "no data" where none was recorded.
+
+| Agent | Tasks done | First-try test pass | Rework commits | Safety findings raised/missed | Eval delta | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| main session | integration, deadlock fix 0c410a7, migration renumber, final verification | no data (batches only, see Review) | 0c410a7, 4a228cc | n/a | no data | |
+| builders (Sonnet) S5.1-S5.6 | 6 stories built | no data | 7616458 + d3e434e (S5.1), 6d892a5 (S5.2), 6592bd9 (S5.4), 7aa7444 (S5.5), 4a228cc (S5.6) | n/a | no data | rework on 5 of 6 stories |
+| safety-reviewer (sonnet) | reviewed all six | n/a | n/a | raised: 2 HIGH (S5.1), 2 MEDIUM (S5.2) plus 1 new medium on re-review, 1 MEDIUM (S5.5); S5.3, S5.4 clean; missed: none known | n/a | S5.6 translations reviewed clean vs rule 7 |
+| test-runner (haiku) | no data | no data | no data | n/a | n/a | |
+| eval-runner (haiku) | no eval run this sprint | n/a | n/a | n/a | no data | |
+| business-analyst (sonnet) | docs/research/dpdp-and-hindi.md (da590d6) | n/a | n/a | n/a | n/a | legal points provisional |
