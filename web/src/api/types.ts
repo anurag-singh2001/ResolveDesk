@@ -110,6 +110,11 @@ export type Stage =
   | "escalated"
   | "closed";
 
+export interface CustomerMessage {
+  at: string;
+  text: string;
+}
+
 export interface Case {
   id: string;
   transaction_id: string | null;
@@ -121,6 +126,7 @@ export interface Case {
   amount_paise: number | null;
   proposal_id: string | null;
   created_at?: string | null; // NEW
+  customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
 }
 
 export interface TimelineEntry {
@@ -157,6 +163,7 @@ export interface PendingApproval {
   eligible: boolean;
   errors: string[];
   created_at?: string | null; // NEW
+  customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
   customer_message?: string | null; // NEW
   location_name?: string | null; // NEW
   citations?: Citation[]; // NEW

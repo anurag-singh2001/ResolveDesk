@@ -48,6 +48,7 @@ The review page shows everything you need to decide:
    limit and the order belongs to the customer. Any problems are listed under the checks.
 5. **Proposal**: the action, the amount, the order total, and when it was proposed. **Open the
    case** shows the customer's view and the audit trail.
+   The case page also shows an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 ## Approving or rejecting
 
