@@ -1,4 +1,4 @@
-# Sprints overview (0 to 5)
+# Sprints overview (0 to 6)
 
 Written 2026-10-27 by the scrum-master from docs/sprints/sprint-N.md, docs/EPICS.md and `git log`. Numbers are as recorded in the sprint files; "not recorded" means no output was pasted. Status: `[x]` verified done, `[~]` open, `[ ]` todo. Working agreement (stand-up rule): see the top of docs/EPICS.md.
 
@@ -10,6 +10,7 @@ Written 2026-10-27 by the scrum-master from docs/sprints/sprint-N.md, docs/EPICS
 | 3 | 2026-10-26; planned 11-02 to 11-04 | Stretch growth loop (E8) and human items | closed same day |
 | 4 | 2026-10-26 to 10-27 | Spec gaps to a complete v1, ship | closed; test merged to main 9f596aa |
 | 5 | 2026-10-27 (overnight) | Privacy basics, growth chaos, approvals filter, Hindi | closed; all six stories ticked |
+| 6 | 2026-10-27 (planned to 10-28) | Hardening and handover: clean suite, deadlock repro, evals, CI, docs | closed a day early; all six stories ticked |
 
 ---
 
@@ -128,10 +129,27 @@ Goal: close the biggest "needed before real customer data" DPDP gaps, harden gro
 - Retro lesson: reserve migration number and module name per story before parallel builders start; run broad suites as sequential batches on a stable DB.
 - Scorecard: reviewers found real defects in 5 of 6 stories; rework on 5 of 6; test-runner and eval-runner no data.
 
+## Sprint 6 (2026-10-27, planned to 10-28): hardening and handover
+Goal: prove the final head is clean (suite, deadlock, evals, CI) and leave a runnable, documented project.
+
+| Story | Status | Key commits |
+| --- | --- | --- |
+| S6.1 full suite in one process | [x] with caveat | 23492bb (fix); run on e2e0aeb-equivalent code |
+| S6.2 deadlock reproduction test | [x] | b62fbe1 (c0ee242), DECISIONS f3601c4 |
+| S6.3 eval re-run, 36 scenarios | [x] | 8cf55eb; eval-20261027-143533.md |
+| S6.4 GitHub Actions CI | [x] | 781f3b5 (267f75c); run 40520897031 green |
+| S6.5 SCENARIOS.md + RUNBOOK.md | [x] | c41abfd |
+| S6.6 cleanup | [x] | scratch DBs dropped, worktrees removed |
+
+- Verified: full suite one process 1312 passed, 12 skipped, 2 failed (1:47:02), both one stale REPORT_KEYS test, fixed, re-run 14 passed (the "0 failed" run was not repeated on 23492bb); deadlock test 8 passed; evals agents brewco 100%, spice_route 93%, baseline 78% / 93%, over-rule 0, injections held, Hinglish/Hindi 3 of 3; CI green (unit 411, web 83 + build; no DB suites in CI).
+- Incidents: builders + evals + full suite at once slowed the suite to 1:47; parallel branches adding fields to one report broke a shared test (same class as Sprint 4 _out()).
+- Retro lesson: when two stories touch a shared schema or report, the second builder rebases and runs that test file.
+- Scorecard: 1 rework commit (main session); builders 0 rework; test-runner, eval-runner, safety-reviewer: no activity or no data.
+
 ---
 
-## Current state (2026-10-27)
-Everything is closed except two human-only items:
+## Current state (2026-10-27, after Sprint 6)
+Everything is closed except these human-only items (plus the test to main merge, on the user's go):
 - E0.3 rotate the Neon owner password, then `make db-check` on both branches.
 - E7.2 copy your own .env into the clean clone, raise a case, see an AI proposal.
 
@@ -142,4 +160,4 @@ Provisional decisions awaiting the owner (docs/DECISIONS.md, not legal advice):
 4. Native-speaker review of the Hinglish and Devanagari wording.
 5. GST/accounting retention period for order references is unresearched.
 
-Open follow-ups (EPICS.md, not stories): demo seed refreshing policy packs automatically; dev-panel reseed (destructive, deliberately not built); S5.2 deadlock fix has no reproducing test; no single full-suite run on the final head (covered by batches).
+Open follow-ups (EPICS.md, not stories): demo seed refreshing policy packs automatically; dev-panel reseed (destructive, deliberately not built); CI runs no DB-backed suites. (Closed in Sprint 6: deadlock reproduction test, single full-suite run.)
