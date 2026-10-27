@@ -59,6 +59,7 @@ tied to exactly the proposal you saw and expires after a few hours if it isn't u
 A case page shows what the customer sees (progress bar, current message, remedy, timeline) plus
 the **Audit trail**: click to expand every recorded step with who or what acted and when. Personal
 details are hidden.
+It also has an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 | Stage | Meaning |
 | --- | --- |

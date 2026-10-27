@@ -7,6 +7,7 @@ import type { AuditEvent, Case, TimelineEntry } from "../api/types";
 import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
+import { CustomerMessages, OrderCard } from "../components/OrderCard";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
 import { formatPaise } from "../lib/money";
@@ -230,6 +231,8 @@ export function CasePage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            <CustomerMessages messages={c.customer_messages ?? []} own={!staff} />
+            {staff && c.transaction_id && <OrderCard orderId={c.transaction_id} />}
             {c.stage === "awaiting_info" && !staff && (
               <ReplyBox
                 caseId={c.id}

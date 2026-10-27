@@ -20,6 +20,7 @@ from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
 from app.core.tenancy import TenantContext
 from app.engine.agent_runner import resume_info, run_agents
+from app.engine.case_messages import customer_messages
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
@@ -36,6 +37,11 @@ class CaseIn(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
 
 
+class CustomerMessageOut(BaseModel):
+    at: datetime
+    text: str
+
+
 class CaseOut(BaseModel):
     id: uuid.UUID
     transaction_id: uuid.UUID | None
@@ -47,6 +53,9 @@ class CaseOut(BaseModel):
     amount_paise: int | None = None
     proposal_id: str | None = None
     created_at: datetime
+    # The customer's own words, oldest first. Filled only on GET /cases/{id} (the caller there
+    # has passed visible_case: the owning customer or staff who can see the order).
+    customer_messages: list[CustomerMessageOut] = []
 
 
 def _out(db: Session, case: Case, now: datetime) -> CaseOut:
@@ -197,7 +206,12 @@ def get_case(
     db: Session = Depends(tenant_db),
     now: datetime = Depends(get_clock),
 ) -> CaseOut:
-    return _out(db, visible_case(db, ctx, case_id), now)
+    case = visible_case(db, ctx, case_id)
+    out = _out(db, case, now)
+    out.customer_messages = [
+        CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
+    ]
+    return out
 
 
 class TimelineStepOut(BaseModel):

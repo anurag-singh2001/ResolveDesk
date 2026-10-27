@@ -34,7 +34,7 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 | POST | `/cases` | customer | `{transaction_id, category: slug or null, message}` | case (201). `category: null` only when `free_text` |
 | POST | `/cases/{id}/messages` NEW | customer (own case) | `{message}` (1-2000 chars) | case (201). Answers the AI's needs-info question; only while stage is `awaiting_info`, else 409. Other customers'/tenants' cases 404, staff 403. The case resumes (stage goes back to `investigating`) and the timeline gains a "You replied" step |
 | GET | `/cases?limit=` | any | – | `[case]` newest first |
-| GET | `/cases/{id}` | any | – | case. 404 if not visible |
+| GET | `/cases/{id}` | any | – | case, plus `customer_messages: [{at, text}]` (the customer's own words, oldest first; only on this detail call, `[]` in lists; shown to the owning customer and staff who can see the case, never to others). 404 if not visible. Staff pages pair it with `GET /orders/{transaction_id}` for the Order card (items ordered/received, prices, times, outlet, brand) |
 | GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
 | GET | `/cases/{id}/events` | staff | – | raw audit events (redacted) |
 

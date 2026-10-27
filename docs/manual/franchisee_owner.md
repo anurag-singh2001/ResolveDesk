@@ -54,6 +54,7 @@ decided it first. Approvals bind to exactly what you saw and expire after a few 
 **Cases** lists every case at your outlets with a stage badge; filter with **Stage**. A case page
 shows the progress bar, the current customer message, the remedy, the timeline and a collapsible
 **Audit trail** of raw events (personal details hidden).
+It also has an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 | Stage | Meaning |
 | --- | --- |
