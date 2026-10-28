@@ -35,7 +35,9 @@ class FreeItemVoucher(NotYetExecutable, Action):
         errors = [] if inp.value_paise <= cap else ["voucher exceeds the voucher limit"]
         checks: dict = {"value_paise": inp.value_paise, "voucher_max_paise": cap}
         total = facts.order_total_paise
-        if total is not None:
+        if total is None:  # fail closed: a voucher always belongs to an order we can read
+            errors.append("order total unknown, so the voucher cannot be checked")
+        else:
             checks["order_total_paise"] = total  # shown next to the value to the approver
             if inp.value_paise > total:
                 errors.append("voucher exceeds what the customer paid for the order")

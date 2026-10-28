@@ -1,6 +1,7 @@
 """S7.8: a voucher never exceeds what the customer paid, and scales with the order."""
 
 import uuid
+from types import SimpleNamespace
 
 from app.actions.base import Facts, get_action
 from app.core.settings_resolver import resolve
@@ -66,3 +67,45 @@ def test_validation_rejects_a_voucher_above_the_order_total_and_shows_the_total(
 
     assert check(14900).ok and check(14900).checks["order_total_paise"] == 14900
     assert not check(15000).ok
+
+
+def test_a_stored_pack_without_voucher_percent_still_works_as_100_percent(tenant):
+    _, s = _settings(tenant)
+    old = {k: v for k, v in {**s, **WIDE}.items() if k != "voucher_percent"}
+    assert _voucher("o", 14900, old, "x").params["value_paise"] == 14900
+
+
+def test_a_tenant_override_above_100_percent_resolves_to_100(tenant):
+    pack = load_pack(load_tenant(tenant).vertical_pack)
+    assert resolve(pack.settings, {"voucher_percent": 150})["voucher_percent"] == 100
+
+
+def test_validation_fails_closed_when_the_order_total_is_unknown(tenant):
+    _, s = _settings(tenant)
+    action = get_action("free_item_voucher")()
+    inp = action.Input(transaction_id=uuid.uuid4(), value_paise=1000, reason="x")
+    result = action.validate(None, inp, Facts(settings=s))
+    assert not result.ok and "order total unknown" in result.errors[0]
+
+
+def test_the_agent_path_rejects_a_voucher_above_the_order_total(tenant):
+    from app.engine.graph import _check_draft
+    from app.engine.resolver import Remedy
+
+    _, s = _settings(tenant)
+    order_id = str(uuid.uuid4())
+    facts = Facts(settings=s, order_total_paise=14900)
+    # The ceiling is generous on purpose: only the order-total check can reject this.
+    ceiling = Remedy("free_item_voucher", {"value_paise": 30000}, "x", "proposed")
+
+    def check(value):
+        draft = SimpleNamespace(
+            action="free_item_voucher",
+            params={"transaction_id": order_id, "value_paise": value, "reason": "x"},
+            citations=["s#1"],
+        )
+        actions = {"free_item_voucher": None}
+        return _check_draft(draft, actions, facts, {"s#1"}, order_id, ceiling)
+
+    assert check(14900) == []
+    assert any("what the customer paid" in e for e in check(15000))
