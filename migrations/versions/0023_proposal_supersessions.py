@@ -66,6 +66,12 @@ def upgrade() -> None:
     )
     op.create_index("ix_proposal_supersessions_tenant_id", "proposal_supersessions", ["tenant_id"])
     enable_rls("proposal_supersessions")
+    # Every table with updated_at carries set_updated_at (invariant checked in tests/isolation);
+    # the row can never be updated anyway, because of the immutable trigger below.
+    op.execute(
+        "CREATE TRIGGER trg_proposal_supersessions_updated_at BEFORE UPDATE ON "
+        "proposal_supersessions FOR EACH ROW EXECUTE FUNCTION set_updated_at()"
+    )
     op.execute(
         "CREATE TRIGGER trg_proposal_supersessions_immutable BEFORE UPDATE ON "
         "proposal_supersessions FOR EACH ROW EXECUTE FUNCTION reject_update()"
