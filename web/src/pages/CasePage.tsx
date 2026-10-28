@@ -8,6 +8,7 @@ import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
+import { CaseRemedyChoice } from "../components/RemedyChoice";
 import { StaffReplyPanel } from "../components/StaffReplyPanel";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
@@ -306,6 +307,7 @@ export function CasePage() {
           </div>
           <div className="space-y-6">
             <Remedy c={c} />
+            {!staff && <CaseRemedyChoice caseId={c.id} />}
             {staff && c.can_rerun_ai && (
               <RerunAi
                 caseId={c.id}

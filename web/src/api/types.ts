@@ -351,3 +351,18 @@ export interface ErasureRequest {
   requested_at: string;
   completed_at: string | null;
 }
+
+export interface RemedyOption {
+  code: string;
+  kind: "voucher" | "refund" | string;
+  title: string;
+  summary: string; // amount computed by the server
+  amount_paise: number;
+  approval: "instant" | "team" | string;
+  timing: string;
+}
+
+export interface RemedyOptions {
+  options: RemedyOption[];
+  choice_required: boolean;
+}

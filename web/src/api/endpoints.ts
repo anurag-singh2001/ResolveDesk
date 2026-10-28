@@ -30,6 +30,7 @@ import type {
   Language,
   Preferences,
   ReplyTemplates,
+  RemedyOptions,
 } from "./types";
 
 const enc = encodeURIComponent;
@@ -88,7 +89,12 @@ export const api = {
       method: "POST",
       body: { reason },
     }),
-  createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
+  orderRemedyOptions: (orderId: string, category: string) =>
+    request<RemedyOptions>(`/orders/${enc(orderId)}/remedy-options?category=${enc(category)}`),
+  caseRemedyOptions: (id: string) => request<RemedyOptions>(`/cases/${enc(id)}/remedy-options`),
+  setRemedyChoice: (id: string, option: string) =>
+    request<Case>(`/cases/${enc(id)}/remedy-choice`, { method: "PUT", body: { option } }),
+  createCase: (body: { transaction_id: string; category: string | null; message: string; remedy_choice?: string | null }) =>
     request<Case>("/cases", { method: "POST", body }),
   replyToCase: (id: string, message: string) =>
     request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),

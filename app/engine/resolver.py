@@ -57,7 +57,7 @@ def decide_remedy(session: Session, case: Case, choice: str | None = None) -> Re
     options = _priced_options(session, order, facts, case.category, rule)
     by_code = {o.code: o for o in options}
     explicit = choice is not None
-    picked = choice if explicit else case.remedy_choice
+    picked = choice if explicit else getattr(case, "remedy_choice", None)
     if picked is not None and picked in by_code:
         return by_code[picked].remedy
     if explicit:
@@ -65,7 +65,9 @@ def decide_remedy(session: Session, case: Case, choice: str | None = None) -> Re
     return next((o.remedy for o in options if o.remedy.action), options[0].remedy)
 
 
-def remedy_options(session: Session, order: Transaction, facts, category: str) -> list[ChoiceOption]:
+def remedy_options(
+    session: Session, order: Transaction, facts, category: str
+) -> list[ChoiceOption]:
     """Options a customer may choose between for this order and category: only those the rule
     lists AND that currently yield a proposal. Fewer than two means there is nothing to choose."""
     rule = tenant_pack(session).remedies.get(category)

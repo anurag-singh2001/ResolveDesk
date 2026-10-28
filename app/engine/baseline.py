@@ -55,8 +55,13 @@ def build_baseline_graph(deps: Deps, checkpointer=None):
                 return {"need": NEED_ORDER, "step_count": step}
             categories = list(tenant_pack(s).issue_categories)
             ceilings = {}
-            for category in categories:  # duck-typed: decide_remedy reads only these two
-                probe = SimpleNamespace(category=category, transaction_id=case.transaction_id)
+            for category in categories:  # duck-typed: decide_remedy reads only these three
+                probe = SimpleNamespace(
+                    category=category,
+                    transaction_id=case.transaction_id,
+                    # the customer's pick applies to the case's own category only (S7.9)
+                    remedy_choice=case.remedy_choice if category == case.category else None,
+                )
                 r = decide_remedy(s, probe)
                 ceilings[category] = {
                     "action": r.action,
