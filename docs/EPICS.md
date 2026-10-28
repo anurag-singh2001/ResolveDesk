@@ -40,7 +40,7 @@ Definition of Done (all must hold before `[x]`):
 | 5 | 2026-10-27 (built overnight, closed 2026-10-27, pushed 1d917f8) | Privacy basics (DPDP retention, consent, access/erasure), growth chaos test, approvals filter, grievance SLA display, Hindi templates; see docs/sprints/sprint-5.md |
 | 6 | 2026-10-27 → 2026-10-28 | Hardening and handover: clean full-suite run, deadlock repro, eval re-run, CI, runbook + scenario catalogue, cleanup; see docs/sprints/sprint-6.md |
 | 7 | 2026-10-28 → 2026-10-29 | Staff can handle every case; fair remedies; auto language; designs ready for approval; see docs/sprints/sprint-7.md |
-| 8 | TBD | Transparency + privacy rework + demo controls; UI foundation (after design approval) |
+| 8 | 2026-10-30 → 2026-10-31 (proposed) | Transparency and trust: rules readable, useful privacy page, clear demo controls, new UI ships; see docs/sprints/sprint-8.md |
 | 9 | TBD | Platform portal backbone |
 | 10 | TBD | Scenario lab + metrics API + dashboards |
 | 11 | TBD | HQ marketing module |
@@ -170,7 +170,7 @@ Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Giv
 ## E19 · UI/UX revamp -- design Sprint 7, build Sprints 8-12 (no UI build before the owner approves the designs)
 - [ ] S7.D1 Design system in Claude Design (5 SP, main session + design tooling) -- done when: colours, type scale, spacing, components, both themes, Devanagari support delivered and shown to the owner
 - [ ] S7.D2 Wireframes for every page and role (8 SP, main session + design tooling) -- done when: customer, staff and platform-portal wireframes and persona flows delivered; owner approval recorded (gate for S8.7)
-- [ ] S8.7 UI foundation: app shell, tokens, components (8 SP provisional, Sonnet builder) -- done when: shell and shared components built from approved designs, browser walkthrough; SP re-estimated at Sprint 8 planning
+- [ ] S8.7 UI revamp ship: CasePage restyle, merge UI branch, browser walkthrough light/dark/375px (5 SP, re-estimated at Sprint 8 planning from 8 provisional, Sonnet builder) -- done when: UI branch merged into test, web tests and build pass, walkthrough on both tenants recorded
 
 ## E15 · Transparency: rules and policies -- Sprint 8
 - [ ] S8.1 Policies endpoint and pages (5 SP, Sonnet builder) -- done when: GET /policies returns current documents and sections; customer "Our policies" page and staff view; both tenants
@@ -179,7 +179,12 @@ Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Giv
 
 ## E16 · Privacy rework and Demo controls -- Sprint 8
 - [ ] S8.4 Research what customers and owners need from privacy (2 SP, business-analyst) -- done when: report in docs/research/ benchmarking Swiggy, Zomato, Starbucks India against DPDP basics
-- [ ] S8.5 Rework the Privacy page (5 SP, Sonnet builder, Safety: customer data) -- done when: readable "what we hold" with purposes, consent as benefits, erasure in account settings, readable export; both tenants
+- [ ] S8.5 Rework the Privacy page -- SPLIT at Sprint 8 planning into S8.5a-S8.5e below (original 5 SP estimate was too low; research R1-R6 totals 24 SP)
+- [ ] S8.5a "What we hold" table and privacy contact (R1+R6) (5 SP, Sonnet builder, Safety: customer data) -- done when: per-customer table with purposes, retention, processors; contact setting shown and in rights messages; both tenants
+- [ ] S8.5b Consent framed as benefits (R2) (3 SP, Sonnet builder, Safety: consent) -- done when: benefit wording, help always on, immediate withdrawal, consent record per change, growth reads latest; both tenants
+- [ ] S8.5c Readable export plus JSON (R3) (3 SP, Sonnet builder, Safety: customer data; stretch in Sprint 8) -- done when: print-friendly HTML summary and JSON, only own records, audited; both tenants
+- [ ] S8.5d Erasure explained and tracked (R4) (5 SP, Sonnet builder, Safety: customer data) -- done when: remove/keep/wait lists, confirmation, status with expected-by date, cancel before approval; both tenants
+- [ ] S8.5e Owner privacy request queue with deadlines and audit (R5) (8 SP, Sonnet builder, Safety: approvals, customer data; planned Sprint 9) -- done when: staff queue with due dates, hash-bound approval, dry run, sweeper overdue flags, audit; both tenants
 - [ ] S8.6 Rename and explain the Dev panel (3 SP, Sonnet builder) -- done when: "Demo controls" with one-line help per control, guarded reset-demo, link to platform portal
 
 ## E17 · Platform owner portal -- Sprints 9-10
