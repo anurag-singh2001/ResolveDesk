@@ -60,7 +60,7 @@ from app.engine.eligibility import order_facts
 from app.engine.needs import NEED_DETAILS, NEED_ORDER, question_for
 from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal
-from app.engine.resolver import Remedy, decide_remedy
+from app.engine.resolver import Remedy, decide_remedy, record_fallback
 from app.llm.providers import LLMError
 from app.rag.retrieve import search_policies
 
@@ -222,6 +222,7 @@ def build_graph(deps: Deps, checkpointer=None):
             actions = enabled_actions(tenant_pack(s).actions)
             _, facts = order_facts(s, uuid.UUID(order_id))
             ceiling = decide_remedy(s, s.get(Case, uuid.UUID(state["case_id"])))
+            record_fallback(s, tid, uuid.UUID(state["case_id"]), ceiling)
         if ceiling.action is None:  # business rules allow nothing automatic: a person decides
             w["reason"] = f"business rules: {ceiling.reason}"
             return {"outcome": "escalated", "step_count": step}

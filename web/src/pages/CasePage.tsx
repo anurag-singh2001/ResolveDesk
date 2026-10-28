@@ -8,6 +8,7 @@ import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
+import { CaseRemedyChoice } from "../components/RemedyChoice";
 import { StaffReplyPanel } from "../components/StaffReplyPanel";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
@@ -26,6 +27,10 @@ async function loadTimeline(id: string): Promise<TimelineEntry[] | null> {
     throw err;
   }
 }
+
+// The choice (and its "you can ask" wording) is shown only before a decision; after that the
+// case status speaks, so a request is never presented as done.
+const PRE_DECISION: string[] = ["received", "investigating", "awaiting_info"];
 
 function remedyHeading(stage: string): string {
   if (stage === "confirmed") return "Confirmed remedy";
@@ -306,6 +311,7 @@ export function CasePage() {
           </div>
           <div className="space-y-6">
             <Remedy c={c} />
+            {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
             {staff && c.can_rerun_ai && (
               <RerunAi
                 caseId={c.id}

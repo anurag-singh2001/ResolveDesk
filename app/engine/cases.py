@@ -12,6 +12,7 @@ from app.core.models import Case, Customer, Ticket, TicketMessage, Transaction, 
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 from app.engine import lifecycle
+from app.engine.remedy_choice import check_choice, record_choice
 from app.engine.resolver import propose_for_case
 
 OPEN_STATUSES = ("open", "investigating", "awaiting_info", "awaiting_approval", "executing")
@@ -59,6 +60,7 @@ def open_case(
     category: str | None,
     message: str,
     now: datetime,
+    remedy_choice: str | None = None,
 ) -> tuple[Case, uuid.UUID | None]:
     """A customer opens a case on one of THEIR orders. Returns (case, proposal id or None).
 
@@ -77,6 +79,8 @@ def open_case(
     )
     if order is None:
         raise CaseNotFound("order not found")
+    if remedy_choice is not None:  # an option the rule offers for this order, else 422
+        check_choice(session, order, category, remedy_choice)
     customer = lock_customer(session, Customer.user_id == ctx.user_id, ctx.user_id)
     existing = session.scalar(
         select(Case)
@@ -111,9 +115,12 @@ def open_case(
         status="investigating",
         channel="app",
         opened_at=now,
+        remedy_choice=remedy_choice,
     )
     session.add(case)
     session.flush()
+    if remedy_choice is not None:
+        record_choice(session, ctx, case, remedy_choice)
     # Language from the first message. In agents mode (no category yet) the classifier's own
     # answer decides unless the text is plainly Devanagari; the form path has no model call.
     observe_language(session, case, message, allow_heuristic=category is not None)

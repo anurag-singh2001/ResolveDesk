@@ -26,6 +26,40 @@ _MONTHS = {
 
 # key -> {language: text}. `{amount}`, `{date}`, `{contact}`, `{label}` are filled by code.
 TEMPLATES: dict[str, dict[str, str]] = {
+    # ---- remedy options (app/engine/remedy_choice.py, S7.9) ----
+    "option.voucher.title": {
+        "en": "Voucher",
+        "hi-Latn": "Voucher",
+        "hi": "वाउचर",
+    },
+    "option.voucher.summary": {
+        "en": "A voucher worth {amount} for a future order.",
+        "hi-Latn": "Agle order ke liye {amount} ka voucher.",
+        "hi": "अगले ऑर्डर के लिए {amount} का वाउचर।",
+    },
+    "option.refund.title": {
+        "en": "Ask for a refund",
+        "hi-Latn": "Refund ke liye request",
+        "hi": "रिफ़ंड का अनुरोध",
+    },
+    "option.refund.summary": {
+        "en": "You can ask for a partial refund of up to {amount}; a team member decides.",
+        "hi-Latn": (
+            "Aap {amount} tak ke partial refund ke liye keh sakte hain; "
+            "team ka ek sadasya faisla karta hai."
+        ),
+        "hi": "आप {amount} तक के आंशिक रिफ़ंड के लिए अनुरोध कर सकते हैं; टीम का एक सदस्य निर्णय लेता है।",
+    },
+    "option.timing.instant": {
+        "en": "Usually instant.",
+        "hi-Latn": "Aam taur par turant.",
+        "hi": "आम तौर पर तुरंत।",
+    },
+    "option.timing.team": {
+        "en": "After a team member approves it.",
+        "hi-Latn": "Team ke ek sadasya ki manzoori ke baad.",
+        "hi": "टीम के एक सदस्य की मंज़ूरी के बाद।",
+    },
     # ---- case status (app/engine/case_status.py) ----
     "status.investigating": {
         "en": "We are looking into your order.",
