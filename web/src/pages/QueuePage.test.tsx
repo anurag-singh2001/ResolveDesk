@@ -11,6 +11,7 @@ const item: QueueItem = {
   category: "missing_items",
   status: "escalated",
   reason_kind: "escalated",
+  reason_code: "other",
   reason: "Needs a manager",
   waiting_since: "2026-01-01T10:00:00Z",
   waiting_seconds: 7200,

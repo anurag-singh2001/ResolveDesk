@@ -37,9 +37,11 @@ from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add
 from app.engine.dispatch import executable
 from app.engine.routing import (
     NEEDS_PERSON_STATUSES,
+    REASON_LABELS,
     NotAllowed,
     NotAssignable,
     NotNeedingPerson,
+    reason_code,
     reassign,
 )
 
@@ -226,7 +228,8 @@ class QueueItemOut(BaseModel):
     category: str | None
     status: str
     reason_kind: Literal["escalated", "awaiting_approval"]
-    reason: str
+    reason_code: str
+    reason: str  # the fixed label for reason_code, never stored or customer text
     waiting_since: datetime
     waiting_seconds: int
     owner_user_id: uuid.UUID | None
@@ -265,7 +268,7 @@ def cases_to_handle(
         query = query.where(Case.owner_user_id == ctx.user_id)
     rows = db.execute(query).all()
     ids = [c.id for c, _, _ in rows]
-    escalated_at: dict[uuid.UUID, tuple[datetime, str]] = {}
+    escalated_at: dict[uuid.UUID, tuple[datetime, str, str]] = {}
     for ev in db.scalars(
         select(AuditEvent)
         .where(
@@ -273,7 +276,18 @@ def cases_to_handle(
         )
         .order_by(AuditEvent.occurred_at, AuditEvent.id)
     ):
-        escalated_at[ev.entity_id] = (ev.occurred_at, str(ev.payload.get("reason") or ""))
+        escalated_at[ev.entity_id] = (
+            ev.occurred_at,
+            ev.event,
+            str(ev.payload.get("reason") or ""),
+        )
+    approved_cases = set(
+        db.scalars(
+            select(ActionProposal.case_id)
+            .join(Approval, Approval.proposal_id == ActionProposal.id)
+            .where(ActionProposal.case_id.in_(ids))
+        )
+    )
     pending: dict[uuid.UUID, ActionProposal] = {}
     for proposal in db.scalars(
         select(ActionProposal)
@@ -283,7 +297,13 @@ def cases_to_handle(
     ):
         pending[proposal.case_id] = proposal
     owner_ids = {c.owner_user_id for c, _, _ in rows if c.owner_user_id}
-    names = dict(db.execute(select(User.id, User.display_name).where(User.id.in_(owner_ids))).all())
+    # An erased user's account is dead (DPDP): never show their name on a case.
+    names = {
+        uid: name if erased is None else "Former staff member"
+        for uid, name, erased in db.execute(
+            select(User.id, User.display_name, User.erased_at).where(User.id.in_(owner_ids))
+        ).all()
+    }
     langs = dict(
         db.execute(
             select(Customer.id, Customer.preferred_language).where(
@@ -297,14 +317,10 @@ def cases_to_handle(
         proposal = pending.get(case.id)
         if kind == "awaiting_approval":
             since = proposal.created_at if proposal else case.opened_at
-            text = (
-                f"Waiting for a staff decision: {proposal.reason}"
-                if proposal
-                else ("Waiting for a staff decision")
-            )
+            code = reason_code(case.status, case.category, None, "", False)
         else:
-            since, text = escalated_at.get(case.id, (case.opened_at, ""))
-            text = text or "Escalated to a person"
+            since, event, raw = escalated_at.get(case.id, (case.opened_at, None, ""))
+            code = reason_code(case.status, case.category, event, raw, case.id in approved_cases)
         items.append(
             QueueItemOut(
                 case_id=case.id,
@@ -313,7 +329,8 @@ def cases_to_handle(
                 category=case.category,
                 status=case.status,
                 reason_kind=kind,
-                reason=text[:500],
+                reason_code=code,
+                reason=REASON_LABELS[code],
                 waiting_since=since,
                 waiting_seconds=max(0, int((now - since).total_seconds())),
                 owner_user_id=case.owner_user_id,

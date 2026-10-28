@@ -16,7 +16,7 @@ Several candidates: the lowest user id wins. Ownership is about responsibility o
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.core import audit
@@ -24,6 +24,7 @@ from app.core.models import (
     ActionProposal,
     Case,
     Membership,
+    MembershipBrand,
     MembershipLocation,
     Transaction,
     User,
@@ -32,6 +33,38 @@ from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext, load_context
 
 NEEDS_PERSON_STATUSES = ("escalated", "awaiting_approval")
+
+
+# What the queue shows as the reason. Stored reasons (audit payloads, proposal reasons) can quote
+# a model or the customer, so the API returns only one of these fixed codes and labels.
+REASON_LABELS = {
+    "needs_approval": "Waiting for a staff decision",
+    "ai_unavailable": "The AI could not finish this case",
+    "payment_check": "A payment or refund needs checking",
+    "no_automatic_remedy": "No automatic remedy applies",
+    "privacy": "Privacy request",
+    "other": "Escalated to a person",
+}
+
+
+def reason_code(
+    status: str, category: str | None, event: str | None, raw: str, payment_started: bool
+) -> str:
+    """Map a case to a fixed reason code. `raw` is only compared against the prefixes the code
+    itself writes; it is never returned."""
+    if status == "awaiting_approval":
+        return "needs_approval"
+    if category == "privacy_request":
+        return "privacy"
+    if raw.startswith(("execution refused", "refund released")):
+        return "payment_check"
+    if raw.startswith(("customer replied but", "agent run did not finish")):
+        return "ai_unavailable"
+    if event == "case.escalate":  # the deterministic path's own "no remedy" decision
+        return "no_automatic_remedy"
+    if payment_started:  # escalated after a refund/voucher was approved: verification failed
+        return "payment_check"
+    return "other"
 
 
 class NotAssignable(Exception):
@@ -44,6 +77,12 @@ class NotAllowed(Exception):
 
 class NotNeedingPerson(Exception):
     """The case is not in a state that needs a person."""
+
+
+def case_brand(session: Session, case: Case) -> uuid.UUID | None:
+    if case.transaction_id is None:
+        return None
+    return session.scalar(select(Transaction.brand_id).where(Transaction.id == case.transaction_id))
 
 
 def case_location(session: Session, case: Case) -> uuid.UUID | None:
@@ -68,7 +107,9 @@ def needs_hq(session: Session, case: Case) -> bool:
     return limit is not None and amount > limit
 
 
-def _lowest_user(session: Session, role: str, location_id: uuid.UUID | None) -> uuid.UUID | None:
+def _lowest_user(
+    session: Session, role: str, location_id: uuid.UUID | None, brand_id: uuid.UUID | None
+) -> uuid.UUID | None:
     query = (
         select(Membership.user_id)
         .join(User, User.id == Membership.user_id)
@@ -76,6 +117,13 @@ def _lowest_user(session: Session, role: str, location_id: uuid.UUID | None) -> 
         .order_by(Membership.user_id)
         .limit(1)
     )
+    if brand_id is not None:
+        # A membership with brand rows is limited to those brands (tenancy.visible_orders).
+        has_brands = exists().where(MembershipBrand.membership_id == Membership.id)
+        has_this = exists().where(
+            MembershipBrand.membership_id == Membership.id, MembershipBrand.brand_id == brand_id
+        )
+        query = query.where(or_(~has_brands, has_this))
     if location_id is not None:
         query = query.join(
             MembershipLocation, MembershipLocation.membership_id == Membership.id
@@ -85,12 +133,14 @@ def _lowest_user(session: Session, role: str, location_id: uuid.UUID | None) -> 
 
 def pick_owner(session: Session, case: Case) -> uuid.UUID | None:
     location_id = case_location(session, case)
+    brand_id = case_brand(session, case)
+    # A case with no order has no outlet: HQ-only by design (same rule as visible_case).
     if location_id is not None and not needs_hq(session, case):
         for role in ("location_manager", "franchisee_owner"):
-            found = _lowest_user(session, role, location_id)
+            found = _lowest_user(session, role, location_id, brand_id)
             if found is not None:
                 return found
-    return _lowest_user(session, "hq_owner", None)
+    return _lowest_user(session, "hq_owner", None, brand_id)
 
 
 def assign_owner(session: Session, tenant_id: uuid.UUID, case: Case, now: datetime) -> None:
@@ -122,6 +172,13 @@ def reassign(
     The caller has already established that they can see the case (else 404)."""
     if ctx.role not in ("franchisee_owner", "hq_owner"):
         raise NotAllowed("only a franchisee owner or HQ can change the owner")
+    # Lock the row so two hand-overs serialise and the audited previous owner is the real one.
+    case = session.execute(
+        select(Case)
+        .where(Case.id == case.id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one()
     if case.status not in NEEDS_PERSON_STATUSES:
         raise NotNeedingPerson("the case does not need a person")
     target = load_context(session, ctx.tenant_id, user_id)
@@ -133,6 +190,9 @@ def reassign(
             raise NotAssignable("a case with no outlet can only be owned by HQ")
     elif not target.can_see_location(location_id):
         raise NotAssignable("the new owner cannot see this outlet")
+    brand_id = case_brand(session, case)
+    if brand_id is not None and target.brand_ids and brand_id not in target.brand_ids:
+        raise NotAssignable("the new owner is not scoped to this order's brand")
     previous = case.owner_user_id
     case.owner_user_id = user_id
     case.owner_assigned_at = now

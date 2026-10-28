@@ -291,7 +291,7 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 entity_id=case.id,
                 payload={"reason": "agent run did not finish within the run TTL"},
             )
-            assign_owner(s, tenant_id, case, datetime.now(UTC))
+            assign_owner(s, tenant_id, case, now)  # the sweeper's own (injectable) clock
             escalated.append(str(case.id))
     return escalated
 

@@ -157,6 +157,7 @@ export interface QueueItem {
   category: string | null;
   status: string;
   reason_kind: "escalated" | "awaiting_approval";
+  reason_code: string;
   reason: string;
   waiting_since: string;
   waiting_seconds: number;
