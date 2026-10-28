@@ -591,6 +591,9 @@ class Case(TenantOwned, Base):
     language_pending: Mapped[str | None] = mapped_column(String(10))
     # Who is responsible once the case needs a person (S7.2, app/engine/routing.py).
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # The remedy option the customer picked where the category's rule lists several (S7.9,
+    # migration 0024). Only an option code from the pack; code re-checks it against the rule.
+    remedy_choice: Mapped[str | None] = mapped_column(String(32))
     owner_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Set when staff close the case (S7.6, migration 0022).
     close_reason: Mapped[str | None] = mapped_column(String(16))

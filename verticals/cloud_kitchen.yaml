@@ -15,7 +15,9 @@ issue_categories:
   - privacy_request
 actions: [refund, free_item_voucher, send_status_update]
 # Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
-remedies: {late_delivery: late_tiers, missing_items: refund_missing, wrong_item: voucher, food_quality: voucher}
+# `{options: [...]}` lets the customer choose between remedies (S7.9); a refund option is always
+# approved by a person, and the manager-decides policies for a wrong item allow it.
+remedies: {late_delivery: late_tiers, missing_items: refund_missing, wrong_item: {options: [voucher, {refund_percent: 50}]}, food_quality: voucher}
 metrics: [late_rate, missing_item_rate, repeat_rate, ticket_rate]
 features:
   growth: false

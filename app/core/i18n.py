@@ -26,6 +26,37 @@ _MONTHS = {
 
 # key -> {language: text}. `{amount}`, `{date}`, `{contact}`, `{label}` are filled by code.
 TEMPLATES: dict[str, dict[str, str]] = {
+    # ---- remedy options (app/engine/remedy_choice.py, S7.9) ----
+    "option.voucher.title": {
+        "en": "Voucher",
+        "hi-Latn": "Voucher",
+        "hi": "वाउचर",
+    },
+    "option.voucher.summary": {
+        "en": "A voucher worth {amount} for a future order.",
+        "hi-Latn": "Agle order ke liye {amount} ka voucher.",
+        "hi": "अगले ऑर्डर के लिए {amount} का वाउचर।",
+    },
+    "option.refund.title": {
+        "en": "Refund",
+        "hi-Latn": "Refund",
+        "hi": "रिफ़ंड",
+    },
+    "option.refund.summary": {
+        "en": "{amount} back to your original payment method.",
+        "hi-Latn": "{amount} aapke original payment tareeke par wapas.",
+        "hi": "{amount} आपके मूल भुगतान तरीके पर वापस।",
+    },
+    "option.timing.instant": {
+        "en": "Usually instant.",
+        "hi-Latn": "Aam taur par turant.",
+        "hi": "आम तौर पर तुरंत।",
+    },
+    "option.timing.team": {
+        "en": "After a team member approves it.",
+        "hi-Latn": "Team ke ek sadasya ki manzoori ke baad.",
+        "hi": "टीम के एक सदस्य की मंज़ूरी के बाद।",
+    },
     # ---- case status (app/engine/case_status.py) ----
     "status.investigating": {
         "en": "We are looking into your order.",

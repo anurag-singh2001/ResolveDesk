@@ -15,10 +15,11 @@ from sqlalchemy.orm import Session
 
 from app.actions.free_item_voucher import MIN_VOUCHER_PAISE  # noqa: F401  (re-exported)
 from app.core.business_time import business_date
-from app.core.models import Case, Fulfilment, LineItem
+from app.core.models import Case, Fulfilment, LineItem, Transaction
 from app.core.money import percent_of
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
+from app.core.verticals import RefundPercentOption, option_code, rule_options
 from app.engine.eligibility import order_facts
 from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import create_proposal
@@ -32,17 +33,67 @@ class Remedy:
     outcome: str  # proposed | apology | escalate
 
 
-def decide_remedy(session: Session, case: Case) -> Remedy:
+class InvalidRemedyChoice(ValueError):
+    """The chosen option is not one the category's rule allows."""
+
+
+@dataclass(frozen=True)
+class ChoiceOption:
+    code: str
+    remedy: Remedy  # what the rule gives for this option on this order, computed by code
+
+
+def decide_remedy(session: Session, case: Case, choice: str | None = None) -> Remedy:
+    """The remedy the rules give this case. When the category's rule lists several options,
+    the customer's pick (`choice`, else the stored cases.remedy_choice) selects one; no pick
+    means the first option that works. An explicit `choice` outside the rule raises; a stored
+    one that the pack no longer lists is ignored (the rule changed after the pick)."""
     if case.category == PRIVACY_CATEGORY:  # never a payout: a person handles it (S5.5)
         return Remedy(None, {}, ESCALATION_REASON, "escalate")
     rule = tenant_pack(session).remedies.get(case.category)
     if rule is None or case.transaction_id is None:
         return Remedy(None, {}, "no automatic remedy for this category", "escalate")
     order, facts = order_facts(session, case.transaction_id)
+    options = _priced_options(session, order, facts, case.category, rule)
+    by_code = {o.code: o for o in options}
+    explicit = choice is not None
+    picked = choice if explicit else case.remedy_choice
+    if picked is not None and picked in by_code:
+        return by_code[picked].remedy
+    if explicit:
+        raise InvalidRemedyChoice(f"{picked!r} is not an option for this category")
+    return next((o.remedy for o in options if o.remedy.action), options[0].remedy)
+
+
+def remedy_options(session: Session, order: Transaction, facts, category: str) -> list[ChoiceOption]:
+    """Options a customer may choose between for this order and category: only those the rule
+    lists AND that currently yield a proposal. Fewer than two means there is nothing to choose."""
+    rule = tenant_pack(session).remedies.get(category)
+    if rule is None or category == PRIVACY_CATEGORY:
+        return []
+    return [o for o in _priced_options(session, order, facts, category, rule) if o.remedy.action]
+
+
+def _priced_options(
+    session: Session, order: Transaction, facts, category: str, rule
+) -> list[ChoiceOption]:
+    return [
+        ChoiceOption(option_code(o), _apply(session, order, facts, category, o))
+        for o in rule_options(rule)
+    ]
+
+
+def _apply(session: Session, order: Transaction, facts, category: str, option) -> Remedy:
     s = facts.settings
     order_ref = str(order.id)
 
-    if rule == "late_tiers":
+    if isinstance(option, RefundPercentOption):
+        # The option's percent is what the pack offers; refund_max_percent stays the ceiling.
+        percent = min(option.refund_percent, s["refund_max_percent"])
+        amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
+        return _refund(order_ref, amount, f"customer chose a {percent}% refund")
+
+    if option == "late_tiers":
         f = session.scalar(select(Fulfilment).where(Fulfilment.transaction_id == order.id))
         if f is None or f.completed_at is None:
             return Remedy(None, {}, "order not completed yet", "escalate")
@@ -64,7 +115,7 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
         return _refund(order_ref, amount, f"{why}: {percent}% refund tier")
 
-    if rule == "refund_missing":
+    if option == "refund_missing":
         lines = session.scalars(select(LineItem).where(LineItem.transaction_id == order.id))
         missing = sum(li.unit_price_paise * (li.quantity - li.quantity_fulfilled) for li in lines)
         if missing <= 0:
@@ -72,7 +123,7 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         cap = percent_of(order.total_paise, s["refund_max_percent"])
         return _refund(order_ref, min(missing, cap, facts.refundable_paise), "missing items")
 
-    return _voucher(order_ref, order.total_paise, s, case.category.replace("_", " "))
+    return _voucher(order_ref, order.total_paise, s, category.replace("_", " "))
 
 
 def late_tier(tiers: list[dict], minutes: int, placed_on: date) -> dict | None:
