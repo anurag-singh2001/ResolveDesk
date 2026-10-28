@@ -51,6 +51,7 @@ function setup(role: Role, kase: Case | (() => Case), timeline: { status?: numbe
     "GET /cases/c-1/timeline": timeline,
     "GET /orders/t-1": { body: order },
     "POST /cases/c-1/messages": { status: 201, body: base },
+    "POST /cases/c-1/rerun-ai": { status: 202, body: { status: "started" } },
     "GET /cases/c-1/events": { body: [{ occurred_at: "2026-10-25T10:00:01Z", actor_type: "system", event: "case.opened", payload: { a: 1 } }] },
   });
 }
@@ -159,5 +160,28 @@ describe("case page", () => {
     expect(screen.queryByText("Customer said")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Order" })).not.toBeInTheDocument();
     expect(calls.some((c) => c.path === "/orders/t-1")).toBe(false);
+  });
+
+  it("offers staff 'Run the AI again' on an AI-failure escalation, once, with a status line", async () => {
+    const stuck = { ...base, stage: "escalated", action: null, amount_paise: null, can_rerun_ai: true };
+    const { calls } = setup("hq_owner", stuck);
+    renderApp("/cases/c-1");
+    const button = await screen.findByRole("button", { name: "Run the AI again" });
+    await userEvent.setup().click(button);
+    expect(await screen.findByRole("status")).toHaveTextContent("The AI is running again");
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/cases/c-1/rerun-ai")).toHaveLength(1);
+  });
+
+  it("shows no re-run button for other escalations, or to customers", async () => {
+    setup("hq_owner", { ...base, stage: "escalated", can_rerun_ai: false });
+    const first = renderApp("/cases/c-1");
+    await screen.findByText(base.message);
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
+    first.unmount();
+    setup("customer", { ...base, stage: "escalated", can_rerun_ai: true });
+    renderApp("/cases/c-1");
+    await screen.findByText(base.message);
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
   });
 });

@@ -115,6 +115,44 @@ function ReplyBox({ caseId, onSent }: { caseId: string; onSent: () => void }) {
   );
 }
 
+function RerunAi({ caseId, onStarted }: { caseId: string; onStarted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.rerunAi(caseId);
+      setDone(true);
+      onStarted();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <h2 className="text-sm font-semibold text-slate-900">The AI was unavailable</h2>
+      <p className="mt-2 text-xs text-slate-500">This case came to you because the AI could not run. Run it again to get a category and a suggested remedy.</p>
+      {error && <Alert>{error}</Alert>}
+      {done ? (
+        <p className="mt-3 text-sm text-slate-700" role="status">
+          The AI is running again. This page updates by itself.
+        </p>
+      ) : (
+        <Button variant="secondary" className="mt-3" onClick={() => void run()} disabled={busy}>
+          {busy ? "Starting…" : "Run the AI again"}
+        </Button>
+      )}
+    </Card>
+  );
+}
+
 function AuditTrail({ caseId }: { caseId: string }) {
   const [open, setOpen] = useState(false);
   const [events, setEvents] = useState<AuditEvent[] | null>(null);
@@ -258,6 +296,15 @@ export function CasePage() {
           </div>
           <div className="space-y-6">
             <Remedy c={c} />
+            {staff && c.can_rerun_ai && (
+              <RerunAi
+                caseId={c.id}
+                onStarted={() => {
+                  void kase.reload();
+                  void timeline.reload();
+                }}
+              />
+            )}
             <Card className="p-4">
               <h2 className="mb-4 text-sm font-semibold text-slate-900">Case details</h2>
               <Dl

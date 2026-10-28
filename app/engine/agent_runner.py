@@ -29,6 +29,20 @@ def _deps(engine: Engine, budget: RunBudget) -> graph.Deps:
     )
 
 
+def providers_ready() -> bool:
+    """Can the LLM clients be built right now (keys present, providers configured)? A cheap
+    local check, no network call: the sweeper uses it so a retry is not spent while the AI is
+    still unavailable."""
+    try:
+        s = get_settings()
+        budget = RunBudget.from_settings(s)
+        LLMClient.for_role("classifier", budget=budget, settings=s)
+        LLMClient.for_role("main", budget=budget, settings=s)
+    except Exception:
+        return False
+    return True
+
+
 def _unavailable(engine, tenant_id, case_id, exc: Exception) -> dict:
     log.warning("agents unavailable for case %s: %s", case_id, type(exc).__name__)
     try:

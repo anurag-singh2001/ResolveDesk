@@ -19,6 +19,7 @@ from app.api.routes_approvals import run_execution
 from app.config import get_settings
 from app.core.models import ActionProposal, Approval, AuditEvent, Case, Customer, Transaction
 from app.core.tenancy import TenantContext
+from app.engine import ai_rerun
 from app.engine.agent_runner import resume_info, run_agents
 from app.engine.case_messages import customer_messages
 from app.engine.case_status import case_status
@@ -59,6 +60,8 @@ class CaseDetailOut(CaseOut):
     # The customer's own words, oldest first. Only on GET /cases/{id}, after visible_case
     # (the owning customer or staff who can see the order); list responses omit the field.
     customer_messages: list[CustomerMessageOut] = []
+    # Staff only: the case escalated for an AI failure, so "Run the AI again" applies (S7.4).
+    can_rerun_ai: bool = False
 
 
 def _out(db: Session, case: Case, now: datetime) -> CaseOut:
@@ -215,6 +218,7 @@ def get_case(
         customer_messages=[
             CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
         ],
+        can_rerun_ai=ctx.is_staff and ai_rerun.can_rerun(db, case),
     )
 
 
@@ -267,3 +271,29 @@ def case_events(
         )
         for r in rows
     ]
+
+
+class RerunOut(BaseModel):
+    status: str  # "started" | "already_running"
+
+
+@router.post("/cases/{case_id}/rerun-ai", status_code=status.HTTP_202_ACCEPTED)
+def rerun_ai(
+    case_id: uuid.UUID,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> RerunOut:
+    """Staff re-run the AI on a case that escalated because the AI was unavailable. The case
+    is claimed under a row lock (a double click starts one run); the run itself is a
+    background task, after this request is done, so no model call happens in a transaction."""
+    case = visible_case(db, ctx, case_id)  # out of scope / other tenant: 404
+    outcome = ai_rerun.request_rerun(
+        engine, ctx.tenant_id, case.id, trigger="staff", actor_id=ctx.user_id
+    )
+    if outcome == ai_rerun.NOT_ELIGIBLE:
+        raise HTTPException(status.HTTP_409_CONFLICT, "the case did not escalate for an AI failure")
+    if outcome == ai_rerun.STARTED:
+        background.add_task(ai_rerun.run_requested, engine, ctx.tenant_id, case.id, "staff")
+    return RerunOut(status=outcome)
