@@ -20,6 +20,8 @@ from app.core.models import (
     Case,
     Execution,
     RefundOperation,
+    Ticket,
+    TicketMessage,
 )
 from app.core.money import format_inr
 from app.engine.needs import need_from_payload, question_for
@@ -39,6 +41,7 @@ _CASE_EVENTS = {
     "case.info_added": ("investigating", "tl.replied.title", "tl.replied.text"),
     "case.escalate": ("escalated", "tl.passed.title", "status.escalated_team"),
     "case.escalated": ("escalated", "tl.passed.title", "status.escalated_team"),
+    "case.closed": ("closed", "tl.closed.title", ""),  # text from the reason (S7.6)
     "case.apology": ("closed", "tl.noted.title", "status.apology_closed"),
 }
 
@@ -86,10 +89,25 @@ def case_timeline(
     )
     for e in events:
         stage, title_key, text_key = _CASE_EVENTS[e.event]
+        if e.event == "case.closed":  # the reason is a code; the wording is ours
+            reason = e.payload.get("reason")
+            if f"close.{reason}" not in TEMPLATES:
+                continue
+            text_key = f"close.{reason}"
         text = t(text_key, lang)
         if e.event == "case.awaiting_info":  # say WHAT we need: a code-owned template
             text = question_for(need_from_payload(e.payload), lang)
         steps.append(TimelineStep(e.occurred_at, stage, t(title_key, lang), text))
+
+    # Staff replies (S7.6): the template text as sent, and any note under its own label.
+    for msg in session.scalars(
+        select(TicketMessage)
+        .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+        .where(Ticket.case_id == case.id, TicketMessage.author == "staff")
+        .order_by(TicketMessage.sent_at, TicketMessage.id)
+    ):
+        title_key = "tl.staff_note.title" if msg.kind == "note" else "tl.staff.title"
+        steps.append(TimelineStep(msg.sent_at, "investigating", t(title_key, lang), msg.body))
 
     proposals = session.scalars(
         select(ActionProposal)

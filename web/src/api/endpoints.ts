@@ -27,6 +27,7 @@ import type {
   TimelineEntry,
   Language,
   Preferences,
+  ReplyTemplates,
 } from "./types";
 
 const enc = encodeURIComponent;
@@ -77,6 +78,14 @@ export const api = {
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
   cases: (limit = 100) => request<Case[]>(`/cases?limit=${limit}`),
   case: (id: string) => request<Case>(`/cases/${enc(id)}`),
+  replyTemplates: (id: string) => request<ReplyTemplates>(`/cases/${enc(id)}/reply-templates`),
+  staffReply: (id: string, body: { template_id: string; note?: string; idempotency_key: string }) =>
+    request<{ sent: boolean }>(`/cases/${enc(id)}/staff-reply`, { method: "POST", body }),
+  closeCase: (id: string, reason: string) =>
+    request<{ case_id: string; status: string; close_reason: string }>(`/cases/${enc(id)}/close`, {
+      method: "POST",
+      body: { reason },
+    }),
   createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
     request<Case>("/cases", { method: "POST", body }),
   replyToCase: (id: string, message: string) =>

@@ -128,10 +128,29 @@ export interface Case {
   created_at?: string | null; // NEW
   customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
   can_rerun_ai?: boolean; // staff, GET /cases/{id}: escalated because the AI was unavailable
+  staff_messages?: StaffMessage[]; // GET /cases/{id}, staff only (S7.6)
+  closed?: boolean;
+  close_reason?: string | null;
 }
 
 export interface RerunAiResult {
   status: "started" | "already_running" | string;
+}
+
+export interface StaffMessage {
+  at: string;
+  kind: "template" | "note";
+  template_id: string | null;
+  text: string;
+  sender_user_id: string | null;
+}
+
+export interface ReplyTemplates {
+  language: string;
+  templates: Array<{ id: string; label: string; preview: string }>;
+  close_reasons: Array<{ id: string; label: string }>;
+  note_max_length: number;
+  closed: boolean;
 }
 
 export interface TimelineEntry {

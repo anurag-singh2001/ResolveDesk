@@ -24,3 +24,15 @@ def customer_messages(db: Session, case_id: uuid.UUID) -> list[tuple[datetime, s
 def first_customer_message(db: Session, case_id: uuid.UUID) -> str | None:
     msgs = customer_messages(db, case_id)
     return msgs[0][1] if msgs else None
+
+
+def staff_messages(db: Session, case_id: uuid.UUID) -> list[TicketMessage]:
+    """What staff sent the customer on the case (S7.6), oldest first. Staff view only."""
+    return list(
+        db.scalars(
+            select(TicketMessage)
+            .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+            .where(Ticket.case_id == case_id, TicketMessage.author == "staff")
+            .order_by(TicketMessage.sent_at, TicketMessage.id)
+        )
+    )
