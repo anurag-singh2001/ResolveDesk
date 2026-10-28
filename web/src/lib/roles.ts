@@ -43,6 +43,7 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
   if (isStaff(role)) {
     return [
       { to: "/approvals", label: "Approvals", icon: "approvals" },
+      { to: "/queue", label: "Cases to handle", icon: "cases" },
       { to: "/cases", label: "Cases", icon: "cases" },
       ...(canSeeInsights(role) ? [{ to: "/insights", label: "Insights", icon: "insights" as const }] : []),
       ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth", label: "Growth", icon: "growth" as const }] : []),

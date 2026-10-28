@@ -523,6 +523,13 @@ class Case(TenantOwned, Base):
         UniqueConstraint("tenant_id", "id", name="uq_cases_tenant_id"),
         _fk("customer_id", "customers"),
         _fk("transaction_id", "transactions"),
+        # Clears only owner_user_id when the user is deleted (migration 0021).
+        ForeignKeyConstraint(
+            ["tenant_id", "owner_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (owner_user_id)",
+            name="fk_cases_owner_user",
+        ),
         CheckConstraint(
             "status IN ('open', 'investigating', 'awaiting_info', 'awaiting_approval', "
             "'executing', 'resolved', 'escalated', 'closed')",
@@ -549,6 +556,9 @@ class Case(TenantOwned, Base):
     # not decided yet; `language_pending` is a different label seen once, awaiting a second.
     language: Mapped[str | None] = mapped_column(String(10))
     language_pending: Mapped[str | None] = mapped_column(String(10))
+    # Who is responsible once the case needs a person (S7.2, app/engine/routing.py).
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    owner_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class WorkflowRun(TenantOwned, Base):

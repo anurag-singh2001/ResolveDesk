@@ -30,7 +30,10 @@ log = logging.getLogger(__name__)
 Subscriber = Callable[[Session, DomainEvent], None]
 
 # Modules that register subscribers when imported.
-SUBSCRIBER_MODULES = ("app.modules.support.customer_updates",)
+SUBSCRIBER_MODULES = (
+    "app.modules.support.customer_updates",
+    "app.modules.support.case_owner",
+)
 
 _SUBSCRIBERS: dict[str, list[Subscriber]] = {}
 _loaded = False

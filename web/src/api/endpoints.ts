@@ -18,6 +18,7 @@ import type {
   Order,
   OrderDetail,
   PendingApproval,
+  QueueItem,
   PrivacyContact,
   SweepReport,
   Consents,
@@ -33,6 +34,12 @@ export interface ApprovalFilters {
   location_id?: string;
   action?: string;
   sort?: string;
+}
+
+export interface QueueFilters {
+  reason?: string;
+  category?: string;
+  owned_by_me?: boolean;
 }
 
 export const api = {
@@ -81,6 +88,14 @@ export const api = {
     if (filters.action) q.set("action", filters.action);
     if (filters.sort && filters.sort !== "oldest") q.set("sort", filters.sort);
     return request<PendingApproval[]>(`/approvals?${q.toString()}`);
+  },
+  caseQueue: (filters: QueueFilters = {}) => {
+    const q = new URLSearchParams();
+    if (filters.reason) q.set("reason", filters.reason);
+    if (filters.category) q.set("category", filters.category);
+    if (filters.owned_by_me) q.set("owned_by_me", "true");
+    const qs = q.toString();
+    return request<QueueItem[]>(`/cases/queue${qs ? `?${qs}` : ""}`);
   },
   locations: () => request<LocationRef[]>("/locations"),
   outletInsights: () => request<OutletInsight[]>("/insights/outlets"),
