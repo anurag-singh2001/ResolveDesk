@@ -13,6 +13,7 @@ from datetime import date, timedelta
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.actions.free_item_voucher import MIN_VOUCHER_PAISE  # noqa: F401  (re-exported)
 from app.core.business_time import business_date
 from app.core.models import Case, Fulfilment, LineItem
 from app.core.money import percent_of
@@ -98,7 +99,6 @@ def _refund(order_ref: str, amount: int, why: str) -> Remedy:
     return Remedy("refund", params, why, "proposed")
 
 
-MIN_VOUCHER_PAISE = 1000  # Rs 10: below this a voucher is not worth issuing, a person looks
 _RUPEE = 100
 
 

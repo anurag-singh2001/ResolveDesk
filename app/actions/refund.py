@@ -6,12 +6,15 @@ from app.actions._pending import NotYetExecutable
 from app.actions.base import (
     Action,
     ActionInput,
+    AmountRange,
     Facts,
     Risk,
     ValidationResult,
     register_action,
 )
 from app.core.money import percent_of
+
+MIN_SWITCH_REFUND_PAISE = 100  # Re 1: a smaller refund is not worth a payment
 
 
 class RefundInput(ActionInput):
@@ -51,3 +54,15 @@ class Refund(NotYetExecutable, Action):
                 "needs_hq": inp.amount_paise > s["refund_without_escalation_paise"],
             },
         )
+
+    def amount_range(self, facts: Facts) -> AmountRange | None:
+        s = facts.settings
+        if s["refund_channel"] != "tenant_gateway" or facts.order_total_paise is None:
+            return None
+        top = min(
+            percent_of(facts.order_total_paise, s["refund_max_percent"]),
+            facts.refundable_paise or 0,
+        )
+        if top < MIN_SWITCH_REFUND_PAISE:
+            return None
+        return AmountRange(MIN_SWITCH_REFUND_PAISE, top, 1, s["refund_without_escalation_paise"])

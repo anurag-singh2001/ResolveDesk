@@ -658,6 +658,27 @@ class ActionProposal(TenantOwned, Base):
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
 
 
+class ProposalSupersession(TenantOwned, Base):
+    """An approver switched a pending proposal to another remedy (S7.10). Proposals are
+    immutable, so the old one is marked by this append-only link, never edited. A superseded
+    proposal can no longer be decided or executed."""
+
+    __tablename__ = "proposal_supersessions"
+    __table_args__ = (
+        _fk("old_proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("new_proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("switched_by", "users"),
+        CheckConstraint("old_proposal_id <> new_proposal_id", name="ck_supersession_distinct"),
+        UniqueConstraint("tenant_id", "old_proposal_id", name="uq_supersession_old"),
+        UniqueConstraint("tenant_id", "new_proposal_id", name="uq_supersession_new"),
+    )
+
+    old_proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    new_proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    switched_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
 class Approval(TenantOwned, Base):
     """One decision per proposal, bound to the hash the approver saw (hard rule 6)."""
 

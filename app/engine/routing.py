@@ -31,6 +31,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext, load_context
+from app.engine.approvals import not_superseded
 
 NEEDS_PERSON_STATUSES = ("escalated", "awaiting_approval")
 
@@ -97,7 +98,7 @@ def needs_hq(session: Session, case: Case) -> bool:
     """The case's latest proposal is above the amount the outlet may handle on its own."""
     amount = session.scalar(
         select(ActionProposal.amount_paise)
-        .where(ActionProposal.case_id == case.id)
+        .where(ActionProposal.case_id == case.id, not_superseded())
         .order_by(ActionProposal.created_at.desc(), ActionProposal.id.desc())
         .limit(1)
     )

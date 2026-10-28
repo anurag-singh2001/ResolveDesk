@@ -53,6 +53,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import tenant_pack
 from app.engine import lifecycle
+from app.engine.approvals import head_proposal_id
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
 from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
@@ -260,10 +261,11 @@ def build_graph(deps: Deps, checkpointer=None):
         if decision is None:
             interrupt({"kind": "approval", "proposal_id": state["proposal_id"]})
             decision = _decision(deps, state)  # the database is the truth, not the resume value
+        head = _current_proposal(deps, state)  # an approver may have switched the remedy (S7.10)
         if decision is None:  # woken without a decision: pause again
-            return {"approval_status": "pending"}
+            return {"approval_status": "pending", "proposal_id": head}
         outcome = "declined" if decision == "rejected" else "approved"
-        return {"approval_status": decision, "outcome": outcome}
+        return {"approval_status": decision, "outcome": outcome, "proposal_id": head}
 
     def execute(state: CaseState) -> CaseState:
         result = lifecycle.execute_approved(
@@ -339,11 +341,18 @@ def build_graph(deps: Deps, checkpointer=None):
     return g.compile(checkpointer=checkpointer)
 
 
+def _current_proposal(deps: Deps, state: CaseState) -> str:
+    """The proposal this run is waiting on: the state's own, or the one that replaced it when
+    an approver switched the remedy (the old one can never be decided or executed)."""
+    with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+        return str(head_proposal_id(s, uuid.UUID(state["proposal_id"])))
+
+
 def _decision(deps: Deps, state: CaseState) -> str | None:
-    """approved | rejected | None (no decision yet), for this state's proposal."""
+    """approved | rejected | None (no decision yet), for this state's current proposal."""
     tid = uuid.UUID(state["tenant_id"])
     with tenant_session(tid, deps.engine) as s:
-        proposal = s.get(ActionProposal, uuid.UUID(state["proposal_id"]))
+        proposal = s.get(ActionProposal, head_proposal_id(s, uuid.UUID(state["proposal_id"])))
         if proposal is None or str(proposal.case_id) != state["case_id"]:
             return "rejected"  # never act on a proposal that is not this case's
         return s.scalar(select(Approval.decision).where(Approval.proposal_id == proposal.id))

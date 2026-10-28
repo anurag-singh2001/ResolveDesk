@@ -288,6 +288,33 @@ export interface DecisionResponse {
   execution: string;
 }
 
+export interface SwitchAlternative {
+  action: string;
+  min_paise: number;
+  max_paise: number;
+  step_paise: number;
+  needs_hq_above_paise: number | null;
+  you_can_approve_up_to_paise: number;
+}
+
+export interface Alternatives {
+  proposal_id: string;
+  current_action: string;
+  current_amount_paise: number | null;
+  alternatives: SwitchAlternative[];
+}
+
+export interface SwitchResponse {
+  old_proposal_id: string;
+  proposal_id: string;
+  action: string;
+  amount_paise: number | null;
+  decision: "approved" | null;
+  waiting_for: string | null;
+  expires_at: string | null;
+  execution: string;
+}
+
 export interface ClockState {
   now: string;
   offset_seconds: number;

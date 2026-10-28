@@ -32,6 +32,7 @@ from app.core.models import (
 from app.core.tenancy import TenantContext
 from app.engine import ai_rerun
 from app.engine.agent_runner import resume_info, run_agents
+from app.engine.approvals import not_superseded
 from app.engine.case_messages import customer_messages, staff_messages
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
@@ -320,7 +321,7 @@ def cases_to_handle(
     for proposal in db.scalars(
         select(ActionProposal)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
-        .where(ActionProposal.case_id.in_(ids), Approval.id.is_(None))
+        .where(ActionProposal.case_id.in_(ids), Approval.id.is_(None), not_superseded())
         .order_by(ActionProposal.created_at, ActionProposal.id)
     ):
         pending[proposal.case_id] = proposal

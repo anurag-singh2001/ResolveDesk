@@ -75,6 +75,15 @@ Messages you may see:
 An approval is tied to exactly the proposal you saw. If the proposal changes, or the approval is
 not used within a few hours, it expires and has to be approved again.
 
+## Switching the remedy
+
+If the proposed remedy is not the fair one (say a voucher where a partial refund fits, or the voucher is too small), click **Switch remedy** instead of rejecting. You get the remedies the rules allow for this case, each with its amount range. Choose one, enter the amount in rupees, and say **why** (it is saved in the audit trail). Optionally tick **Approve it now as well**. Then **Review switch** and confirm with **Yes, switch** (**Cancel** is selected first).
+
+- The old proposal is replaced and can no longer be approved. A new proposal is created and checked by the same rules as any other (limits, voucher not above the order total, repeat-claim warning).
+- **Approve it now** only works if you could approve that amount anyway. Above your limit the new proposal is created and waits for a senior approver (the case is handed to HQ); you are told so.
+- The customer only ever sees the result of the new proposal, never the one you replaced.
+- "Someone has already decided or switched this proposal" means another approver got there first; reload the queue.
+
 ## Cases to handle
 
 **Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of your own outlet only. The number next to the menu item is how many are waiting. The oldest wait comes first.
