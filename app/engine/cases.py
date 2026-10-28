@@ -79,11 +79,13 @@ def open_case(
         raise CaseNotFound("order not found")
     customer = lock_customer(session, Customer.user_id == ctx.user_id, ctx.user_id)
     existing = session.scalar(
-        select(Case).where(
+        select(Case)
+        .where(
             Case.customer_id == customer.id,
             Case.transaction_id == order.id,
             Case.status.in_(OPEN_STATUSES),
         )
+        .with_for_update()  # observe_language writes language/language_pending
     )
     if existing is not None:  # a retry or a second report: same case, no new proposal
         ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == existing.id))

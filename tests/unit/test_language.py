@@ -149,3 +149,41 @@ def test_case_language_prefers_the_case_then_the_default():
 
 def test_limits_are_the_researched_ones():
     assert language.DEVANAGARI_SHARE == 0.30 and language.LLM_MIN_CONFIDENCE == 0.6
+
+
+def test_a_model_hi_for_roman_text_is_downgraded_to_hinglish():
+    got = detect("mera order late hai", "hi", 0.9)
+    assert (got.label, got.source) == ("hi-Latn", "llm")
+    assert detect("मेरा ऑर्डर", "hi", 0.9).label == "hi"
+
+
+def test_no_signal_uses_the_customer_default_whatever_the_length():
+    class Pref(_Session):
+        def get(self, *_):
+            return SimpleNamespace(preferred_language="hi")
+
+    for text in ("refund", "Paneer Butter Masala and Masala Chai missing from order"):
+        s, case = Pref(), _case()
+        case.customer_id = "c1"
+        assert observe(s, case, text) == "hi"
+        assert s.added[0].payload["source"] == "default"
+    # A message with real signal ignores the old default.
+    s, case = Pref(), _case()
+    case.customer_id = "c1"
+    assert observe(s, case, "bhai khana bahut thanda tha, paisa wapas chahiye") == "hi-Latn"
+
+
+def test_a_case_without_a_customer_does_not_look_one_up():
+    class Boom(_Session):
+        def get(self, *_):
+            raise AssertionError("must not look up a customer")
+
+    assert observe(Boom(), _case(), "refund") == "en"
+
+
+def test_out_of_range_language_confidence_is_clamped_not_fatal():
+    from app.agents.schemas import Classification
+
+    hi = Classification(category="x", confidence=0.9, language="hi", language_confidence=1.2)
+    lo = Classification(category="x", confidence=0.9, language="hi", language_confidence=-1)
+    assert (hi.language_confidence, lo.language_confidence, hi.category) == (1.0, 0.0, "x")

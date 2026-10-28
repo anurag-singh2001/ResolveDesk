@@ -528,6 +528,13 @@ class Case(TenantOwned, Base):
             "'executing', 'resolved', 'escalated', 'closed')",
             name="ck_cases_status",
         ),
+        CheckConstraint(
+            "language IS NULL OR language IN ('en', 'hi-Latn', 'hi')", name="ck_cases_language"
+        ),
+        CheckConstraint(
+            "language_pending IS NULL OR language_pending IN ('en', 'hi-Latn', 'hi')",
+            name="ck_cases_language_pending",
+        ),
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)

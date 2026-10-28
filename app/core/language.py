@@ -140,6 +140,10 @@ def _devanagari_share(text: str) -> float:
     return deva / total if total else 0.0
 
 
+def _has_devanagari(text: str) -> bool:
+    return any("ऀ" <= ch <= "ॿ" for ch in text)
+
+
 def detect(text: str, llm_label: object = None, llm_confidence: object = None) -> Detection:
     """The best label for one message. Never raises; always one of LANGUAGES."""
     text = text or ""
@@ -154,6 +158,8 @@ def detect(text: str, llm_label: object = None, llm_confidence: object = None) -
         and not isinstance(llm_confidence, bool)
         and llm_confidence >= LLM_MIN_CONFIDENCE
     ):
+        if llm_label == "hi" and not _has_devanagari(text):
+            llm_label = "hi-Latn"  # `hi` means Devanagari script; Roman text is Hinglish
         return Detection(llm_label, "llm", float(min(llm_confidence, 1.0)), n)
     hit_words = [w for w in lower if w in HINGLISH_WORDS]
     if (
@@ -209,9 +215,13 @@ def observe(
     if current is None:
         if det.source == "rule" or allow_heuristic or det.source == "llm":
             if det.source == "default":
-                # Nothing to go on: the customer's old stored choice, then English.
-                pref = session.get(Customer, case.customer_id)
-                if det.words < MIN_WORDS_TO_SWITCH and pref is not None:
+                # No signal at all: the customer's old stored choice, then English.
+                pref = (
+                    session.get(Customer, case.customer_id)
+                    if case.customer_id is not None
+                    else None
+                )
+                if pref is not None:
                     det = Detection(
                         pref.preferred_language
                         if pref.preferred_language in LANGUAGES
