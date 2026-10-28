@@ -46,6 +46,7 @@ from app.core.models import (
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
+from app.engine.approvals import not_superseded
 from app.engine.cases import OPEN_STATUSES
 from app.engine.executor import TERMINAL as EXEC_FINAL
 from app.engine.verifier import FINAL as VERIFY_FINAL
@@ -80,7 +81,12 @@ def unsettled_case_ids(tenant_id: uuid.UUID):
     """Cases with money-flow work in progress: an undecided proposal, an unsettled execution,
     or a refund still in flight."""
     p = ActionProposal
-    undecided = ~exists().where(Approval.tenant_id == tenant_id, Approval.proposal_id == p.id)
+    # A superseded proposal never gets an approval (S7.10): it is not "undecided", its
+    # replacement is.
+    undecided = (
+        ~exists().where(Approval.tenant_id == tenant_id, Approval.proposal_id == p.id)
+        & not_superseded()
+    )
     unsettled_exec = exists().where(
         Execution.tenant_id == tenant_id,
         Execution.proposal_id == p.id,

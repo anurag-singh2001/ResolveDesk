@@ -121,7 +121,7 @@ export const api = {
     request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
   campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),
-  switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string | null }) =>
+  switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string }) =>
     request<SwitchResponse>(`/approvals/${enc(proposalId)}/switch`, { method: "POST", body }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {

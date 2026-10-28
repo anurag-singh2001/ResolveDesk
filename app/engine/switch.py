@@ -136,7 +136,7 @@ def switch_remedy(
     action: str,
     amount_paise: int | None,
     approve: bool,
-    note: str | None,
+    note: str,
     now: datetime,
 ) -> SwitchResult:
     """Raises NotFound (404: out of scope, other tenant), AlreadyDecided (409: not pending),
@@ -158,6 +158,8 @@ def switch_remedy(
     if action == old.action and amount_paise == old.amount_paise:
         raise NotEligible(["this is already the proposed remedy"])
     why = (note or "").strip()[:SWITCH_REASON_MAX]
+    if not why:
+        raise NotEligible(["say why you are switching (it is saved in the audit trail)"])
     reason = f"approver switched {old.action} to {action}" + (f": {why}" if why else "")
 
     params = {
@@ -220,8 +222,8 @@ def switch_remedy(
         case.id,
         {"proposal_id": str(new.id), "auto_approved": False, "supersedes": str(old.id)},
     )
-    if result.checks.get("needs_hq"):
-        _hand_to_hq(session, ctx, case, now)
+    if result.checks.get("needs_hq") and ctx.role != "hq_owner":
+        _hand_to_hq(session, ctx, case, now)  # an hq_owner deciding it needs no hand-over
 
     approval, waiting = None, None
     if approve:

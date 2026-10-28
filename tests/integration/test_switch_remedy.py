@@ -35,6 +35,7 @@ from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.eligibility import order_facts
 from app.engine.proposals import create_proposal, proposal_hash_is_intact
+from app.engine.retention import unsettled_case_ids
 from app.engine.switch import switch_remedy
 from tests.helpers import login
 
@@ -140,6 +141,7 @@ def _alts(sw, headers, pid):
 
 
 def _switch(sw, headers, pid, **body):
+    body.setdefault("note", "fairer remedy")
     return sw["api"].post(f"/approvals/{pid}/switch", headers=headers, json=body)
 
 
@@ -413,7 +415,7 @@ def test_race_switch_holds_the_lock_then_approve_old_loses(sw):
 
     def do_switch(s):
         switch_remedy(s, sw["mgr_ctx"], old, action="free_item_voucher", amount_paise=9000,
-                      approve=False, note=None, now=now)  # fmt: skip
+                      approve=False, note="x", now=now)  # fmt: skip
 
     loser = _race(sw, do_switch, lambda s: decide(s, sw["mgr_ctx"], old, "approved", now))
     assert isinstance(loser, AlreadyDecided)
@@ -428,7 +430,7 @@ def test_race_approve_old_holds_the_lock_then_switch_loses(sw):
 
     def switch(s):
         switch_remedy(s, sw["mgr_ctx"], old, action="free_item_voucher", amount_paise=9000,
-                      approve=False, note=None, now=now)  # fmt: skip
+                      approve=False, note="x", now=now)  # fmt: skip
 
     loser = _race(sw, lambda s: decide(s, sw["mgr_ctx"], old, "approved", now), switch)
     assert isinstance(loser, AlreadyDecided)
@@ -490,3 +492,54 @@ def test_the_customer_story_only_shows_the_new_remedy(sw):
         assert [x.stage for x in steps].count("awaiting_approval") == 1
         assert "90" in " ".join(x.text for x in steps)  # the new amount (Rs 90), not Rs 50
         assert "50" not in " ".join(x.text for x in steps if x.stage == "awaiting_approval")
+
+
+def test_a_blank_or_missing_why_is_refused(sw):
+    _, old = sw["new_pending"]()
+    for note in ("", "   "):
+        r = _switch(sw, sw["hq"], old, action="free_item_voucher", amount_paise=9000, note=note)
+        assert r.status_code == 422, r.text
+    r = sw["api"].post(
+        f"/approvals/{old}/switch",
+        headers=sw["hq"],
+        json={"action": "free_item_voucher", "amount_paise": 9000},
+    )
+    assert r.status_code == 422
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert not is_superseded(s, old)
+
+
+def test_hq_approving_in_the_same_step_does_not_hand_the_case_over(sw):
+    case_id, old = sw["new_pending"]()
+    alts = _alts(sw, sw["hq"], old)
+    if "refund" not in alts:
+        pytest.skip("refunds are not offered for this tenant's order")
+    amount = _refund_over_limit(sw, alts)
+    r = _switch(sw, sw["hq"], old, action="refund", amount_paise=amount, approve=False)
+    assert r.status_code == 200, r.text
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        handed = [
+            e
+            for e in s.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.event == "case.owner_assigned", AuditEvent.entity_id == case_id
+                )
+            )
+            if "why" in e.payload  # only the switch's hand-over writes this key
+        ]
+        assert handed == []
+
+
+def test_retention_treats_a_switched_case_as_settled_once_the_new_one_is_decided(sw):
+    case_id, old = sw["new_pending"]()
+    now = datetime.now(UTC)
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        res = switch_remedy(s, sw["mgr_ctx"], old, action="free_item_voucher",
+                            amount_paise=9000, approve=False, note="x", now=now)  # fmt: skip
+        new = res.proposal.id
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        # The replacement is pending: the case is unsettled. The superseded one adds nothing.
+        assert case_id in set(s.scalars(unsettled_case_ids(sw["tid"])))
+        decide(s, sw["mgr_ctx"], new, "approved", now)
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert case_id not in set(s.scalars(unsettled_case_ids(sw["tid"])))

@@ -267,7 +267,7 @@ class SwitchIn(BaseModel):
     # A request, never a fact: strict int, then checked against the rule's range server-side.
     amount_paise: int | None = Field(None, strict=True, gt=0)
     approve: bool = False
-    note: str | None = Field(None, max_length=500)  # the why, audited
+    note: str = Field(max_length=500)  # the why, audited (blank is refused: 422)
 
 
 class SwitchOut(BaseModel):
