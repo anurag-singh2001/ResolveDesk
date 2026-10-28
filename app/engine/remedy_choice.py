@@ -9,6 +9,7 @@ proposal is built from the rule, so a pick can never widen an amount.
 
 import json
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -19,7 +20,7 @@ from app.core.i18n import normalize, t
 from app.core.models import ActionProposal, Case, Customer, Transaction
 from app.core.money import format_inr
 from app.core.tenancy import TenantContext
-from app.engine.eligibility import order_facts
+from app.engine.eligibility import fair_use, order_facts
 from app.engine.resolver import ChoiceOption, remedy_options
 
 CHOOSABLE_STATUSES = ("investigating", "awaiting_info")
@@ -33,19 +34,22 @@ class ChoiceClosed(ValueError):
     """The case is already decided (or not the kind that takes a choice)."""
 
 
-def _approval(option: ChoiceOption, facts) -> str:
+def _approval(option: ChoiceOption, facts, fair_ok: bool) -> str:
+    """ "instant" only when auto-approval would really apply: the action may auto-approve, the
+    amount is under its cap, and the customer's recent grants are under the fair-use limit
+    (the same three checks `approvals.auto_decide` makes). Otherwise a person decides."""
     action_cls = get_action(option.remedy.action)
-    if not action_cls.auto_approvable:
+    if not action_cls.auto_approvable or not fair_ok:
         return "team"
     inp = action_cls.Input.model_validate_json(json.dumps(option.remedy.params))
     return "instant" if action_cls().can_auto_approve(inp, facts) else "team"
 
 
-def _view(option: ChoiceOption, facts, language: str) -> dict:
+def _view(option: ChoiceOption, facts, language: str, fair_ok: bool) -> dict:
     remedy = option.remedy
     kind = "refund" if remedy.action == "refund" else "voucher"
     amount = remedy.params.get("amount_paise", remedy.params.get("value_paise"))
-    approval = _approval(option, facts)
+    approval = _approval(option, facts, fair_ok)
     return {
         "code": option.code,
         "kind": kind,
@@ -58,12 +62,13 @@ def _view(option: ChoiceOption, facts, language: str) -> dict:
 
 
 def options_for_order(
-    session: Session, order: Transaction, category: str, language: object
+    session: Session, order: Transaction, category: str, language: object, now: datetime
 ) -> list[dict]:
     """The options to show for this order and category; [] or one entry means no choice."""
     lang = normalize(language)
     _, facts = order_facts(session, order.id)
-    return [_view(o, facts, lang) for o in remedy_options(session, order, facts, category)]
+    fair_ok = fair_use(session, order.customer_id, facts.settings, now).ok
+    return [_view(o, facts, lang, fair_ok) for o in remedy_options(session, order, facts, category)]
 
 
 def customer_language(session: Session, ctx: TenantContext) -> str:

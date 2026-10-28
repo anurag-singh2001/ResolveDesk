@@ -19,7 +19,7 @@ const two = {
   choice_required: true,
   options: [
     { code: "voucher", kind: "voucher", title: "Voucher", summary: "A voucher worth ₹150.00 for a future order.", amount_paise: 15000, approval: "instant", timing: "Usually instant." },
-    { code: "refund_50pct", kind: "refund", title: "Refund", summary: "₹200.00 back to your original payment method.", amount_paise: 20000, approval: "team", timing: "After a team member approves it." },
+    { code: "refund_50pct", kind: "refund", title: "Ask for a refund", summary: "You can ask for a partial refund of up to ₹200.00; a team member decides.", amount_paise: 20000, approval: "team", timing: "After a team member approves it." },
   ],
 };
 
@@ -44,7 +44,7 @@ describe("remedy choice on the report form", () => {
     expect(await screen.findByText("A voucher worth ₹150.00 for a future order.")).toBeInTheDocument();
     expect(screen.getByText("Usually instant.")).toBeInTheDocument();
     expect(screen.getByText("After a team member approves it.")).toBeInTheDocument();
-    await user.click(screen.getByLabelText(/Refund/));
+    await user.click(screen.getByLabelText(/Ask for a refund/));
     await user.type(screen.getByLabelText(/Tell us what happened/), "Wrong dish");
     await user.click(screen.getByRole("button", { name: "Submit report" }));
     const post = calls.find((c) => c.method === "POST" && c.path === "/cases");
@@ -61,5 +61,35 @@ describe("remedy choice on the report form", () => {
     await user.click(screen.getByRole("button", { name: "Submit report" }));
     const post = calls.find((c) => c.method === "POST" && c.path === "/cases");
     expect((post?.body as { remedy_choice: unknown }).remedy_choice).toBeNull();
+  });
+});
+
+describe("remedy choice on the case page", () => {
+  const base = {
+    id: "c-1", transaction_id: "o-1", order_ref: "O-1", category: "wrong_item", message: "We are looking into your order.",
+    action: null, amount_paise: null, proposal_id: null, created_at: "2026-10-25T10:00:00Z",
+  };
+  function caseSetup(stage: string) {
+    seedSession();
+    return mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /cases/c-1": { body: { ...base, stage } },
+      "GET /cases/c-1/timeline": { body: [] },
+      "GET /cases/c-1/remedy-options": { body: two },
+    });
+  }
+
+  it("is offered before a decision", async () => {
+    caseSetup("investigating");
+    renderApp("/cases/c-1");
+    expect(await screen.findByText(/You can ask for a partial refund/)).toBeInTheDocument();
+  });
+
+  it("is not shown once the case is decided, so a request never reads as done", async () => {
+    const { calls } = caseSetup("awaiting_approval");
+    renderApp("/cases/c-1");
+    await screen.findByText(base.message);
+    expect(screen.queryByText(/You can ask for a partial refund/)).not.toBeInTheDocument();
+    expect(calls.some((c) => c.path.endsWith("remedy-options"))).toBe(false);
   });
 });

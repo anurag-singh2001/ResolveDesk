@@ -38,14 +38,17 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "अगले ऑर्डर के लिए {amount} का वाउचर।",
     },
     "option.refund.title": {
-        "en": "Refund",
-        "hi-Latn": "Refund",
-        "hi": "रिफ़ंड",
+        "en": "Ask for a refund",
+        "hi-Latn": "Refund ke liye request",
+        "hi": "रिफ़ंड का अनुरोध",
     },
     "option.refund.summary": {
-        "en": "{amount} back to your original payment method.",
-        "hi-Latn": "{amount} aapke original payment tareeke par wapas.",
-        "hi": "{amount} आपके मूल भुगतान तरीके पर वापस।",
+        "en": "You can ask for a partial refund of up to {amount}; a team member decides.",
+        "hi-Latn": (
+            "Aap {amount} tak ke partial refund ke liye keh sakte hain; "
+            "team ka ek sadasya faisla karta hai."
+        ),
+        "hi": "आप {amount} तक के आंशिक रिफ़ंड के लिए अनुरोध कर सकते हैं; टीम का एक सदस्य निर्णय लेता है।",
     },
     "option.timing.instant": {
         "en": "Usually instant.",

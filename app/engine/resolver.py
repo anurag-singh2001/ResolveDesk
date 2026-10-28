@@ -7,13 +7,14 @@ the same `create_proposal`, so both paths get the same validation and approvals.
 """
 
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date, timedelta
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.actions.free_item_voucher import MIN_VOUCHER_PAISE  # noqa: F401  (re-exported)
+from app.core import audit
 from app.core.business_time import business_date
 from app.core.models import Case, Fulfilment, LineItem, Transaction
 from app.core.money import percent_of
@@ -31,6 +32,7 @@ class Remedy:
     params: dict
     reason: str
     outcome: str  # proposed | apology | escalate
+    fallback_from: str | None = None  # the customer's pick, when it could not be honoured
 
 
 class InvalidRemedyChoice(ValueError):
@@ -58,11 +60,16 @@ def decide_remedy(session: Session, case: Case, choice: str | None = None) -> Re
     by_code = {o.code: o for o in options}
     explicit = choice is not None
     picked = choice if explicit else getattr(case, "remedy_choice", None)
-    if picked is not None and picked in by_code:
-        return by_code[picked].remedy
-    if explicit:
+    if explicit and picked not in by_code:
         raise InvalidRemedyChoice(f"{picked!r} is not an option for this category")
-    return next((o.remedy for o in options if o.remedy.action), options[0].remedy)
+    if picked is not None and picked in by_code and by_code[picked].remedy.action:
+        return by_code[picked].remedy
+    first = next((o.remedy for o in options if o.remedy.action), options[0].remedy)
+    if picked is not None and picked in by_code and first.action:
+        # The pick is in the rule but yields nothing now (e.g. nothing left to refund): give the
+        # first workable option instead of escalating; callers audit it via fallback_from.
+        return replace(first, fallback_from=picked)
+    return first
 
 
 def remedy_options(
@@ -173,6 +180,7 @@ def propose_for_case(
     session: Session, ctx: TenantContext, case: Case
 ) -> tuple[Remedy, uuid.UUID | None]:
     remedy = decide_remedy(session, case)
+    record_fallback(session, ctx.tenant_id, case.id, remedy)
     if remedy.action is None:
         return remedy, None
     proposal = create_proposal(
@@ -184,3 +192,19 @@ def propose_for_case(
         reason=f"deterministic rule: {remedy.reason}",
     )
     return remedy, proposal.id
+
+
+def record_fallback(session: Session, tenant_id: uuid.UUID, case_id: uuid.UUID, r: Remedy) -> None:
+    """Audit that the customer's pick could not be honoured (option code and action only)."""
+    if r.fallback_from is None:
+        return
+    audit.record(
+        session,
+        tenant_id,
+        actor_type="system",
+        actor_id=None,
+        event="case.remedy_choice_fallback",
+        entity_type="case",
+        entity_id=case_id,
+        payload={"picked": r.fallback_from, "used": r.action},
+    )

@@ -42,10 +42,11 @@ Click a card to open the order. The order page shows:
    If none fits, or you are not sure, pick **Not sure — just describe it** (when shown) and our
    assistant will work out the category from your message.
 4. For some problems (for example a wrong item) a **How would you like this settled?** list appears,
-   such as *Voucher* or *Refund*. Each choice shows what you would get, worked out for your order, and
+   such as *Voucher* or *Ask for a refund*. Each choice shows what you would get, worked out for your order, and
    how long it usually takes: "Usually instant" or "After a team member approves it". Pick one. If only
    one remedy is possible, no list is shown. Your choice never changes the limits: the amount is always
-   set by our rules and a refund is always approved by a person. If you did not pick a category yet
+   set by our rules, and a refund is a request that a team member decides on. If the option you picked
+   cannot be given any more, we use another that is allowed and note it. If you did not pick a category yet
    (*Not sure*), the same list may appear on the case page while we are still looking at your report.
 5. Under **Tell us what happened**, describe the problem in your own words.
 6. Click **Submit report**.

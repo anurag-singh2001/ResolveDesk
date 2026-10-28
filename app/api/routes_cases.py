@@ -222,8 +222,16 @@ class RemedyChoiceIn(BaseModel):
     option: str = Field(min_length=1, max_length=32)
 
 
-def _options_out(db: Session, ctx: TenantContext, order: Transaction, category: str):
-    options = options_for_order(db, order, category, customer_language(db, ctx))
+def _visible_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> Transaction:
+    """The order if the caller may see it (their own, for a customer), else 404."""
+    order = db.scalar(select(Transaction).where(Transaction.id == order_id, ctx.visible_orders()))
+    if order is None:
+        raise not_found()
+    return order
+
+
+def _options_out(db: Session, ctx: TenantContext, order: Transaction, category: str, now: datetime):
+    options = options_for_order(db, order, category, customer_language(db, ctx), now)
     return RemedyOptionsOut(options=options, choice_required=len(options) > 1)
 
 
@@ -233,6 +241,7 @@ def order_remedy_options(
     category: str = Query(min_length=1, max_length=64),
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> RemedyOptionsOut:
     """What a customer may choose for this category on their own order. Another customer's or
     tenant's order is a 404; the amounts are computed here, never taken from the client."""
@@ -240,10 +249,7 @@ def order_remedy_options(
         raise HTTPException(status.HTTP_403_FORBIDDEN, "customers only")
     if category not in tenant_pack(db).issue_categories:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown category")
-    order = db.scalar(select(Transaction).where(Transaction.id == order_id, ctx.visible_orders()))
-    if order is None:
-        raise not_found()
-    return _options_out(db, ctx, order, category)
+    return _options_out(db, ctx, _visible_order(db, ctx, order_id), category, now)
 
 
 @router.get("/cases/{case_id}/remedy-options")
@@ -251,6 +257,7 @@ def case_remedy_options(
     case_id: uuid.UUID,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
 ) -> RemedyOptionsOut:
     """The same options for a case that is still undecided; empty once a proposal exists."""
     if ctx.role != "customer":
@@ -264,8 +271,7 @@ def case_remedy_options(
         or case.transaction_id is None
     ):
         return RemedyOptionsOut(options=[], choice_required=False)
-    order = db.get(Transaction, case.transaction_id)
-    return _options_out(db, ctx, order, case.category)
+    return _options_out(db, ctx, _visible_order(db, ctx, case.transaction_id), case.category, now)
 
 
 @router.put("/cases/{case_id}/remedy-choice")

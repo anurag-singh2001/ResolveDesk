@@ -43,6 +43,16 @@ from app.engine.resolver import Remedy, decide_remedy
 BaselineState = CaseState  # ids and codes only; ceilings, evidence, text live in deps.scratch
 
 
+def remedy_probe(case, category: str) -> SimpleNamespace:
+    """Duck-typed stand-in for decide_remedy: it reads only these three attributes. The
+    customer's pick (S7.9) applies to the case's own category only, never to the others."""
+    return SimpleNamespace(
+        category=category,
+        transaction_id=case.transaction_id,
+        remedy_choice=case.remedy_choice if category == case.category else None,
+    )
+
+
 def build_baseline_graph(deps: Deps, checkpointer=None):
     def gather(state: BaselineState) -> BaselineState:
         step = _step(state)
@@ -56,12 +66,7 @@ def build_baseline_graph(deps: Deps, checkpointer=None):
             categories = list(tenant_pack(s).issue_categories)
             ceilings = {}
             for category in categories:  # duck-typed: decide_remedy reads only these three
-                probe = SimpleNamespace(
-                    category=category,
-                    transaction_id=case.transaction_id,
-                    # the customer's pick applies to the case's own category only (S7.9)
-                    remedy_choice=case.remedy_choice if category == case.category else None,
-                )
+                probe = remedy_probe(case, category)
                 r = decide_remedy(s, probe)
                 ceilings[category] = {
                     "action": r.action,

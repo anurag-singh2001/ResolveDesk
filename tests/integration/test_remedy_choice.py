@@ -2,7 +2,9 @@
 finds the multi-option category from the tenant's own pack (no tenant is named)."""
 
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime
+from types import SimpleNamespace
 
 import pytest
 from sqlalchemy import delete, select
@@ -10,7 +12,16 @@ from sqlalchemy import delete, select
 from app.actions.base import enabled_actions
 from app.agents.schemas import ResolutionDraft
 from app.core.db import tenant_session
-from app.core.models import ActionProposal, AuditEvent, Case, Customer, Ticket, Transaction, User
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    AuditEvent,
+    Case,
+    Customer,
+    Ticket,
+    Transaction,
+    User,
+)
 from app.core.money import percent_of
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import tenant_id_for
@@ -18,7 +29,14 @@ from app.core.verticals import RemedyOptions, load_pack
 from app.engine.eligibility import order_facts
 from app.engine.graph import _check_draft
 from app.engine.proposals import create_proposal
-from app.engine.resolver import InvalidRemedyChoice, decide_remedy
+from app.engine.remedy_choice import _approval
+from app.engine.resolver import (
+    ChoiceOption,
+    InvalidRemedyChoice,
+    decide_remedy,
+    propose_for_case,
+    remedy_options,
+)
 from tests.helpers import login
 
 
@@ -225,3 +243,135 @@ def test_undecided_case_takes_a_pick_until_a_proposal_exists(api, ctx, app_engin
         )
     assert put("customer", "voucher").status_code == 409
     assert api.get(f"/cases/{cid}/remedy-options", headers=ctx["customer"]).json()["options"] == []
+
+
+def test_instant_label_matches_the_real_auto_decision(api, ctx, app_engine):
+    voucher = next(o for o in _options(api, ctx).json()["options"] if o["kind"] == "voucher")
+    case = _report(api, ctx, remedy_choice=voucher["code"]).json()
+    with tenant_session(ctx["tid"], app_engine) as s:
+        auto = s.scalar(
+            select(Approval.id).where(Approval.proposal_id == uuid.UUID(case["proposal_id"]))
+        )
+    assert (voucher["approval"] == "instant") == (auto is not None)
+
+
+def test_instant_is_never_claimed_when_fair_use_would_stop_auto_approval(api, ctx, app_engine):
+    with tenant_session(ctx["tid"], app_engine) as s:
+        order = s.get(Transaction, ctx["order_id"])
+        _, facts = order_facts(s, order.id)
+        voucher = next(
+            o
+            for o in remedy_options(s, order, facts, ctx["multi"])
+            if o.remedy.action == "free_item_voucher"
+        )
+    small = ChoiceOption(
+        voucher.code, replace(voucher.remedy, params={**voucher.remedy.params, "value_paise": 1000})
+    )
+    assert _approval(small, facts, fair_ok=True) == "instant"
+    assert _approval(small, facts, fair_ok=False) == "team"
+
+
+def test_an_unworkable_pick_falls_back_to_the_first_workable_option_and_is_audited(
+    ctx, app_engine, monkeypatch
+):
+    import app.engine.resolver as resolver
+
+    cid = uuid.uuid4()
+    real = resolver.order_facts
+
+    def nothing_left(session, tid, **kw):
+        order, facts = real(session, tid, **kw)
+        return order, replace(facts, refundable_paise=0)  # no refund is possible now
+
+    with tenant_session(ctx["tid"], app_engine) as s:
+        s.add(
+            Case(
+                id=cid,
+                tenant_id=ctx["tid"],
+                customer_id=ctx["cid"],
+                transaction_id=ctx["order_id"],
+                category=ctx["multi"],
+                status="investigating",
+                channel="app",
+                opened_at=datetime.now(UTC),
+                remedy_choice="refund_50pct",
+            )
+        )
+    monkeypatch.setattr(resolver, "order_facts", nothing_left)
+    with tenant_session(ctx["tid"], app_engine) as s:
+        case = s.get(Case, cid)
+        remedy, proposal_id = propose_for_case(s, SimpleNamespace(tenant_id=ctx["tid"]), case)
+        assert remedy.action == "free_item_voucher" and remedy.fallback_from == "refund_50pct"
+        assert proposal_id is not None
+    with tenant_session(ctx["tid"], app_engine) as s:
+        payloads = list(
+            s.scalars(
+                select(AuditEvent.payload).where(
+                    AuditEvent.event == "case.remedy_choice_fallback",
+                    AuditEvent.entity_id == cid,
+                )
+            )
+        )
+    assert payloads == [{"picked": "refund_50pct", "used": "free_item_voucher"}]
+
+
+def test_pick_on_another_customers_or_tenants_case_is_404(
+    api, ctx, app_engine, maint_engine, seeded_history
+):
+    other_tid = tenant_id_for(
+        next(c.slug for c in seeded_history.values() if tenant_id_for(c.slug) != ctx["tid"])
+    )
+    made = []
+    for tid in (ctx["tid"], other_tid):  # a colleague customer's case, and another tenant's case
+        with tenant_session(tid, app_engine) as s:
+            q = select(Transaction.id, Transaction.customer_id)
+            if tid == ctx["tid"]:
+                q = q.where(Transaction.customer_id != ctx["cid"])
+            row = s.execute(q.limit(1)).one()
+            case_id = uuid.uuid4()
+            s.add(
+                Case(
+                    id=case_id,
+                    tenant_id=tid,
+                    customer_id=row.customer_id,
+                    transaction_id=row.id,
+                    category=ctx["multi"],
+                    status="investigating",
+                    channel="app",
+                    opened_at=datetime.now(UTC),
+                )
+            )
+        made.append((tid, case_id))
+    try:
+        for _, case_id in made:
+            resp = api.put(
+                f"/cases/{case_id}/remedy-choice",
+                headers=ctx["customer"],
+                json={"option": "voucher"},
+            )
+            assert resp.status_code == 404, resp.text
+            got = api.get(f"/cases/{case_id}/remedy-options", headers=ctx["customer"])
+            assert got.status_code == 404
+    finally:
+        for tid, case_id in made:
+            with tenant_session(tid, maint_engine) as s:
+                s.execute(delete(Case).where(Case.id == case_id))
+
+
+def test_a_pick_without_a_category_in_agents_mode_is_422(api, ctx, app_engine, monkeypatch):
+    monkeypatch.setattr(
+        "app.api.routes_cases.get_settings", lambda: SimpleNamespace(engine_mode="agents")
+    )
+    resp = api.post(
+        "/cases",
+        headers=ctx["customer"],
+        json={
+            "transaction_id": str(ctx["order_id"]),
+            "category": None,
+            "message": "Wrong thing.",
+            "remedy_choice": "refund_50pct",
+        },
+    )
+    assert resp.status_code == 422, resp.text
+    with tenant_session(ctx["tid"], app_engine) as s:
+        assert s.scalar(select(Case.id).where(Case.transaction_id == ctx["order_id"])) is None

@@ -28,6 +28,10 @@ async function loadTimeline(id: string): Promise<TimelineEntry[] | null> {
   }
 }
 
+// The choice (and its "you can ask" wording) is shown only before a decision; after that the
+// case status speaks, so a request is never presented as done.
+const PRE_DECISION: string[] = ["received", "investigating", "awaiting_info"];
+
 function remedyHeading(stage: string): string {
   if (stage === "confirmed") return "Confirmed remedy";
   if (stage === "processing") return "Approved remedy";
@@ -307,7 +311,7 @@ export function CasePage() {
           </div>
           <div className="space-y-6">
             <Remedy c={c} />
-            {!staff && <CaseRemedyChoice caseId={c.id} />}
+            {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
             {staff && c.can_rerun_ai && (
               <RerunAi
                 caseId={c.id}
