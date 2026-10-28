@@ -1,8 +1,9 @@
 """Customer-facing text: one lookup, template key + language -> text (S5.6).
 
 Every message a customer reads is a fixed template here, never model output, so a translation
-cannot drift from the facts (hard rule 7). A language is the customer's own choice
-(customers.preferred_language); it is never guessed from a name or a place. A missing
+cannot drift from the facts (hard rule 7). A case's language is detected from the customer's
+own messages (app/core/language.py), never guessed from a name or a place;
+customers.preferred_language is only the initial default. A missing
 translation falls back to English, so a half-translated key shows English, not nothing.
 
 Languages: `en` (default), `hi-Latn` (Hinglish, Roman script), `hi` (Devanagari). Digits are
@@ -312,11 +313,15 @@ def format_date(d: date, language: object = None) -> str:
 
 
 def case_language(session, case) -> str:
-    """The case's customer's chosen language (English when unset or no customer)."""
+    """The language of a case's customer messages: the language detected from what the customer
+    wrote (cases.language, S7.12), else the customer's older stored choice as the initial
+    default, else English."""
     from sqlalchemy import select
 
     from app.core.models import Customer
 
+    if getattr(case, "language", None) in LANGUAGES:
+        return case.language
     if case.customer_id is None:
         return DEFAULT_LANGUAGE
     return normalize(

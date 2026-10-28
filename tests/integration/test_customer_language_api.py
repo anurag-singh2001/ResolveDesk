@@ -14,6 +14,13 @@ from mocks.registry import get_mock, merchant_id_for
 from tests.helpers import login
 from tests.integration.test_cases_api import _open, clean_mocks, flow  # noqa: F401
 
+# S7.12: the case language follows what the customer writes, not a setting.
+SAY = {
+    "en": "One item was missing from my order.",
+    "hi-Latn": "mera order mein ek item nahi aaya, mujhe paisa wapas chahiye",
+    "hi": "मेरे ऑर्डर में एक आइटम नहीं आया",
+}
+
 
 @pytest.fixture
 def choose(api, flow):
@@ -62,9 +69,8 @@ def test_a_change_is_audited_with_old_and_new_value_only(api, app_engine, flow, 
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
-def test_status_and_timeline_follow_the_customers_choice(api, flow, choose, lang):
-    choose(lang)
-    opened = _open(api, flow)
+def test_status_and_timeline_follow_the_language_written(api, flow, lang):
+    opened = _open(api, flow, message=SAY[lang])
     assert opened["message"] == t("status.awaiting_approval", lang)
     got = api.get(f"/cases/{opened['id']}", headers=flow["customer"]).json()
     assert got["message"] == t("status.awaiting_approval", lang)
@@ -77,9 +83,8 @@ def test_status_and_timeline_follow_the_customers_choice(api, flow, choose, lang
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
-def test_a_confirmed_refund_says_so_in_each_language_with_the_same_amount(api, flow, choose, lang):
-    choose(lang)
-    opened = _open(api, flow)
+def test_a_confirmed_refund_says_so_in_each_language_with_the_same_amount(api, flow, lang):
+    opened = _open(api, flow, message=SAY[lang])
     api.post(
         f"/approvals/{opened['proposal_id']}/decision",
         headers=flow["hq"],
@@ -92,11 +97,10 @@ def test_a_confirmed_refund_says_so_in_each_language_with_the_same_amount(api, f
     assert got["message"] != t("status.refund_processing", lang, amount=amount)
 
 
-def test_a_missing_key_in_the_chosen_language_shows_english(api, flow, choose, monkeypatch):
-    choose("hi")
+def test_a_missing_key_in_the_detected_language_shows_english(api, flow, monkeypatch):
     key = "status.awaiting_approval"
     monkeypatch.setattr(i18n, "TEMPLATES", {**TEMPLATES, key: {"en": TEMPLATES[key]["en"]}})
-    opened = _open(api, flow)
+    opened = _open(api, flow, message=SAY["hi"])
     assert opened["message"] == TEMPLATES[key]["en"]
 
 
@@ -112,10 +116,9 @@ def test_a_customers_choice_does_not_leak_to_another_customer(api, flow, choose)
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
-def test_processing_after_a_timeout_is_worded_in_the_chosen_language(api, flow, choose, lang):
+def test_processing_after_a_timeout_is_worded_in_the_chosen_language(api, flow, lang):
     """Approved but the provider has not confirmed: processing, never the success wording."""
-    choose(lang)
-    opened = _open(api, flow)
+    opened = _open(api, flow, message=SAY[lang])
     mid = merchant_id_for(flow["tid"])
     get_mock("payment").set_chaos(Chaos(accept_then_timeout_rate=1.0), mid)
     try:
@@ -134,9 +137,8 @@ def test_processing_after_a_timeout_is_worded_in_the_chosen_language(api, flow, 
 
 
 @pytest.mark.parametrize("lang", LANGUAGES)
-def test_escalated_is_worded_in_the_chosen_language(api, flow, choose, lang):
-    choose(lang)
-    opened = _open(api, flow, category="payment_issue")
+def test_escalated_is_worded_in_the_chosen_language(api, flow, lang):
+    opened = _open(api, flow, category="payment_issue", message=SAY[lang])
     assert opened["stage"] == "escalated"
     assert opened["message"] == t("status.escalated_team", lang)
     steps = api.get(f"/cases/{opened['id']}/timeline", headers=flow["customer"]).json()

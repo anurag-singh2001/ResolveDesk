@@ -95,14 +95,14 @@ def flow(api, app_engine, maint_engine, seeded_history, tenant):
         )
 
 
-def _open(api, f, category="missing_items"):
+def _open(api, f, category="missing_items", message="One item was missing from my order."):
     resp = api.post(
         "/cases",
         headers=f["customer"],
         json={
             "transaction_id": str(f["order_id"]),
             "category": category,
-            "message": "One item was missing from my order.",
+            "message": message,
         },
     )
     assert resp.status_code == 201, resp.text

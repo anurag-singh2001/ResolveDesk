@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core import audit, events
+from app.core.language import observe as observe_language
 from app.core.models import Case, Customer, Ticket, TicketMessage, Transaction, User
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
@@ -78,15 +79,18 @@ def open_case(
         raise CaseNotFound("order not found")
     customer = lock_customer(session, Customer.user_id == ctx.user_id, ctx.user_id)
     existing = session.scalar(
-        select(Case).where(
+        select(Case)
+        .where(
             Case.customer_id == customer.id,
             Case.transaction_id == order.id,
             Case.status.in_(OPEN_STATUSES),
         )
+        .with_for_update()  # observe_language writes language/language_pending
     )
     if existing is not None:  # a retry or a second report: same case, no new proposal
         ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == existing.id))
         if ticket_id is not None:  # keep what the customer said, on the same thread
+            observe_language(session, existing, message)
             session.add(
                 TicketMessage(
                     tenant_id=ctx.tenant_id,
@@ -110,6 +114,9 @@ def open_case(
     )
     session.add(case)
     session.flush()
+    # Language from the first message. In agents mode (no category yet) the classifier's own
+    # answer decides unless the text is plainly Devanagari; the form path has no model call.
+    observe_language(session, case, message, allow_heuristic=category is not None)
     ticket = Ticket(
         id=uuid.uuid4(),
         tenant_id=ctx.tenant_id,
@@ -185,6 +192,7 @@ def add_reply(
     ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == case.id))
     if ticket_id is None:
         raise NotAwaitingInfo("this case has no conversation to add to")
+    observe_language(session, locked, message)
     session.add(
         TicketMessage(
             tenant_id=ctx.tenant_id,

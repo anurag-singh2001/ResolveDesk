@@ -528,6 +528,13 @@ class Case(TenantOwned, Base):
             "'executing', 'resolved', 'escalated', 'closed')",
             name="ck_cases_status",
         ),
+        CheckConstraint(
+            "language IS NULL OR language IN ('en', 'hi-Latn', 'hi')", name="ck_cases_language"
+        ),
+        CheckConstraint(
+            "language_pending IS NULL OR language_pending IN ('en', 'hi-Latn', 'hi')",
+            name="ck_cases_language_pending",
+        ),
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -538,6 +545,10 @@ class Case(TenantOwned, Base):
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # DB/admin only (no API path): the retention job skips held cases (migration 0017).
     legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Reply language, detected from the customer's own messages (S7.12, migration 0020). NULL =
+    # not decided yet; `language_pending` is a different label seen once, awaiting a second.
+    language: Mapped[str | None] = mapped_column(String(10))
+    language_pending: Mapped[str | None] = mapped_column(String(10))
 
 
 class WorkflowRun(TenantOwned, Base):
