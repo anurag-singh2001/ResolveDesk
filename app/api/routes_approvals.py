@@ -15,14 +15,13 @@ from app.core.models import (
     Approval,
     Case,
     Location,
-    Ticket,
-    TicketMessage,
     Transaction,
 )
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
 from app.engine.agent_runner import resume_after_decision
 from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
+from app.engine.case_messages import first_customer_message
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
 from app.engine.release import check_release, release_refund
@@ -71,16 +70,6 @@ def _citations(raw: object) -> list[CitationOut]:
                 )
             )
     return out
-
-
-def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
-    return db.scalar(
-        select(TicketMessage.body)
-        .join(Ticket, Ticket.id == TicketMessage.ticket_id)
-        .where(Ticket.case_id == case_id, TicketMessage.author == "customer")
-        .order_by(TicketMessage.sent_at, TicketMessage.id)
-        .limit(1)
-    )
 
 
 # Sorts over stored columns only: a pending proposal has no expiry yet (an approval's 4-hour
@@ -148,7 +137,7 @@ def pending_approvals(
                 eligible=result.ok,
                 errors=result.errors,
                 created_at=proposal.created_at,
-                customer_message=_customer_message(db, case.id),
+                customer_message=first_customer_message(db, case.id),
                 location_name=location_name,
                 citations=_citations(proposal.citations),
             )

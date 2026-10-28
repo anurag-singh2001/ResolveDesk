@@ -49,11 +49,20 @@ If you see **"Needs a senior approver"**, the amount is above the limit your rol
 (large refunds need HQ). **"Someone has already decided this proposal"** means another approver
 decided it first. Approvals bind to exactly what you saw and expire after a few hours if unused.
 
+## Cases to handle
+
+**Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of all your outlets. The number next to the menu item is how many are waiting. The oldest wait comes first.
+
+Each row shows the case (category, order and outlet), the **reason** it needs a person, how long it has been **waiting**, its **owner**, the customer's **language**, and the **amount** when a remedy has been proposed. Use **Reason**, **Category** and **Owned by me** to narrow the list. **Open** goes to the approval (when a decision is waiting) or to the case.
+
+Every such case has one owner, chosen automatically when it needs a person: the location manager of the order's outlet; if the outlet has none, its franchisee owner; and HQ when the amount is above the limit an outlet may handle, when there is no outlet, or when nobody else is assigned. You can hand a case at one of your outlets to another staff member who can see that outlet (the change is recorded in the case's events). Being the owner means the case is yours to chase. It does not change who may approve: the approval rules are the same as before.
+
 ## Cases
 
 **Cases** lists every case at your outlets with a stage badge; filter with **Stage**. A case page
 shows the progress bar, the current customer message, the remedy, the timeline and a collapsible
 **Audit trail** of raw events (personal details hidden).
+It also has an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 | Stage | Meaning |
 | --- | --- |

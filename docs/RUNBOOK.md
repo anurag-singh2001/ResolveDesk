@@ -28,7 +28,7 @@ Ctrl+C in both terminals. If a port stays busy, see "Port 5173 already in use" b
 Follow the README "Demo script" (steps 1–7): refund approved and confirmed; voucher auto-approved;
 outlet scope; payment timeout shown honestly; repeat complainer; the AI asks and the customer
 answers; insights and a win-back campaign. Extra Sprint 5 screens: customer **Privacy & data**
-(consent switch, download, erasure request) and **Help → Language for our messages**.
+(consent switch, download, erasure request) and the reply language (it follows what the customer writes).
 
 Before showing step 4 (timeout) or the growth verdict, rehearse once. Reset the Dev panel clock
 afterwards.

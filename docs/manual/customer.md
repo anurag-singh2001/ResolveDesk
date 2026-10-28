@@ -121,12 +121,14 @@ Open **Privacy & data** in the menu.
 
 ## Language for our messages
 
-On the **Help** page, under **Language for our messages**, you can choose how we write to you
-about a report: **English**, **Hinglish** (Hindi in English letters) or **हिन्दी** (Devanagari).
-The status of your report, its history and the questions we ask you then appear in that language.
+We reply in the language you write in. You do not choose a setting.
 
-- The choice is yours alone. We never pick a language for you from your name or where you live.
-  Until you choose, we write in English.
+- If you write in **English**, we reply in English. If you write in **Hinglish** (Hindi in English
+  letters), we reply in Hinglish. If you write in **हिन्दी** (Devanagari), we reply in Hindi.
+- The language is set from your first message about a report and stays the same for that report.
+  It changes only if you write in Devanagari, or send two longer messages in a different language.
+  Very short replies such as "haan", "yes" or "ok", and messages that are only an order number or
+  an emoji, never change it.
 - Only our messages about your reports change. The buttons, menus and headings of this app stay
   in English.
 - Amounts look the same in every language (for example `₹1,00,000.00`), and dates use a month
@@ -135,4 +137,3 @@ The status of your report, its history and the questions we ask you then appear 
   versions say exactly what the English ones say, and keep *waiting for approval*, *being
   processed*, *done*, *failed* and *needs a check* clearly different. If a sentence has no
   translation, you see it in English.
-- What you type to us can be in any language; the choice above only affects what we send you.

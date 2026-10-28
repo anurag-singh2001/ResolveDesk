@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { NavLink, Link, Outlet } from "react-router-dom";
 import { useAuth } from "../auth/session";
-import { homePath, navFor, roleLabel } from "../lib/roles";
+import { homePath, isStaff, navFor, roleLabel } from "../lib/roles";
 import type { NavItem } from "../lib/roles";
 import { api } from "../api/endpoints";
 import { useApi } from "../lib/useApi";
@@ -55,6 +55,9 @@ export function AppShell() {
   // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
   const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
+  // Count of cases waiting for a person, shown on the "Cases to handle" item (staff only).
+  const { data: queue } = useApi(() => (isStaff(me.role) ? api.caseQueue() : Promise.reject(new Error("n/a"))), [me.role]);
+  const waiting = queue?.length ?? 0;
   const base = navFor(me.role, me.growth_enabled === true);
   const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
 
@@ -104,7 +107,7 @@ export function AppShell() {
               <li key={item.to}>
                 <NavLink to={item.to} className={linkClass}>
                   <Icon name={item.icon} />
-                  {item.label}
+                  {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                 </NavLink>
               </li>
             ))}
@@ -120,7 +123,7 @@ export function AppShell() {
                 <li key={item.to}>
                   <NavLink to={item.to} className={linkClass}>
                     <Icon name={item.icon} />
-                    {item.label}
+                    {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                   </NavLink>
                 </li>
               ))}

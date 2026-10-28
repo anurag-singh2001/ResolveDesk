@@ -41,6 +41,7 @@ from app.core import audit, events
 from app.core.business_time import business_date
 from app.core.db import tenant_session
 from app.core.i18n import case_language
+from app.core.language import observe as observe_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -152,6 +153,14 @@ def _privacy_guard(w: dict, out: CaseState) -> CaseState:
     return out
 
 
+def _decide_language(deps: Deps, state: CaseState, message: str, label=None, conf=None) -> None:
+    """Set the case's reply language once, if no earlier message decided it (S7.12)."""
+    with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+        case = s.get(Case, uuid.UUID(state["case_id"]))
+        if case is not None and case.language is None:
+            observe_language(s, case, message, llm_label=label, llm_confidence=conf)
+
+
 def build_graph(deps: Deps, checkpointer=None):
     def classify(state: CaseState) -> CaseState:
         step = _step(state)
@@ -164,9 +173,14 @@ def build_graph(deps: Deps, checkpointer=None):
             known = case.category
         if known:  # the customer already chose a category (form): no LLM call needed
             return _privacy_guard(w, {"category": known, "need": None, "step_count": step})
-        result: Classification = deps.classifier.invoke_structured(
-            classifier_messages(message, categories, vocabulary), Classification
-        )
+        try:
+            result: Classification = deps.classifier.invoke_structured(
+                classifier_messages(message, categories, vocabulary), Classification
+            )
+        except Exception:
+            _decide_language(deps, state, message)  # model unavailable: rule + word list only
+            raise
+        _decide_language(deps, state, message, result.language, result.language_confidence)
         unsure = (
             result.category not in categories
             or result.confidence < deps.min_confidence

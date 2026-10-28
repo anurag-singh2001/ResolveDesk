@@ -81,7 +81,9 @@ def test_needs_hq_above_the_escalation_limit(settings):
 
 def test_voucher_limits_and_auto_approval(settings):
     action = get_action("free_item_voucher")()
-    facts = Facts(settings=settings)
+    # A voucher is now checked against the order total (S7.8, fail closed when unknown), so the
+    # fixture order is larger than any cap and only the caps are under test here.
+    facts = Facts(settings=settings, order_total_paise=settings["voucher_max_paise"] * 10)
     auto_cap, cap = settings["voucher_auto_approve_max_paise"], settings["voucher_max_paise"]
 
     def voucher(value):

@@ -51,6 +51,14 @@ Click **Review**. The page shows:
 "Someone has already decided this proposal" means another approver decided first. An approval is
 tied to exactly the proposal you saw and expires after a few hours if it isn't used.
 
+## Cases to handle
+
+**Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see every case in the business. The number next to the menu item is how many are waiting. The oldest wait comes first.
+
+Each row shows the case (category, order and outlet), the **reason** it needs a person, how long it has been **waiting**, its **owner**, the customer's **language**, and the **amount** when a remedy has been proposed. Use **Reason**, **Category** and **Owned by me** to narrow the list. **Open** goes to the approval (when a decision is waiting) or to the case.
+
+Every such case has one owner, chosen automatically when it needs a person: the location manager of the order's outlet; if the outlet has none, its franchisee owner; and HQ when the amount is above the limit an outlet may handle, when there is no outlet, or when nobody else is assigned. You can hand any case to another staff member who can see its outlet (a case with no outlet can only be owned by HQ). The change is recorded in the case's events. Being the owner means the case is yours to chase. It does not change who may approve: the approval rules are the same as before.
+
 ## Cases
 
 **Cases** lists every case in the business, newest first, with a stage badge. Filter with
@@ -59,6 +67,7 @@ tied to exactly the proposal you saw and expires after a few hours if it isn't u
 A case page shows what the customer sees (progress bar, current message, remedy, timeline) plus
 the **Audit trail**: click to expand every recorded step with who or what acted and when. Personal
 details are hidden.
+It also has an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 | Stage | Meaning |
 | --- | --- |
