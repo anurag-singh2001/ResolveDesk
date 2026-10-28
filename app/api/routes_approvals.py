@@ -25,6 +25,8 @@ from app.engine.case_messages import first_customer_message
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
 from app.engine.release import check_release, release_refund
+from app.engine.switch import alternatives as switch_alternatives
+from app.engine.switch import switch_remedy
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
@@ -110,7 +112,7 @@ def pending_approvals(
         .outerjoin(Transaction, Transaction.id == Case.transaction_id)
         .outerjoin(Location, Location.id == Transaction.location_id)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
-        .where(Approval.id.is_(None))
+        .where(Approval.id.is_(None), engine_approvals.not_superseded())
     )
     if location_id is not None:
         query = query.where(Transaction.location_id == location_id)
@@ -216,6 +218,115 @@ def post_decision(
         proposal_id=proposal_id,
         decision=approval.decision,
         expires_at=approval.expires_at,
+        execution="queued" if queued else "none",
+    )
+
+
+class AlternativeOut(BaseModel):
+    action: str
+    min_paise: int
+    max_paise: int
+    step_paise: int
+    needs_hq_above_paise: int | None
+    you_can_approve_up_to_paise: int
+
+
+class AlternativesOut(BaseModel):
+    proposal_id: uuid.UUID
+    current_action: str
+    current_amount_paise: int | None
+    alternatives: list[AlternativeOut]
+
+
+@router.get("/approvals/{proposal_id}/alternatives")
+def get_alternatives(
+    proposal_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> AlternativesOut:
+    """The remedies the rules allow for this pending proposal's case, with the amount range of
+    each. A guide for the screen: POST /switch re-checks everything."""
+    try:
+        proposal, options = switch_alternatives(db, ctx, proposal_id)
+    except NotFound:
+        raise not_found() from None
+    except AlreadyDecided:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no longer pending") from None
+    except NotEligible as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
+    return AlternativesOut(
+        proposal_id=proposal.id,
+        current_action=proposal.action,
+        current_amount_paise=proposal.amount_paise,
+        alternatives=[AlternativeOut(**vars(o)) for o in options],
+    )
+
+
+class SwitchIn(BaseModel):
+    action: str = Field(max_length=64)
+    # A request, never a fact: strict int, then checked against the rule's range server-side.
+    amount_paise: int | None = Field(None, strict=True, gt=0)
+    approve: bool = False
+    note: str | None = Field(None, max_length=500)  # the why, audited
+
+
+class SwitchOut(BaseModel):
+    old_proposal_id: uuid.UUID
+    proposal_id: uuid.UUID
+    action: str
+    amount_paise: int | None
+    decision: str | None  # approved, or None while it waits for an approver
+    waiting_for: str | None  # hq_owner: the amount is above what the caller may approve
+    expires_at: datetime | None
+    execution: str  # queued | none
+
+
+@router.post("/approvals/{proposal_id}/switch")
+def post_switch(
+    proposal_id: uuid.UUID,
+    body: SwitchIn,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> SwitchOut:
+    """Supersede a pending proposal with another allowed remedy (S7.10). 404 out of scope or
+    another tenant, 409 not pending (decided, or already switched), 422 outside the rule.
+    `approve: true` approves the new proposal in the same step only if this caller could
+    approve that amount; otherwise it stays pending for the right approver."""
+    try:
+        result = switch_remedy(
+            db,
+            ctx,
+            proposal_id,
+            action=body.action,
+            amount_paise=body.amount_paise,
+            approve=body.approve,
+            note=body.note,
+            now=datetime.now(UTC),
+        )
+    except NotFound:
+        raise not_found() from None
+    except AlreadyDecided:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no longer pending") from None
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
+    except NotEligible as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
+    new = result.proposal
+    queued = result.approval is not None and executable(new.action)
+    # When approved, the paused workflow follows the switch and runs the new proposal, after
+    # this request commits (hard rule 5).
+    if result.approval is not None:
+        background.add_task(_after_decision, engine, ctx, new.case_id, new.id, new.action, True)
+    return SwitchOut(
+        old_proposal_id=result.old_proposal_id,
+        proposal_id=new.id,
+        action=new.action,
+        amount_paise=new.amount_paise,
+        decision=result.approval.decision if result.approval else None,
+        waiting_for=result.waiting_for,
+        expires_at=result.approval.expires_at if result.approval else None,
         execution="queued" if queued else "none",
     )
 

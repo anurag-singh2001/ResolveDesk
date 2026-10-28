@@ -24,6 +24,7 @@ from app.core.models import (
     TicketMessage,
 )
 from app.core.money import format_inr
+from app.engine.approvals import not_superseded
 from app.engine.needs import need_from_payload, question_for
 
 
@@ -111,7 +112,8 @@ def case_timeline(
 
     proposals = session.scalars(
         select(ActionProposal)
-        .where(ActionProposal.case_id == case.id)
+        # A remedy an approver switched away from never happened as far as the customer is told.
+        .where(ActionProposal.case_id == case.id, not_superseded())
         .order_by(ActionProposal.created_at, ActionProposal.id)
     )
     for proposal in proposals:

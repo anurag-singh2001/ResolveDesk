@@ -11,13 +11,20 @@ import uuid
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, object_session
 
 from app.actions.base import Facts, get_action
 from app.core import audit, events
-from app.core.models import ActionProposal, Approval, Case, Customer, Transaction
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Customer,
+    ProposalSupersession,
+    Transaction,
+)
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import fair_use, order_facts
@@ -59,9 +66,55 @@ class Usability:
     reason: str | None = None
 
 
+def not_superseded():
+    """SQL filter: proposals nobody switched away from (S7.10). Use it wherever "pending" or
+    "the case's current proposal" is listed."""
+    return ~exists().where(ProposalSupersession.old_proposal_id == ActionProposal.id)
+
+
+def is_superseded(session: Session, proposal_id: uuid.UUID) -> bool:
+    return (
+        session.scalar(
+            select(ProposalSupersession.id).where(
+                ProposalSupersession.old_proposal_id == proposal_id
+            )
+        )
+        is not None
+    )
+
+
+def head_proposal_id(session: Session, proposal_id: uuid.UUID) -> uuid.UUID:
+    """The proposal that replaced this one (following a chain of switches), or itself."""
+    current = proposal_id
+    for _ in range(20):  # a chain is short; the bound only guards against corrupt data
+        nxt = session.scalar(
+            select(ProposalSupersession.new_proposal_id).where(
+                ProposalSupersession.old_proposal_id == current
+            )
+        )
+        if nxt is None:
+            return current
+        current = nxt
+    return current
+
+
+def lock_case(session: Session, case_id: uuid.UUID) -> Case | None:
+    """SELECT ... FOR UPDATE on the case: deciding and switching a proposal both take it first,
+    so for one case they run one after the other and exactly one of them wins."""
+    return session.execute(
+        select(Case)
+        .where(Case.id == case_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    ).scalar_one_or_none()
+
+
 def check_usable(approval: Approval | None, proposal: ActionProposal, now: datetime) -> Usability:
     if approval is None:
         return Usability(False, "no_approval")
+    db = object_session(proposal)
+    if db is not None and is_superseded(db, proposal.id):  # belt and braces: decide refuses too
+        return Usability(False, "superseded")
     if approval.proposal_id != proposal.id:
         return Usability(False, "approval_for_another_proposal")
     if approval.decision != "approved":
@@ -109,6 +162,25 @@ def evaluate_proposal(session, ctx, proposal, now: datetime):
     return action, inp, facts, result
 
 
+def scoped_proposal(session: Session, ctx: TenantContext, proposal_id: uuid.UUID) -> ActionProposal:
+    """The proposal if the caller is staff who may act on it; else NotFound. Scope first, and
+    every failure looks like "not found": an out-of-scope proposal must be indistinguishable
+    from one that doesn't exist (hard rule 8)."""
+    proposal = session.get(ActionProposal, proposal_id)  # RLS: other tenants' don't exist
+    if proposal is None or not ctx.is_staff:
+        raise NotFound("proposal not found")
+    try:
+        location_id = proposal_location(session, proposal)
+    except LookupError:
+        raise NotFound("proposal not found") from None
+    in_scope = ctx.role == "hq_owner" or (
+        location_id is not None and ctx.can_see_location(location_id)
+    )
+    if not in_scope:
+        raise NotFound("proposal not found")
+    return proposal
+
+
 def decide(
     session: Session,
     ctx: TenantContext,
@@ -120,20 +192,12 @@ def decide(
     """A staff member approves or rejects a proposal in their scope."""
     if decision not in ("approved", "rejected"):
         raise ValueError("decision must be approved or rejected")
-    proposal = session.get(ActionProposal, proposal_id)  # RLS: other tenants' don't exist
-    if proposal is None or not ctx.is_staff:
-        raise NotFound("proposal not found")
-    # Scope first, and every failure before it looks like "not found": an out-of-scope
-    # proposal must be indistinguishable from one that doesn't exist (hard rule 8).
-    try:
-        location_id = proposal_location(session, proposal)
-    except LookupError:
-        raise NotFound("proposal not found") from None
-    in_scope = ctx.role == "hq_owner" or (
-        location_id is not None and ctx.can_see_location(location_id)
-    )
-    if not in_scope:
-        raise NotFound("proposal not found")
+    proposal = scoped_proposal(session, ctx, proposal_id)
+    # Same lock as switching the remedy: if an approver switched this proposal first, it is
+    # superseded and nobody may decide it any more (the new proposal has its own decision).
+    lock_case(session, proposal.case_id)
+    if is_superseded(session, proposal.id):
+        raise AlreadyDecided("this proposal was superseded by another remedy")
     if not proposal_hash_is_intact(proposal):
         raise NotEligible(["proposal no longer matches its payload hash"])
     action, inp, facts, result = evaluate_proposal(session, ctx, proposal, now)

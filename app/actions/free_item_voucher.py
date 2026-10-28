@@ -6,11 +6,15 @@ from app.actions._pending import NotYetExecutable
 from app.actions.base import (
     Action,
     ActionInput,
+    AmountRange,
     Facts,
     Risk,
     ValidationResult,
     register_action,
 )
+
+MIN_VOUCHER_PAISE = 1000  # Rs 10: below this a voucher is not worth issuing, a person looks
+VOUCHER_STEP_PAISE = 100  # whole rupees
 
 
 class VoucherInput(ActionInput):
@@ -45,3 +49,12 @@ class FreeItemVoucher(NotYetExecutable, Action):
 
     def can_auto_approve(self, inp: VoucherInput, facts: Facts) -> bool:
         return inp.value_paise <= facts.settings["voucher_auto_approve_max_paise"]
+
+    def amount_range(self, facts: Facts) -> AmountRange | None:
+        if facts.order_total_paise is None:
+            return None
+        top = min(facts.settings["voucher_max_paise"], facts.order_total_paise)
+        top -= top % VOUCHER_STEP_PAISE
+        if top < MIN_VOUCHER_PAISE:
+            return None
+        return AmountRange(MIN_VOUCHER_PAISE, top, VOUCHER_STEP_PAISE)

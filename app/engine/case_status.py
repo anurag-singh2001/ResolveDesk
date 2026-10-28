@@ -22,6 +22,7 @@ from app.core.models import (
 )
 from app.core.money import format_inr
 from app.core.settings_resolver import effective_settings
+from app.engine.approvals import not_superseded
 from app.engine.needs import latest_question
 from app.engine.privacy import PRIVACY_CATEGORY, customer_message
 
@@ -65,7 +66,7 @@ def case_status(
     lang = language or case_language(session, case)
     proposal = session.scalars(
         select(ActionProposal)
-        .where(ActionProposal.case_id == case.id)
+        .where(ActionProposal.case_id == case.id, not_superseded())
         .order_by(ActionProposal.created_at.desc())
     ).first()
     if proposal is None:

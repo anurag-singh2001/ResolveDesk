@@ -12,3 +12,10 @@ export function formatPaise(paise: number | null | undefined): string {
   const fraction = String(abs % 100).padStart(2, "0");
   return `${negative ? "-" : ""}₹${groupIN.format(rupees)}.${fraction}`;
 }
+
+/** "180.50" -> 18050. Integer maths on the digits (no float), at most two decimals; null if invalid. */
+export function parseRupeesToPaise(text: string): number | null {
+  const m = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(text.trim());
+  if (!m) return null;
+  return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
+}

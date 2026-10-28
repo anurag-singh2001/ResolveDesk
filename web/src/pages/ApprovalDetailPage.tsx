@@ -4,6 +4,7 @@ import { ApiError, errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { DecisionResponse, PendingApproval } from "../api/types";
 import { RiskBadge } from "../components/badges";
+import { SwitchRemedy } from "../components/SwitchRemedy";
 import { Alert, Badge, Button, Card, Dl, EmptyState, ErrorState, Field, Loading, PageHeader, inputClass } from "../components/ui";
 import { age, categoryLabel, formatDateTime, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
@@ -254,6 +255,9 @@ export function ApprovalDetailPage() {
           <Card className="p-4 sm:p-5">
             <h2 className="mb-4 text-sm font-semibold text-slate-900">Your decision</h2>
             <DecisionPanel proposal={p} />
+            <div className="mt-4 border-t border-slate-200 pt-4">
+              <SwitchRemedy proposal={p} />
+            </div>
           </Card>
         </div>
       </div>
