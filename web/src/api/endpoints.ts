@@ -9,6 +9,7 @@ import type {
   Case,
   GrowthSignal,
   LocationRef,
+  RerunAiResult,
   OutletInsight,
   Categories,
   DecisionResponse,
@@ -80,6 +81,7 @@ export const api = {
     request<Case>("/cases", { method: "POST", body }),
   replyToCase: (id: string, message: string) =>
     request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),
+  rerunAi: (id: string) => request<RerunAiResult>(`/cases/${enc(id)}/rerun-ai`, { method: "POST" }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
   approvals: (limit = 200, filters: ApprovalFilters = {}) => {

@@ -127,6 +127,11 @@ export interface Case {
   proposal_id: string | null;
   created_at?: string | null; // NEW
   customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
+  can_rerun_ai?: boolean; // staff, GET /cases/{id}: escalated because the AI was unavailable
+}
+
+export interface RerunAiResult {
+  status: "started" | "already_running" | string;
 }
 
 export interface TimelineEntry {

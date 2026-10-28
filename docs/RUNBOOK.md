@@ -74,6 +74,17 @@ Point tests at a separate database (`TEST_DATABASE_URL`), never the demo one.
 | `make eval` refuses to run | DATABASE_URL points at the demo DB | point it at a scratch DB |
 | `make retention` exits 2 | APP_ENV not set in the process environment | `APP_ENV=dev make retention` |
 
+## Clearing a case the AI could not handle (the stuck demo case O0005779)
+
+A case whose reason reads "AI unavailable: MissingAPIKey" (or `ProviderFailed`) came to a person only because the models could not run. Order O0005779 is such a case in the demo data. Clear it with S7.4:
+
+1. Put a working LLM key in `.env` (`GEMINI_API_KEY`, or `GROQ_API_KEY`; or set the providers to Ollama) and restart the API (`make api`).
+2. Sign in as the owner (or a manager whose scope covers the order) and open the case from Cases (order O0005779). The side panel shows "The AI was unavailable" and a button.
+3. Press **Run the AI again**. The case goes back to "investigating", is classified and a remedy is proposed (or a clarifying question asked); the page updates by itself. A double click starts one run.
+4. Approve or decline the proposal as usual. If the keys are still missing, the case escalates again with the same reason and the button comes back; nothing else changes.
+
+Without pressing anything, `make sweep` (or the running sweeper) retries such cases on its own once the providers can be built, at most 3 times per case, 5, 10 and 20 minutes after the last escalation. Audit trail: `case.ai_rerun_requested` and `case.ai_rerun_result` (codes only, no message text). Via API: `POST /cases/{id}/rerun-ai` (staff only; 409 if the case did not escalate for an AI failure). Never edit the demo database by hand to clear it.
+
 ## Safety reminders
 
 - Never run tests or evals against the demo/production database.

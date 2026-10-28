@@ -12,6 +12,8 @@
 5. Cases still `awaiting_info` with a customer reply (`case.info_added`) that no run took up
    (the reply's background resume was lost or skipped): resume the thread again (idempotent,
    the graph claims it once); with no paused thread to resume, escalate with a clear reason.
+6. Cases escalated because the AI was unavailable, once the providers can be built again:
+   re-run the AI (bounded attempts with backoff, audited; see app.engine.ai_rerun).
 
 Running it twice, or while a background task runs the same proposal, writes nothing twice:
 the executors serialise on the proposal and resume by key.
@@ -38,9 +40,10 @@ from app.core.models import (
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from app.engine.agent_runner import resume_after_decision, resume_info
+from app.engine.ai_rerun import retry_ai_failures, unfinished_request
 from app.engine.dispatch import EXECUTORS, reconcile, run_approved
 from app.engine.executor import TERMINAL
-from app.engine.graph import NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
+from app.engine.graph import AI_UNAVAILABLE, NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
 from app.engine.privacy import flag_due_soon
 from app.engine.routing import assign_owner
@@ -60,6 +63,7 @@ class SweepReport:
     replies_resumed: list[str] = field(default_factory=list)
     grievances_flagged: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
+    ai_reruns: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
 
@@ -153,6 +157,10 @@ def sweep_tenant(
         report.replies_resumed = _recover_replies(engine, tenant_id, now, min_age)
     except Exception:
         log.exception("could not recover customer replies for tenant %s", tenant_id)
+    try:
+        report.ai_reruns = retry_ai_failures(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not retry AI failures for tenant %s", tenant_id)
     # Housekeeping, each best effort: one failing must not stop the other or hide the work
     # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
     try:
@@ -280,6 +288,9 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 .where(running)
                 .values(status="failed", error="abandoned: no result within the run TTL")
             )
+            # A re-run that was claimed but never recorded a result (its process died) stays
+            # re-runnable: the code marks it an AI failure again (S7.4).
+            crashed_rerun = unfinished_request(s, case.id)
             case.status = "escalated"
             audit.record(
                 s,
@@ -289,7 +300,10 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 event="case.escalated",
                 entity_type="case",
                 entity_id=case.id,
-                payload={"reason": "agent run did not finish within the run TTL"},
+                payload={
+                    "reason": "agent run did not finish within the run TTL",
+                    **({"code": AI_UNAVAILABLE} if crashed_rerun else {}),
+                },
             )
             assign_owner(s, tenant_id, case, now)  # the sweeper's own (injectable) clock
             escalated.append(str(case.id))
