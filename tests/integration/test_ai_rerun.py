@@ -125,7 +125,8 @@ def test_a_double_click_is_one_run(api, app_engine, stuck, fake_runs):
 def test_the_claim_is_taken_once(app_engine, stuck):
     f = stuck
     cid = uuid.UUID(str(f["case_id"]))
-    first = ai_rerun.request_rerun(app_engine, f["tid"], cid, trigger="sweeper")
+    far = datetime.now(UTC) + timedelta(days=1)
+    first = ai_rerun.request_rerun(app_engine, f["tid"], cid, trigger="sweeper", now=far)
     second = ai_rerun.request_rerun(app_engine, f["tid"], cid, trigger="staff")
     assert (first, second) == (ai_rerun.STARTED, ai_rerun.ALREADY_RUNNING)
 
@@ -220,3 +221,112 @@ def test_the_sweeper_leaves_other_escalations_alone(api, app_engine, flow, monke
     report = sweep_tenant(app_engine, f["tid"], datetime.now(UTC) + timedelta(days=10))
     assert opened["id"] not in report.ai_reruns
     assert _status(app_engine, f, opened["id"]) == "escalated"
+
+
+def _escalate_coded(app_engine, f, case_id, reason, code):
+    with tenant_session(f["tid"], app_engine) as s:
+        s.execute(update(Case).where(Case.id == uuid.UUID(str(case_id))).values(status="escalated"))
+        audit.record(
+            s,
+            f["tid"],
+            actor_type="agent",
+            actor_id=None,
+            event="case.escalated",
+            entity_type="case",
+            entity_id=uuid.UUID(str(case_id)),
+            payload={"reason": reason, "code": code},
+        )
+
+
+def _no_key(*_a, **_k):
+    raise MissingAPIKey("gemini")
+
+
+def test_eligibility_follows_the_machine_code_not_the_wording(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    url = f"/cases/{opened['id']}"
+    _escalate_coded(app_engine, f, opened["id"], "the models are down", graph.AI_UNAVAILABLE)
+    assert api.get(url, headers=f["hq"]).json()["can_rerun_ai"] is True
+    _escalate_coded(app_engine, f, opened["id"], "AI unavailable: ProviderFailed", "other")
+    assert api.get(url, headers=f["hq"]).json()["can_rerun_ai"] is True  # old-row fallback
+
+
+def test_the_real_failure_path_writes_the_code(api, app_engine, flow, monkeypatch):
+    f = flow
+    opened = _open(api, f)
+    _escalate(app_engine, f, opened["id"], AI_DOWN)
+    monkeypatch.setattr(agent_runner, "_deps", _no_key)
+    api.post(f"/cases/{opened['id']}/rerun-ai", headers=f["hq"])
+    with tenant_session(f["tid"], app_engine) as s:
+        payloads = s.scalars(
+            select(AuditEvent.payload).where(
+                AuditEvent.event == "case.escalated",
+                AuditEvent.entity_id == uuid.UUID(opened["id"]),
+            )
+        ).all()
+    assert any(
+        p.get("code") == graph.AI_UNAVAILABLE and "MissingAPIKey" in p["reason"] for p in payloads
+    ), payloads
+
+
+def test_a_stale_sweeper_claim_cannot_start_a_second_run(app_engine, stuck):
+    f = stuck
+    cid = uuid.UUID(str(f["case_id"]))
+    tid = f["tid"]
+    now = datetime.now(UTC)
+    far = now + timedelta(days=10)
+
+    def claim(trigger, at):
+        return ai_rerun.request_rerun(app_engine, tid, cid, trigger=trigger, now=at)
+
+    def run_failed():
+        graph.escalate_now(app_engine, tid, cid, AI_DOWN, code=graph.AI_UNAVAILABLE)
+
+    assert claim("sweeper", far) == "started"
+    run_failed()
+    # A stale 'due' list is acted on again, but the backoff restarted at the new escalation.
+    assert claim("sweeper", now + timedelta(minutes=1)) == "not_eligible"
+    assert _status(app_engine, f, cid) == "escalated"
+    for _ in range(ai_rerun.MAX_AUTO_ATTEMPTS - 1):  # the cap holds even when always due
+        assert claim("sweeper", far) == "started"
+        run_failed()
+    assert claim("sweeper", far) == "not_eligible"
+    assert claim("staff", far) == "started"  # a person may still press it
+
+
+def test_a_skipped_run_hands_the_case_back_with_the_original_reason(
+    api, app_engine, stuck, monkeypatch
+):
+    f = stuck
+    monkeypatch.setattr(agent_runner, "run_agents", lambda *a, **k: {"outcome": "skipped"})
+    assert api.post(f["url"], headers=f["hq"]).status_code == 202
+    assert _status(app_engine, f, f["case_id"]) == "escalated"
+    assert api.get(f"/cases/{f['case_id']}", headers=f["hq"]).json()["can_rerun_ai"] is True
+    with tenant_session(f["tid"], app_engine) as s:
+        last = s.scalars(
+            select(AuditEvent)
+            .where(
+                AuditEvent.event == "case.escalated",
+                AuditEvent.entity_id == uuid.UUID(str(f["case_id"])),
+            )
+            .order_by(AuditEvent.occurred_at.desc(), AuditEvent.id.desc())
+            .limit(1)
+        ).one()
+        assert last.payload["reason"] == AI_DOWN and last.payload["code"] == graph.AI_UNAVAILABLE
+
+
+def test_a_crash_after_the_claim_leaves_the_case_rerunnable(
+    api, app_engine, stuck, fake_runs, monkeypatch
+):
+    f = stuck
+    cid = uuid.UUID(str(f["case_id"]))
+    assert ai_rerun.request_rerun(app_engine, f["tid"], cid, trigger="staff") == "started"
+    # ...the process dies here: no run, no result. The TTL sweeper escalates the case.
+    monkeypatch.setattr(agent_runner, "providers_ready", lambda: False)
+    report = sweep_tenant(app_engine, f["tid"], datetime.now(UTC) + timedelta(days=1))
+    assert str(cid) in report.escalated_cases
+    assert _status(app_engine, f, cid) == "escalated"
+    assert api.get(f"/cases/{cid}", headers=f["hq"]).json()["can_rerun_ai"] is True
+    assert api.post(f["url"], headers=f["hq"]).json() == {"status": "started"}
+    assert len(fake_runs) == 1

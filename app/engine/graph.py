@@ -504,8 +504,20 @@ FINISHABLE_FROM = {
 }
 
 
+# Machine code on the audit payload of an escalation caused by the AI being unavailable
+# (S7.4): staff may re-run such a case. The reason text is for people; this is for code.
+AI_UNAVAILABLE = "ai_unavailable"
+TRANSIENT_LLM_ERRORS = frozenset({"ProviderFailed", "MissingAPIKey", "RateLimited"})
+
+
 def _finish(
-    deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "", need: str = ""
+    deps: Deps,
+    state: CaseState,
+    status: str,
+    reason: str,
+    ticket: str = "",
+    need: str = "",
+    code: str = "",
 ) -> None:
     """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
     the customer. The event payload carries no reason text (it may quote the model)."""
@@ -530,6 +542,8 @@ def _finish(
         payload = {"reason": reason[:500]}
         if need:  # a code, not text: the customer-facing question is looked up from it
             payload["need"] = need
+        if code:
+            payload["code"] = code
         audit.record(s, tid, actor_type="agent", actor_id=None, event=f"case.{status}",
                      entity_type="case", entity_id=case.id, payload=payload)  # fmt: skip
         events.emit(s, tid, f"case.{status}", case.id, {"run_id": state.get("run_id")})
@@ -621,7 +635,9 @@ def _guarded(deps: Deps, base: CaseState, work) -> tuple[dict, bool]:
                     "reason": f"{kind} after execution: {type(exc).__name__}"}, False  # fmt: skip
         final = {**base, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
         try:
-            _finish(deps, final, "escalated", final["reason"])
+            transient = isinstance(exc, LLMError) and type(exc).__name__ in TRANSIENT_LLM_ERRORS
+            _finish(deps, final, "escalated", final["reason"],
+                    code=AI_UNAVAILABLE if transient else "")  # fmt: skip
         except Exception:
             log.exception("could not escalate case %s", base.get("case_id"))
         return final, False
@@ -833,7 +849,10 @@ def resume_case(
     }
 
 
-def escalate_now(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str) -> None:
+def escalate_now(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str, code: str = ""
+) -> None:
     """Escalate a case without running the graph (e.g. the models can't be built)."""
     deps = Deps(engine=engine, classifier=None, resolver=None, embedder=None)
-    _finish(deps, {"tenant_id": str(tenant_id), "case_id": str(case_id)}, "escalated", reason)
+    _finish(deps, {"tenant_id": str(tenant_id), "case_id": str(case_id)}, "escalated", reason,
+            code=code)  # fmt: skip

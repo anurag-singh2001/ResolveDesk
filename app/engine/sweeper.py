@@ -40,10 +40,10 @@ from app.core.models import (
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from app.engine.agent_runner import resume_after_decision, resume_info
-from app.engine.ai_rerun import retry_ai_failures
+from app.engine.ai_rerun import retry_ai_failures, unfinished_request
 from app.engine.dispatch import EXECUTORS, reconcile, run_approved
 from app.engine.executor import TERMINAL
-from app.engine.graph import NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
+from app.engine.graph import AI_UNAVAILABLE, NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
 from app.engine.privacy import flag_due_soon
 from app.engine.verifier import FINAL
@@ -287,6 +287,9 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 .where(running)
                 .values(status="failed", error="abandoned: no result within the run TTL")
             )
+            # A re-run that was claimed but never recorded a result (its process died) stays
+            # re-runnable: the code marks it an AI failure again (S7.4).
+            crashed_rerun = unfinished_request(s, case.id)
             case.status = "escalated"
             audit.record(
                 s,
@@ -296,7 +299,10 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
                 event="case.escalated",
                 entity_type="case",
                 entity_id=case.id,
-                payload={"reason": "agent run did not finish within the run TTL"},
+                payload={
+                    "reason": "agent run did not finish within the run TTL",
+                    **({"code": AI_UNAVAILABLE} if crashed_rerun else {}),
+                },
             )
             escalated.append(str(case.id))
     return escalated

@@ -46,7 +46,13 @@ def providers_ready() -> bool:
 def _unavailable(engine, tenant_id, case_id, exc: Exception) -> dict:
     log.warning("agents unavailable for case %s: %s", case_id, type(exc).__name__)
     try:
-        graph.escalate_now(engine, tenant_id, case_id, f"AI unavailable: {type(exc).__name__}")
+        graph.escalate_now(
+            engine,
+            tenant_id,
+            case_id,
+            f"AI unavailable: {type(exc).__name__}",
+            code=graph.AI_UNAVAILABLE,
+        )
     except Exception:
         log.exception("could not escalate case %s", case_id)
     return {"outcome": "escalated"}
