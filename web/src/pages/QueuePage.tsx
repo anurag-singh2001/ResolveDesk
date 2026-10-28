@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
-import { Badge, Card, EmptyState, ErrorState, Loading, PageHeader } from "../components/ui";
+import { Badge, Button, EmptyState, ErrorState, Loading, PageHeader, inputClass, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { categoryLabel, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 
-const SELECT = "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm";
+const SELECT = `${inputClass} w-auto py-1.5`;
 const REASONS: [string, string][] = [
   ["escalated", "Escalated"],
   ["awaiting_approval", "Waiting for a decision"],
@@ -38,13 +38,13 @@ export function QueuePage() {
         title="Cases to handle"
         subtitle="Cases that need a person, with the oldest wait first. Each has an owner: the manager of the outlet, or HQ for larger amounts."
         actions={
-          <button type="button" onClick={() => void reload()} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
+          <Button variant="quiet" onClick={() => void reload()}>
             Refresh
-          </button>
+          </Button>
         }
       />
       <div className="mb-4 flex flex-wrap items-center gap-3" role="group" aria-label="Filter cases to handle">
-        <label className="text-sm text-slate-600">
+        <label className="flex items-center text-sm text-muted-foreground">
           <span className="mr-2">Reason</span>
           <select className={SELECT} value={reason} onChange={(e) => setReason(e.target.value)}>
             <option value="">All reasons</option>
@@ -55,7 +55,7 @@ export function QueuePage() {
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-600">
+        <label className="flex items-center text-sm text-muted-foreground">
           <span className="mr-2">Category</span>
           <select className={SELECT} value={category} onChange={(e) => setCategory(e.target.value)}>
             <option value="">All categories</option>
@@ -66,8 +66,8 @@ export function QueuePage() {
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2 text-sm text-slate-600">
-          <input type="checkbox" checked={mine} onChange={(e) => setMine(e.target.checked)} />
+        <label className="flex items-center gap-2 text-sm text-muted-foreground">
+          <input type="checkbox" className="h-4 w-4 accent-current" checked={mine} onChange={(e) => setMine(e.target.checked)} />
           Owned by me
         </label>
       </div>
@@ -82,47 +82,47 @@ export function QueuePage() {
           <EmptyState title="Nothing waiting for a person">You're all caught up. Escalated cases and cases waiting for a decision appear here.</EmptyState>
         )
       ) : (
-        <Card className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+        <div className={tableWrapClass}>
+          <table className={tableClass}>
+            <thead>
               <tr>
-                <th scope="col" className="px-4 py-2.5 font-medium">Case</th>
-                <th scope="col" className="px-4 py-2.5 font-medium">Reason</th>
-                <th scope="col" className="px-4 py-2.5 font-medium">Waiting</th>
-                <th scope="col" className="px-4 py-2.5 font-medium">Owner</th>
-                <th scope="col" className="px-4 py-2.5 font-medium">Language</th>
-                <th scope="col" className="px-4 py-2.5 text-right font-medium">Amount</th>
-                <th scope="col" className="px-4 py-2.5"><span className="sr-only">Open</span></th>
+                <th scope="col" className={thClass}>Case</th>
+                <th scope="col" className={thClass}>Reason</th>
+                <th scope="col" className={thClass}>Waiting</th>
+                <th scope="col" className={thClass}>Owner</th>
+                <th scope="col" className={thClass}>Language</th>
+                <th scope="col" className={`${thClass} text-right`}>Amount</th>
+                <th scope="col" className={thClass}><span className="sr-only">Open</span></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody>
               {data.map((c) => (
-                <tr key={c.case_id} className="hover:bg-slate-50">
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-900">{categoryLabel(c.category)}</div>
-                    <div className="font-mono text-xs text-slate-500">
-                      {c.order_ref ?? "—"}
+                <tr key={c.case_id}>
+                  <td className={tdClass}>
+                    <div className="font-medium text-foreground">{categoryLabel(c.category)}</div>
+                    <div className="font-mono text-xs text-muted-foreground">
+                      {c.order_ref ?? "-"}
                       {c.location_name ? ` · ${c.location_name}` : ""}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-700">
-                    <Badge tone={c.reason_kind === "escalated" ? "warning" : "accent"}>
+                  <td className={tdClass}>
+                    <Badge tone={c.reason_kind === "escalated" ? "warning" : "purple"}>
                       {c.reason_kind === "escalated" ? "Escalated" : "Waiting for a decision"}
                     </Badge>
-                    <div className="mt-1 max-w-xs truncate text-xs text-slate-500" title={c.reason}>
+                    <div className="mt-1 max-w-xs truncate text-xs text-muted-foreground" title={c.reason}>
                       {c.reason}
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{waited(c.waiting_seconds)}</td>
-                  <td className="px-4 py-3 text-slate-700">
+                  <td className={`${tdClass} text-muted-foreground`}>{waited(c.waiting_seconds)}</td>
+                  <td className={tdClass}>
                     {c.owner_name ? (c.owned_by_me ? `${c.owner_name} (you)` : c.owner_name) : "Unassigned"}
                   </td>
-                  <td className="px-4 py-3 text-slate-700">{c.language}</td>
-                  <td className="px-4 py-3 text-right font-semibold tabular-nums">{c.amount_paise == null ? "—" : formatPaise(c.amount_paise)}</td>
-                  <td className="px-4 py-3 text-right">
+                  <td className={tdClass}>{c.language}</td>
+                  <td className={`${tdClass} text-right font-semibold ${numClass}`}>{c.amount_paise == null ? "-" : formatPaise(c.amount_paise)}</td>
+                  <td className={`${tdClass} text-right`}>
                     <Link
                       to={c.proposal_id && c.reason_kind === "awaiting_approval" ? `/approvals/${c.proposal_id}` : `/cases/${c.case_id}`}
-                      className="font-medium text-accent-700 hover:text-accent-600"
+                      className="font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand"
                     >
                       Open<span className="sr-only"> {categoryLabel(c.category)} on {c.order_ref}</span>
                     </Link>
@@ -131,7 +131,7 @@ export function QueuePage() {
               ))}
             </tbody>
           </table>
-        </Card>
+        </div>
       )}
     </>
   );

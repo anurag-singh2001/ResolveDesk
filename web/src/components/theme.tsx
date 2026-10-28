@@ -77,8 +77,21 @@ const OPTIONS: Array<[ThemePreference, string]> = [
 /** Segmented control. The active segment is the one allowed orange fill (dark brown in dark). */
 export function ThemeSwitcher() {
   const { preference, setPreference } = useTheme();
+  const index = OPTIONS.findIndex(([v]) => v === preference);
+  const [, current] = OPTIONS[index < 0 ? 0 : index];
+  const [nextValue] = OPTIONS[(index + 1) % OPTIONS.length];
   return (
-    <div role="group" aria-label="Theme" className="inline-flex rounded-md border border-border p-0.5">
+    <>
+      {/* Phone: one small button that cycles System, Light, Dark, so the header stays uncrowded. */}
+      <button
+        type="button"
+        aria-label={`Change theme, now ${current}`}
+        onClick={() => setPreference(nextValue)}
+        className="inline-flex h-8 items-center rounded-md border border-border px-2 text-xs font-medium text-foreground transition-colors duration-200 hover:bg-muted sm:hidden"
+      >
+        {current}
+      </button>
+    <div role="group" aria-label="Theme" className="hidden rounded-md border border-border p-0.5 sm:inline-flex">
       {OPTIONS.map(([value, label]) => {
         const active = preference === value;
         return (
@@ -99,5 +112,6 @@ export function ThemeSwitcher() {
         );
       })}
     </div>
+    </>
   );
 }

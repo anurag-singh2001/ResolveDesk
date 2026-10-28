@@ -90,7 +90,7 @@ export function AppShell() {
             <div className="hidden min-w-0 text-right sm:block">
               <div className="truncate text-sm font-medium text-foreground">{me.name}</div>
             </div>
-            <Badge tone="neutral">{roleLabel(me.role)}</Badge>
+            <Badge tone="neutral" className="hidden sm:inline-flex">{roleLabel(me.role)}</Badge>
             <NavLink to="/help" className="hidden rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground sm:inline-flex">
               Help
             </NavLink>
