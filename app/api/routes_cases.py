@@ -18,6 +18,7 @@ from app.api.deps import (
 )
 from app.api.routes_approvals import run_execution
 from app.config import get_settings
+from app.core.i18n import case_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -31,7 +32,7 @@ from app.core.models import (
 from app.core.tenancy import TenantContext
 from app.engine import ai_rerun
 from app.engine.agent_runner import resume_info, run_agents
-from app.engine.case_messages import customer_messages
+from app.engine.case_messages import customer_messages, staff_messages
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
@@ -44,6 +45,16 @@ from app.engine.routing import (
     NotNeedingPerson,
     reason_code,
     reassign,
+)
+from app.engine.staff_actions import (
+    CLOSE_REASONS,
+    NOTE_MAX_LENGTH,
+    CaseClosed,
+    PayoutInFlight,
+    StaffActionError,
+    available_templates,
+    close_case,
+    send_reply,
 )
 
 log = logging.getLogger(__name__)
@@ -75,12 +86,25 @@ class CaseOut(BaseModel):
     created_at: datetime
 
 
+class StaffMessageOut(BaseModel):
+    at: datetime
+    kind: str  # template | note
+    template_id: str | None
+    text: str
+    sender_user_id: uuid.UUID | None
+
+
 class CaseDetailOut(CaseOut):
     # The customer's own words, oldest first. Only on GET /cases/{id}, after visible_case
     # (the owning customer or staff who can see the order); list responses omit the field.
     customer_messages: list[CustomerMessageOut] = []
     # Staff only: the case escalated for an AI failure, so "Run the AI again" applies (S7.4).
     can_rerun_ai: bool = False
+    # Staff only (empty for customers, who see these in the timeline): what staff sent, and the
+    # close reason once closed (S7.6).
+    staff_messages: list["StaffMessageOut"] = []
+    closed: bool = False
+    close_reason: str | None = None
 
 
 def _out(db: Session, case: Case, now: datetime) -> CaseOut:
@@ -387,13 +411,138 @@ def get_case(
     now: datetime = Depends(get_clock),
 ) -> CaseDetailOut:
     case = visible_case(db, ctx, case_id)
+    staff_msgs = (
+        []
+        if ctx.role == "customer"
+        else [
+            StaffMessageOut(
+                at=m.sent_at,
+                kind=m.kind or "template",
+                template_id=m.template_id,
+                text=m.body,
+                sender_user_id=m.sender_user_id,
+            )
+            for m in staff_messages(db, case.id)
+        ]
+    )
     return CaseDetailOut(
         **_out(db, case, now).model_dump(),
         customer_messages=[
             CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
         ],
         can_rerun_ai=ctx.is_staff and ai_rerun.can_rerun(db, case),
+        staff_messages=staff_msgs,
+        closed=case.status == "closed",
+        close_reason=case.close_reason,
     )
+
+
+class TemplateOut(BaseModel):
+    id: str
+    label: str
+    preview: str  # the text as the customer will read it, in the case language
+
+
+class CloseReasonOut(BaseModel):
+    id: str
+    label: str
+
+
+class ReplyTemplatesOut(BaseModel):
+    language: str
+    templates: list[TemplateOut]
+    close_reasons: list[CloseReasonOut]
+    note_max_length: int
+    closed: bool
+
+
+@router.get("/cases/{case_id}/reply-templates")
+def reply_templates(
+    case_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> ReplyTemplatesOut:
+    """The replies staff may send on this case, previewed in the case language. A template
+    that would state a fact the case does not have (a refund being processed) is absent."""
+    case = visible_case(db, ctx, case_id)
+    return ReplyTemplatesOut(
+        language=case_language(db, case),
+        templates=[
+            TemplateOut(id=o.id, label=o.label, preview=o.preview)
+            for o in available_templates(db, case, now)
+        ],
+        close_reasons=[CloseReasonOut(id=k, label=v) for k, v in CLOSE_REASONS.items()],
+        note_max_length=NOTE_MAX_LENGTH,
+        closed=case.status == "closed",
+    )
+
+
+class StaffReplyIn(BaseModel):
+    template_id: str = Field(min_length=1, max_length=48)
+    note: str | None = Field(default=None, max_length=1000)
+    # One per form submit; a double click or retry with the same key stores one message.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class StaffReplyOut(BaseModel):
+    sent: bool  # False: this submit was already stored
+
+
+def _staff_error(exc: StaffActionError) -> HTTPException:
+    if isinstance(exc, (CaseClosed, PayoutInFlight)):
+        return HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
+
+
+@router.post("/cases/{case_id}/staff-reply")
+def staff_reply(
+    case_id: uuid.UUID,
+    body: StaffReplyIn,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> StaffReplyOut:
+    case = visible_case(db, ctx, case_id)  # out of scope / other tenant: 404
+    try:
+        sent = send_reply(
+            db,
+            ctx,
+            case,
+            template_id=body.template_id,
+            note=body.note,
+            idempotency_key=body.idempotency_key,
+            now=datetime.now(UTC),  # a write: real time, never the dev clock
+        )
+    except StaffActionError as exc:
+        raise _staff_error(exc) from None
+    return StaffReplyOut(sent=sent)
+
+
+class CloseIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=24)
+
+
+class CloseOut(BaseModel):
+    case_id: uuid.UUID
+    status: str
+    close_reason: str
+
+
+@router.post("/cases/{case_id}/close")
+def close(
+    case_id: uuid.UUID,
+    body: CloseIn,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> CloseOut:
+    """Close a case with a reason. 409 if already closed or a remedy is still undecided or
+    unfinished (closing must not strand a payout)."""
+    case = visible_case(db, ctx, case_id)
+    try:
+        close_case(db, ctx, case, reason=body.reason, now=datetime.now(UTC))
+    except StaffActionError as exc:
+        raise _staff_error(exc) from None
+    return CloseOut(case_id=case.id, status=case.status, close_reason=body.reason)
 
 
 class TimelineStepOut(BaseModel):

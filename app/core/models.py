@@ -442,12 +442,27 @@ class TicketMessage(TenantOwned, Base):
         CheckConstraint(
             "author IN ('customer', 'system', 'staff')", name="ck_ticket_messages_author"
         ),
+        CheckConstraint(
+            "kind IS NULL OR kind IN ('template', 'note')", name="ck_ticket_messages_kind"
+        ),
+        Index(
+            "uq_ticket_messages_idem",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(16), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Staff messages only (S7.6, migration 0022): a code-owned template or a labelled note.
+    kind: Mapped[str | None] = mapped_column(String(16))
+    template_id: Mapped[str | None] = mapped_column(String(48))
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(160))
 
 
 class Consent(TenantOwned, Base):
@@ -542,6 +557,11 @@ class Case(TenantOwned, Base):
             "language_pending IS NULL OR language_pending IN ('en', 'hi-Latn', 'hi')",
             name="ck_cases_language_pending",
         ),
+        CheckConstraint(
+            "close_reason IS NULL OR close_reason IN "
+            "('resolved', 'no_remedy', 'duplicate', 'unreachable')",
+            name="ck_cases_close_reason",
+        ),
     )
 
     customer_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -559,6 +579,10 @@ class Case(TenantOwned, Base):
     # Who is responsible once the case needs a person (S7.2, app/engine/routing.py).
     owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     owner_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when staff close the case (S7.6, migration 0022).
+    close_reason: Mapped[str | None] = mapped_column(String(16))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class WorkflowRun(TenantOwned, Base):

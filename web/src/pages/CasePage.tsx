@@ -8,6 +8,7 @@ import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
+import { StaffReplyPanel } from "../components/StaffReplyPanel";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
 import { formatPaise } from "../lib/money";
@@ -275,6 +276,15 @@ export function CasePage() {
               <ReplyBox
                 caseId={c.id}
                 onSent={() => {
+                  void kase.reload();
+                  void timeline.reload();
+                }}
+              />
+            )}
+            {staff && (
+              <StaffReplyPanel
+                kase={c}
+                onChanged={() => {
                   void kase.reload();
                   void timeline.reload();
                 }}

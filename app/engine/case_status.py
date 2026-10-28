@@ -59,6 +59,8 @@ def case_status(
         .order_by(ActionProposal.created_at.desc())
     ).first()
     if proposal is None:
+        if case.close_reason:  # a person closed it with a reason (S7.6)
+            return CaseStatus("closed", t(f"close.{case.close_reason}", lang))
         if case.status == "escalated" and case.category == PRIVACY_CATEGORY:
             return CaseStatus(
                 "escalated", customer_message(case.opened_at, effective_settings(session), lang)
@@ -97,6 +99,8 @@ def case_status(
         and execution.status == "succeeded"
         and (proposal.action != "refund" or verification == "verified")
     )
+    if case.close_reason and not payout_confirmed:  # closed by a person; no payout was open
+        return CaseStatus("closed", t(f"close.{case.close_reason}", lang), **common)
     if (
         case.status == "escalated"
         and not payout_confirmed

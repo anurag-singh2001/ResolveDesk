@@ -280,6 +280,73 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Hamara aantarik lakshya {date} tak jawab dene ka hai.",
         "hi": "हमारा आंतरिक लक्ष्य {date} तक जवाब देने का है।",
     },
+    # ---- staff replies and closing (app/engine/staff_actions.py, S7.6) ----
+    # Hinglish and Devanagari copy is plain and awaits native review (docs/DECISIONS.md).
+    "staff.looking_into": {
+        "en": "We are looking into this and will update you.",
+        "hi-Latn": "Hum ise dekh rahe hain aur aapko update denge.",
+        "hi": "हम इसे देख रहे हैं और आपको अपडेट देंगे।",
+    },
+    "staff.share_photo": {
+        "en": "Please share a photo of the item so we can check it.",
+        "hi-Latn": "Kripya item ki ek photo bhejiye taaki hum ise check kar sakein.",
+        "hi": "कृपया आइटम की एक फ़ोटो भेजें ताकि हम उसे जाँच सकें।",
+    },
+    "staff.passed_to_outlet": {
+        "en": "We have passed this to the outlet.",
+        "hi-Latn": "Humne ise outlet ko bhej diya hai.",
+        "hi": "हमने इसे आउटलेट को भेज दिया है।",
+    },
+    # Offered only while an approved refund is really being processed; the amount is filled
+    # by code from the proposal, never typed by staff.
+    "staff.refund_processing": {
+        "en": "Your refund of {amount} is approved and being processed. "
+        "We will confirm once the payment provider does.",
+        "hi-Latn": "Aapka {amount} ka refund manzoor ho gaya hai aur process ho raha hai. "
+        "Payment provider ke confirm karte hi hum bhi confirm karenge.",
+        "hi": "आपका {amount} का रिफ़ंड मंज़ूर हो गया है और प्रोसेस हो रहा है। "
+        "पेमेंट प्रोवाइडर के पुष्टि करते ही हम भी पुष्टि करेंगे।",
+    },
+    "tl.staff.title": {
+        "en": "Message from our team",
+        "hi-Latn": "Hamari team ka sandesh",
+        "hi": "हमारी टीम का संदेश",
+    },
+    "tl.staff_note.title": {
+        "en": "From our team",
+        "hi-Latn": "Hamari team ki taraf se",
+        "hi": "हमारी टीम की ओर से",
+    },
+    "tl.closed.title": {
+        "en": "Case closed",
+        "hi-Latn": "Case band kiya gaya",
+        "hi": "केस बंद किया गया",
+    },
+    "close.resolved": {
+        "en": "We have closed this case as resolved.",
+        "hi-Latn": "Humne is case ko suljha hua maan kar band kar diya hai.",
+        "hi": "हमने इस केस को सुलझा हुआ मानकर बंद कर दिया है।",
+    },
+    "close.no_remedy": {
+        "en": "We reviewed this case and closed it. No remedy is due on this order.",
+        "hi-Latn": "Humne is case ki jaanch ki aur ise band kar diya. "
+        "Is order par koi muaavza dena nahi banta.",
+        "hi": "हमने इस केस की जाँच की और इसे बंद कर दिया। इस ऑर्डर पर कोई मुआवज़ा देय नहीं है।",
+    },
+    "close.duplicate": {
+        "en": "We have closed this case because it repeats another report of yours.",
+        "hi-Latn": "Humne is case ko band kar diya hai kyunki yeh aapki ek aur report "
+        "jaisa hi hai.",
+        "hi": "हमने इस केस को बंद कर दिया है क्योंकि यह आपकी एक और रिपोर्ट जैसा ही है।",
+    },
+    "close.unreachable": {
+        "en": "We could not reach you, so we have closed this case. "
+        "You can report the problem again any time.",
+        "hi-Latn": "Hum aapse sampark nahi kar paaye, isliye humne yeh case band kar diya hai. "
+        "Aap kabhi bhi problem dobara report kar sakte hain.",
+        "hi": "हम आपसे संपर्क नहीं कर पाए, इसलिए हमने यह केस बंद कर दिया है। "
+        "आप कभी भी समस्या दोबारा बता सकते हैं।",
+    },
 }
 
 # The five money states a customer can be told, each mapped to its own template (hard rule 7:
