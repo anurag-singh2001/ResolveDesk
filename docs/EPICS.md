@@ -150,7 +150,7 @@ Scope approved by the user 2026-10-27. No new product features. Never drop tests
 Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Given/When/Then criteria are written at Sprint Planning in the sprint file. SP are Fibonacci and fixed at planning. "Safety" = safety review required.
 
 ## E12 · Staff case handling and hierarchy -- Sprint 7
-- [ ] S7.1 Case page shows the order and the customer's words (3 SP, Sonnet builder) -- done when: staff case page shows items, totals, promised/delivered times and the customer's exact message; order scoped by visible_orders; tests both tenants; walkthrough
+- [~] S7.1 Case page shows the order and the customer's words (3 SP, Sonnet builder) -- done when: staff case page shows items, totals, promised/delivered times and the customer's exact message; order scoped by visible_orders; tests both tenants; walkthrough -- merged to test 1c46a1f, safety review no blockers, follow-up tests 53 passed/1 skipped, vitest 85; browser walkthrough evidence still missing, so not ticked
 - [ ] S7.2 Routing by hierarchy (5 SP, Sonnet builder, Safety) -- done when: cases.owner_user_id (migration) assigned to the location manager on escalation; franchisee sees their locations, HQ all; needs_hq goes to HQ; other-tenant/other-location 404; tests both tenants
 - [ ] S7.3 Escalation queue (3 SP, Sonnet builder) -- done when: "With our team" list scoped by role showing reason, wait time, owner, with filters; tests both tenants
 - [ ] S7.4 Re-run the AI (3 SP, Sonnet builder) -- done when: button and sweeper retry for AI-unavailable/ProviderFailed escalations, idempotent, tests both tenants
@@ -165,7 +165,7 @@ Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Giv
 - [ ] S7.11 Fair-use shown as a warning (1 SP, Sonnet builder) -- done when: "Repeat claimant: N in 30 days, needs a person" replaces the red "failed"; web test
 
 ## E14 · Language auto-detection -- Sprint 7
-- [ ] S7.12 Detect the customer's language from their message (5 SP, Sonnet builder, Safety: customer text) -- done when: Devanagari -> hi, Roman Hindi -> hi-Latn via classifier field plus heuristic fallback; cases.language (migration); Help picker removed; eval scenarios per language; both tenants
+- [~] S7.12 Detect the customer's language from their message (5 SP, Sonnet builder, Safety: customer text) -- done when: Devanagari -> hi, Roman Hindi -> hi-Latn via classifier field plus heuristic fallback; cases.language (migration); Help picker removed; eval scenarios per language; both tenants -- merged to test locally 5025c9f (not pushed), safety review fixes 4197f75; eval run and merged-head API tests pending
 
 ## E19 · UI/UX revamp -- design Sprint 7, build Sprints 8-12 (no UI build before the owner approves the designs)
 - [ ] S7.D1 Design system in Claude Design (5 SP, main session + design tooling) -- done when: colours, type scale, spacing, components, both themes, Devanagari support delivered and shown to the owner

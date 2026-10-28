@@ -177,3 +177,46 @@ Baseline: branch test, main merged at cf6a861; Sprint 6 closed (b3d42e8); latest
 | test-runner | no activity | Targeted tests per merged story; one full suite and a chaos run at sprint close | none |
 | eval-runner | no activity | Eval run after S7.4, S7.8, S7.12 | none |
 | Owner (human) | Approved the v2 roadmap | Review designs when ready (approval gate for UI build); run `npx skills add https://ui.chaicode.com -a claude-code`; E0.3 rotate Neon owner password; E7.2 copy .env into the clean clone; confirm provisional decisions (365-day retention floor; privacy contact label and 30-day target vs 90-day ceiling; support needs no consent record; Hinglish/Devanagari native review; GST/accounting retention for order references) | Waiting on the owner: design approval (later), skill install |
+
+## Daily Scrum 2026-10-28 (after first merge batch)
+
+Verified against git: test head 5025c9f (S7.12 merged locally, not pushed), S7.1 merged at 1c46a1f. Branch heads: S7.8 bf09f2e, S7.2/S7.3 b8038ab, UI-foundation 1d10ddd, UI-pages 7d6853b. Test counts below are coordinator-reported, not re-run by the scrum-master.
+
+| Participant | Done (evidence) | Next | Blocked |
+| --- | --- | --- | --- |
+| Opus coordinator (main session) | S7.1 merged 1c46a1f (pushed); S7.12 merged 5025c9f (local only); research docs fecf31c (S8.4), ab98d85 (S11.1) pushed | Push test with S7.12 once merged-head test_cases_api + test_case_reply_api pass; merge S7.8, then S7.2/S7.3 one at a time; hold UI merge | Shared Sonnet usage limit hit once overnight (resumed) |
+| Builder S7.1 (lane A) | 1c46a1f merged; follow-up tests 53 passed/1 skipped, vitest 85 (2793237) | Browser walkthrough evidence for the case page | none |
+| Builder S7.12 (lane C) | 4197f75 six review fixes; unit 447 passed, language/agent 131 passed | Eval run per language (required by DoD); merged-head API tests in progress | none |
+| Builder S7.8 + S7.11 (lane B) | bf09f2e; KeyError on old seeded packs fixed; 637 passed/7 skipped/2 failed, then the 2 fixed (35 passed) | Rebase on test, merge, re-run targeted tests; eval run (DoD); web test/walkthrough for the S7.11 label | none |
+| Builder S7.2 + S7.3 (lane A) | b8038ab rebased onto test; migration 0021 after 0020; 6 review fixes; 78 passed/2 skipped on a stub 0020 | Re-run on the real migration chain, then merge | Evidence is on a stub 0020 only |
+| Builder UI (ChaiUI) | 1d10ddd foundation, 7d6853b 10 pages, System/Light/Dark, 87 vitest, build ok, desktop browser-checked | Restyle CasePage, ApprovalDetail, Help, Queue, then merge | Owner question: highlight capitalize vs sentence case |
+| safety-reviewer | S7.1 no blockers; S7.12 no blockers (6 fixes); S7.8 KeyError found and fixed; S7.2/S7.3 no blockers (6 fixes) | Review S7.5, S7.6, S7.9, S7.10 as they land | none |
+| business-analyst | S8.4 privacy (fecf31c), S11.1 HQ marketing (ab98d85) committed and pushed | No Sprint 7 task queued | Open owner questions listed in those docs |
+| test-runner / eval-runner | Targeted runs reported above; no eval output yet this sprint | Merged-head runs per merge; evals after S7.8, S7.12 (and S7.4) | Neon free-tier flakiness |
+| scrum-master | This stand-up; EPICS.md S7.1 and S7.12 set to [~] with evidence | Review and ticks at close | none |
+| Owner (human) | Roadmap v2 approved | Answer highlight-case question; E0.3 rotate Neon owner password; E7.2 copy .env to clean clone; install chaicode skill; confirm provisional decisions; open questions in S8.4/S11.1 docs | Human-only items: E0.3, E7.2 |
+
+### Burndown
+- Planned 60 SP (47 code + 13 design), capacity about 40. Ticked (done) SP: 0.
+- Merged on test, awaiting last evidence: S7.1 (3, walkthrough), S7.12 (5, eval run + merged-head tests) = 8 SP.
+- Built, on branch, not merged: S7.8 (3), S7.11 (1), S7.2 (5), S7.3 (3) = 12 SP.
+- Not started: S7.4 (3), S7.5 (8), S7.6 (5), S7.7 (1), S7.9 (5), S7.10 (5) = 27 SP; design S7.D1/S7.D2 13 SP (no evidence of progress in git).
+- Sprint ends 2026-10-29, so about half the time is left with 0 SP ticked.
+
+### Risks (at risk: not yet [~] with more than 25% time gone)
+- AT RISK: S7.4, S7.5, S7.6, S7.7, S7.9, S7.10 (not started), S7.D1/S7.D2 (no repo evidence).
+- S7.2/S7.3 only tested on a stub 0020; migration order clash is possible.
+- UI merge is large and held; mixing it with story merges raises conflict risk.
+- Evals not yet run for S7.8 and S7.12 though the DoD requires them.
+- Sonnet usage limit and Neon flakiness can stall the 2-heavy-process budget.
+
+### Today's plan (in order)
+1. Push S7.12 after merged-head test_cases_api + test_case_reply_api pass; run its language evals.
+2. Merge S7.8 (+S7.11), then S7.2/S7.3 on the real migration chain; targeted tests after each merge.
+3. Restyle the 4 remaining pages (Case, ApprovalDetail, Help, Queue), then merge UI.
+4. Build S7.4 -> S7.7, then S7.6 (needs S7.5, so S7.5 first), S7.5, S7.9, S7.10 as capacity allows. Note S7.6 depends on S7.5, so the real order is S7.4, S7.7, S7.5, S7.6, S7.9, S7.10.
+5. If capacity runs out, carry over in the agreed order: S7.10, S7.9, S7.7, S7.11 (points unchanged). With 47 SP of code against about 40 capacity, S7.10 and S7.9 (10 SP) are the likely carry-over. S7.5 + S7.6 (13 SP) stay in only if lane A is free after S7.3.
+6. Sprint Review + Retro with the scorecard; tick only verified stories.
+7. Merge test to main only when the full suite is green.
+
+Ticks today: none. S7.1 meets its code criteria on test but lacks browser walkthrough evidence, so it stays [~].
