@@ -13,7 +13,12 @@ export function formatPaise(paise: number | null | undefined): string {
   return `${negative ? "-" : ""}₹${groupIN.format(rupees)}.${fraction}`;
 }
 
+<<<<<<< HEAD
 /** "180.50" -> 18050. Integer maths on the digits (no float), at most two decimals; null if invalid. */
+=======
+/** "120", "120.5" or "120.50" → integer paise, with integer maths only. Anything else (empty,
+ *  a third decimal, a sign, an exponent) is null. The server still checks the amount. */
+>>>>>>> dd4c5ed (S7.5: staff categorise a case and propose a remedy through the normal proposal path)
 export function parseRupeesToPaise(text: string): number | null {
   const m = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(text.trim());
   if (!m) return null;

@@ -645,6 +645,14 @@ class ActionProposal(TenantOwned, Base):
             "amount_paise IS NULL OR amount_paise > 0", name="ck_action_proposals_amount"
         ),
         CheckConstraint("risk IN ('low', 'medium', 'high')", name="ck_action_proposals_risk"),
+        Index(
+            "uq_action_proposals_staff_once",
+            "tenant_id",
+            "case_id",
+            "payload_hash",
+            unique=True,
+            postgresql_where=text("proposed_by IS NOT NULL"),
+        ),
     )
 
     case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
@@ -659,6 +667,9 @@ class ActionProposal(TenantOwned, Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # The staff user who proposed it (S7.5); NULL for engine/agent proposals. No FK: this table
+    # is immutable, and an erased user must not trigger an UPDATE (migration 0022).
+    proposed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class ProposalSupersession(TenantOwned, Base):

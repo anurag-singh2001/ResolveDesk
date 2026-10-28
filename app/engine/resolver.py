@@ -125,14 +125,19 @@ def _apply(session: Session, order: Transaction, facts, category: str, option) -
         return _refund(order_ref, amount, f"{why}: {percent}% refund tier")
 
     if option == "refund_missing":
-        lines = session.scalars(select(LineItem).where(LineItem.transaction_id == order.id))
-        missing = sum(li.unit_price_paise * (li.quantity - li.quantity_fulfilled) for li in lines)
+        missing = missing_items_paise(session, order.id)
         if missing <= 0:
             return Remedy(None, {}, "no missing items on record for this order", "escalate")
         cap = percent_of(order.total_paise, s["refund_max_percent"])
         return _refund(order_ref, min(missing, cap, facts.refundable_paise), "missing items")
 
     return _voucher(order_ref, order.total_paise, s, category.replace("_", " "))
+
+
+def missing_items_paise(session: Session, order_id: uuid.UUID) -> int:
+    """Value of the items the order record shows as not delivered (unit price x shortfall)."""
+    lines = session.scalars(select(LineItem).where(LineItem.transaction_id == order_id))
+    return sum(li.unit_price_paise * (li.quantity - li.quantity_fulfilled) for li in lines)
 
 
 def late_tier(tiers: list[dict], minutes: int, placed_on: date) -> dict | None:

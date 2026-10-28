@@ -384,3 +384,26 @@ export interface RemedyOptions {
   options: RemedyOption[];
   choice_required: boolean;
 }
+
+export interface StaffRemedyOption {
+  action: string;
+  min_paise: number;
+  max_paise: number;
+}
+
+export interface StaffRemedyOptions {
+  categories: string[];
+  category: string | null;
+  options: StaffRemedyOption[];
+  note: string | null;
+}
+
+export interface ProposedRemedy {
+  proposal_id: string;
+  case_id: string;
+  action: string;
+  amount_paise: number | null;
+  created: boolean;
+  status: "awaiting_approval" | "approved" | "executed" | "rejected" | "expired";
+  needs_hq: boolean;
+}

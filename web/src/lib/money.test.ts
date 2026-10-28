@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatPaise } from "./money";
+import { formatPaise, parseRupeesToPaise } from "./money";
 
 describe("formatPaise", () => {
   it.each([
@@ -18,5 +18,21 @@ describe("formatPaise", () => {
   it("shows a dash when there is no amount", () => {
     expect(formatPaise(null)).toBe("n/a");
     expect(formatPaise(undefined)).toBe("n/a");
+  });
+});
+
+describe("parseRupeesToPaise", () => {
+  it.each([
+    ["120", 12000],
+    ["120.5", 12050],
+    ["120.50", 12050],
+    ["0.29", 29],
+    [" 10 ", 1000],
+  ])("%s → %i", (text, paise) => {
+    expect(parseRupeesToPaise(text)).toBe(paise);
+  });
+
+  it.each(["", "abc", "-5", "1.234", "1e3", "1,000", ".5", "12."])("rejects %j", (text) => {
+    expect(parseRupeesToPaise(text)).toBeNull();
   });
 });

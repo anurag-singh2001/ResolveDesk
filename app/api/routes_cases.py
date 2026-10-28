@@ -3,8 +3,8 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
+from pydantic import BaseModel, Field, StrictInt
 from sqlalchemy import Engine, and_, or_, select
 from sqlalchemy.orm import Session
 
@@ -31,7 +31,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
-from app.engine import ai_rerun
+from app.engine import ai_rerun, staff_decisions
 from app.engine.agent_runner import resume_info, run_agents
 from app.engine.approvals import not_superseded
 from app.engine.case_messages import customer_messages, staff_messages
@@ -727,3 +727,125 @@ def rerun_ai(
     if outcome == ai_rerun.STARTED:
         background.add_task(ai_rerun.run_requested, engine, ctx.tenant_id, case.id, "staff")
     return RerunOut(status=outcome)
+
+
+class RemedyOptionOut(BaseModel):
+    action: str
+    min_paise: int
+    max_paise: int
+
+
+class RemedyOptionsOut(BaseModel):
+    categories: list[str]
+    category: str | None
+    options: list[RemedyOptionOut]
+    note: str | None
+
+
+def _staff_case_needing_person(db: Session, ctx: TenantContext, case_id: uuid.UUID) -> Case:
+    """Scope first (404 for out-of-scope and other-tenant cases), then 409 when the case is
+    not waiting for a person. Customers never get here (require_staff: 403)."""
+    case = visible_case(db, ctx, case_id)
+    try:
+        staff_decisions.require_person_needed(db, case)
+    except staff_decisions.NotNeedingPerson as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    return case
+
+
+@router.get("/cases/{case_id}/staff-remedy-options")
+def get_remedy_options(
+    case_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> RemedyOptionsOut:
+    """The category list and the remedies the vertical pack's rules allow for this case now,
+    with the amount range in paise. Staff in scope only, on a case that needs a person."""
+    case = _staff_case_needing_person(db, ctx, case_id)
+    found = staff_decisions.remedy_options(db, case)
+    return RemedyOptionsOut(
+        categories=found.categories,
+        category=found.category,
+        options=[RemedyOptionOut(**vars(o)) for o in found.options],
+        note=found.note,
+    )
+
+
+class CategoriseIn(BaseModel):
+    category: str = Field(min_length=1, max_length=64)
+
+
+@router.post("/cases/{case_id}/categorise")
+def categorise_case(
+    case_id: uuid.UUID,
+    body: CategoriseIn,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> RemedyOptionsOut:
+    case = _staff_case_needing_person(db, ctx, case_id)
+    try:
+        case = staff_decisions.categorise(db, ctx, case, body.category, datetime.now(UTC))
+    except staff_decisions.NotNeedingPerson as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    except staff_decisions.InvalidChoice as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    return get_remedy_options(case_id, ctx, db)
+
+
+class ProposeIn(BaseModel):
+    action: str = Field(min_length=1, max_length=64)
+    amount_paise: StrictInt | None = None  # integer paise; a client value is only a proposal
+
+
+class ProposedOut(BaseModel):
+    proposal_id: uuid.UUID
+    case_id: uuid.UUID
+    action: str
+    amount_paise: int | None
+    created: bool
+    auto_approved: bool
+    status: Literal["awaiting_approval", "approved"]
+    needs_hq: bool
+
+
+@router.post("/cases/{case_id}/propose")
+def propose_remedy(
+    case_id: uuid.UUID,
+    body: ProposeIn,
+    response: Response,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> ProposedOut:
+    """Staff pick a remedy for a case that needs a person. It becomes an ordinary proposal
+    (same checks, same approval, same executor as the AI's); nothing is paid here."""
+    case = visible_case(db, ctx, case_id)  # 404 first; a repeat of an earlier request is fine
+    try:
+        out = staff_decisions.propose(
+            db, ctx, case, action=body.action, amount_paise=body.amount_paise, now=datetime.now(UTC)
+        )
+    except staff_decisions.NotNeedingPerson as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    except staff_decisions.InvalidChoice as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
+    proposal = out.proposal
+    if out.created and out.auto_approved and executable(proposal.action):
+        background.add_task(run_execution, engine, ctx, proposal.id, proposal.action)
+    response.status_code = status.HTTP_201_CREATED if out.created else status.HTTP_200_OK
+    limit = effective_settings(db).get("refund_without_escalation_paise")
+    return ProposedOut(
+        proposal_id=proposal.id,
+        case_id=case.id,
+        action=proposal.action,
+        amount_paise=proposal.amount_paise,
+        created=out.created,
+        auto_approved=out.auto_approved,
+        status="approved" if out.auto_approved else "awaiting_approval",
+        needs_hq=bool(
+            proposal.action == "refund"
+            and proposal.amount_paise is not None
+            and limit is not None
+            and proposal.amount_paise > limit
+        ),
+    )

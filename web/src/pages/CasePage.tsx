@@ -6,6 +6,7 @@ import { api } from "../api/endpoints";
 import type { AuditEvent, Case, TimelineEntry } from "../api/types";
 import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
+import { DecideCase } from "../components/DecideCase";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
 import { CaseRemedyChoice } from "../components/RemedyChoice";
@@ -318,6 +319,7 @@ export function CasePage() {
           <div className="space-y-6">
             <Remedy c={c} />
             {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
+            {staff && (<DecideCase caseId={c.id} stage={c.stage} onChanged={() => { void kase.reload(); void timeline.reload(); }} />)}
             {staff && c.can_rerun_ai && (
               <RerunAi
                 caseId={c.id}
