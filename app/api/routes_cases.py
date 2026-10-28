@@ -51,6 +51,7 @@ from app.engine.staff_actions import (
     NOTE_MAX_LENGTH,
     CaseClosed,
     PayoutInFlight,
+    ReplayMismatch,
     StaffActionError,
     available_templates,
     close_case,
@@ -490,7 +491,7 @@ class StaffReplyOut(BaseModel):
 
 
 def _staff_error(exc: StaffActionError) -> HTTPException:
-    if isinstance(exc, (CaseClosed, PayoutInFlight)):
+    if isinstance(exc, (CaseClosed, PayoutInFlight, ReplayMismatch)):
         return HTTPException(status.HTTP_409_CONFLICT, str(exc))
     return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
 
@@ -501,6 +502,7 @@ def staff_reply(
     body: StaffReplyIn,
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
+    clock: datetime = Depends(get_clock),
 ) -> StaffReplyOut:
     case = visible_case(db, ctx, case_id)  # out of scope / other tenant: 404
     try:
@@ -512,6 +514,7 @@ def staff_reply(
             note=body.note,
             idempotency_key=body.idempotency_key,
             now=datetime.now(UTC),  # a write: real time, never the dev clock
+            clock=clock,  # status checks use the same clock as the template list
         )
     except StaffActionError as exc:
         raise _staff_error(exc) from None

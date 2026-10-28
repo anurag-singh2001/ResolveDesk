@@ -445,6 +445,13 @@ class TicketMessage(TenantOwned, Base):
         CheckConstraint(
             "kind IS NULL OR kind IN ('template', 'note')", name="ck_ticket_messages_kind"
         ),
+        # Same-tenant sender only; deleting the user clears only sender_user_id (migration 0022).
+        ForeignKeyConstraint(
+            ["tenant_id", "sender_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (sender_user_id)",
+            name="fk_ticket_messages_sender",
+        ),
         Index(
             "uq_ticket_messages_idem",
             "tenant_id",
@@ -556,6 +563,12 @@ class Case(TenantOwned, Base):
         CheckConstraint(
             "language_pending IS NULL OR language_pending IN ('en', 'hi-Latn', 'hi')",
             name="ck_cases_language_pending",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "closed_by_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (closed_by_user_id)",
+            name="fk_cases_closed_by_user",
         ),
         CheckConstraint(
             "close_reason IS NULL OR close_reason IN "

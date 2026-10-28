@@ -10,11 +10,13 @@ Hard rule 7: a customer reads only verified facts. So a staff reply is one of
 
 Both go on the case's ticket as author "staff" and are audited with the template id and the
 note's length only, never the words. A double submit is one message (idempotency key).
-Closing refuses while a proposal is pending or approved-but-unexecuted, so a payout is never
-stranded behind a closed case.
+Closing refuses unless every proposal is rejected or its payout is confirmed (and while an AI
+re-run is in progress), so a payout is never stranded or hidden behind a closed case.
 """
 
+import hashlib
 import re
+import unicodedata
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -24,10 +26,20 @@ from sqlalchemy.orm import Session
 
 from app.core import audit, events
 from app.core.i18n import case_language, t
-from app.core.models import ActionProposal, Approval, Case, Execution, Ticket, TicketMessage
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Execution,
+    RefundOperation,
+    Ticket,
+    TicketMessage,
+    Verification,
+)
 from app.core.money import format_inr
 from app.core.tenancy import TenantContext
-from app.engine.case_status import case_status
+from app.engine import ai_rerun
+from app.engine.case_status import case_status, is_payout_confirmed
 
 NOTE_MAX_LENGTH = 280
 CLOSE_REASONS = {
@@ -44,14 +56,19 @@ TEMPLATE_IDS = {
     "refund_processing": ("Your refund is processing", "staff.refund_processing"),
 }
 
-# Words that would make a note state a money position or point the customer somewhere else.
-# Lower-cased substring match over Latin, Hinglish and Devanagari spellings.
-_MONEY_WORDS = (
-    "refund", "rifund", "रिफ", "payment", "paid", "voucher", "वाउचर", "credit",
-    "money", "paisa", "paise", "पैसे", "पैसा", "भुगतान", "bhugtan", "rupee", "rupaye",
-    "रुपय", "₹", "reimburs", "compensat", "wallet",
-)  # fmt: skip
-_MONEY_TOKEN = re.compile(r"(rs|inr|upi|pay|cash)", re.IGNORECASE)
+# What a note may not say: anything about money (the system, not staff, states those facts) and
+# links. Latin words are matched on word boundaries ("orders" is fine, "rs" is not); Devanagari
+# has no reliable word boundary, so those stems are substring matches. The text is
+# NFKC-normalised and zero-width / format characters are removed first, so a hidden character
+# inside "refund" cannot slip through.
+_MONEY_LATIN = re.compile(
+    r"\b(rs|inr|upi|cash\w*|pay\w*|paid|refund\w*|rifund\w*|voucher\w*|credit\w*|debit\w*"
+    r"|charge[ds]?|amount\w*|money|paisa|paise|rupee\w*|rupaye|bhugtan|reimburs\w*"
+    r"|compensat\w*|wallet|revers\w*|bank\w*|card)\b",
+    re.IGNORECASE,
+)
+_MONEY_DEVANAGARI = ("रिफ", "वाउचर", "पैसे", "पैसा", "भुगतान", "रुपय", "क्रेडिट", "₹")
+_DIGIT_RUN = re.compile(r"\d{3,}")
 _LINK = re.compile(r"https?:|www\.|\.com\b|\.in\b|@\w", re.IGNORECASE)
 _CONTROL = re.compile(r"[\x00-\x08\x0b-\x1f\x7f]")
 
@@ -66,6 +83,10 @@ class CaseClosed(StaffActionError):
 
 class PayoutInFlight(StaffActionError):
     """A proposal is waiting for a decision, or approved and not yet finished."""
+
+
+class ReplayMismatch(StaffActionError):
+    """The idempotency key was already used for a different message."""
 
 
 class BadTemplate(StaffActionError):
@@ -111,15 +132,20 @@ def available_templates(
 def _check_note(note: str | None) -> str | None:
     if note is None:
         return None
-    note = note.strip()
+    note = "".join(
+        ch for ch in unicodedata.normalize("NFKC", note) if unicodedata.category(ch) != "Cf"
+    ).strip()
     if not note:
         return None
     if len(note) > NOTE_MAX_LENGTH:
         raise BadNote(f"the note is limited to {NOTE_MAX_LENGTH} characters")
     if _CONTROL.search(note):
         raise BadNote("the note contains characters that are not allowed")
-    low = note.lower()
-    if any(w in low for w in _MONEY_WORDS) or _MONEY_TOKEN.search(note):
+    if (
+        _MONEY_LATIN.search(note)
+        or any(w in note for w in _MONEY_DEVANAGARI)
+        or _DIGIT_RUN.search(note)
+    ):
         raise BadNote(
             "a note cannot talk about money, refunds or payments; "
             "use a template so the figures come from the system"
@@ -181,10 +207,13 @@ def send_reply(
     note: str | None,
     idempotency_key: str | None,
     now: datetime,
+    clock: datetime | None = None,
 ) -> bool:
     """Send a templated reply (and optional note). Returns False when this exact submit was
-    already stored (a double submit): nothing is added or audited twice. The caller has
-    already checked the case is in the staff member's scope."""
+    already stored (a double submit): nothing is added or audited twice. `now` stamps the
+    write (real time); `clock` (the app clock, default `now`) decides what the case's status is,
+    the same clock the template list used. The caller has checked the case is in scope."""
+    clock = clock or now
     if template_id not in TEMPLATE_IDS:
         raise BadTemplate("unknown template")
     note = _check_note(note)
@@ -193,8 +222,22 @@ def send_reply(
     if ticket_id is None:
         raise StaffActionError("this case has no conversation to add to")
     if idempotency_key:
-        key = f"staff-reply:{case.id}:{idempotency_key}"[:150]
-        if session.scalar(select(TicketMessage.id).where(TicketMessage.idempotency_key == key)):
+        # The key is bound to what was sent: the same key with other content is a client bug
+        # (or a stale form), not a retry, so it is refused instead of silently dropped.
+        digest = hashlib.sha256(f"{template_id}|{note or ''}".encode()).hexdigest()[:16]
+        prefix = f"staff-reply:{case.id}:{idempotency_key}:"
+        key = prefix + digest
+        stored = session.scalar(
+            select(TicketMessage.idempotency_key)
+            .where(
+                TicketMessage.idempotency_key.startswith(prefix, autoescape=True),
+                TicketMessage.kind == "template",
+            )
+            .limit(1)
+        )
+        if stored is not None:
+            if stored != key:
+                raise ReplayMismatch("this key was already used for a different message")
             return False
     else:
         # No client key: the same sender, template and note within a few seconds is a double
@@ -208,7 +251,7 @@ def send_reply(
     key_name = TEMPLATE_IDS[template_id][1]
     params = {}
     if template_id == "refund_processing":
-        amount = _refund_in_progress(session, case, now)
+        amount = _refund_in_progress(session, case, clock)
         if amount is None:
             raise BadTemplate("this template does not apply: no refund is being processed")
         params["amount"] = format_inr(amount)
@@ -252,21 +295,36 @@ def send_reply(
     return True
 
 
-def payout_in_flight(session: Session, case: Case) -> bool:
-    """True if any proposal on the case is undecided, or approved and not yet at a final
-    execution result (succeeded / failed). Rejected proposals are over."""
-    for proposal_id in session.scalars(
-        select(ActionProposal.id).where(ActionProposal.case_id == case.id)
+def payout_unsettled(session: Session, case: Case) -> bool:
+    """True unless every proposal on the case is over: rejected, or its payout confirmed by the
+    same predicate the customer status uses (case_status.is_payout_confirmed), and no refund
+    left pending reconciliation. So an undecided, approved-not-run, failed, unverified or
+    mismatched payout all block a close: a customer is never told "closed" over money that
+    has not been confirmed (hard rule 7)."""
+    for proposal in session.scalars(
+        select(ActionProposal).where(ActionProposal.case_id == case.id)
     ):
-        approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal_id))
+        approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal.id))
         if approval is None:
             return True
         if approval.decision == "rejected":
             continue
-        status = session.scalar(
-            select(Execution.status).where(Execution.proposal_id == proposal_id)
+        execution = session.scalar(select(Execution).where(Execution.proposal_id == proposal.id))
+        verification = (
+            session.scalars(
+                select(Verification.status)
+                .where(Verification.execution_id == execution.id)
+                .order_by(Verification.created_at.desc(), Verification.id)
+            ).first()
+            if execution is not None
+            else None
         )
-        if status not in ("succeeded", "failed"):
+        if not is_payout_confirmed(proposal.action, execution, verification):
+            return True
+        ledger = session.scalar(
+            select(RefundOperation.status).where(RefundOperation.proposal_id == proposal.id)
+        )
+        if ledger == "pending_reconciliation":
             return True
     return False
 
@@ -279,9 +337,12 @@ def close_case(
     case = _lock_case(session, case)
     if case.status == "closed":
         raise CaseClosed("this case is already closed")
-    if payout_in_flight(session, case):
+    if case.status == "investigating" and ai_rerun.unfinished_request(session, case.id):
+        raise PayoutInFlight("the AI is being run again on this case; wait for it to finish")
+    if payout_unsettled(session, case):
         raise PayoutInFlight(
-            "a remedy on this case is waiting for a decision or is still being carried out"
+            "a remedy on this case is waiting for a decision, still being carried out, "
+            "or not confirmed; settle it first"
         )
     case.status = "closed"
     case.close_reason = reason

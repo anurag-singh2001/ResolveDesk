@@ -46,9 +46,29 @@ def upgrade() -> None:
     op.create_check_constraint(
         "ck_cases_close_reason", "cases", f"close_reason IS NULL OR close_reason IN {REASONS}"
     )
+    # Composite FKs: a sender / closer can only be a user of the same tenant (as 0021 does for
+    # the owner); deleting the user clears only that column, never tenant_id.
+    op.create_foreign_key(
+        "fk_ticket_messages_sender",
+        "ticket_messages",
+        "users",
+        ["tenant_id", "sender_user_id"],
+        ["tenant_id", "id"],
+        ondelete="SET NULL (sender_user_id)",
+    )
+    op.create_foreign_key(
+        "fk_cases_closed_by_user",
+        "cases",
+        "users",
+        ["tenant_id", "closed_by_user_id"],
+        ["tenant_id", "id"],
+        ondelete="SET NULL (closed_by_user_id)",
+    )
 
 
 def downgrade() -> None:
+    op.drop_constraint("fk_cases_closed_by_user", "cases", type_="foreignkey")
+    op.drop_constraint("fk_ticket_messages_sender", "ticket_messages", type_="foreignkey")
     op.drop_constraint("ck_cases_close_reason", "cases", type_="check")
     op.drop_column("cases", "closed_by_user_id")
     op.drop_column("cases", "closed_at")

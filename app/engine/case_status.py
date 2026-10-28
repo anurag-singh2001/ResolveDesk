@@ -47,6 +47,16 @@ class CaseStatus:
     proposal_id: str | None = None
 
 
+def is_payout_confirmed(action: str, execution: Execution | None, verification: str | None) -> bool:
+    """The one definition of "this payout is confirmed" (also used to decide a case may be
+    closed): the provider reported success and, for a refund, the verifier matched it."""
+    return (
+        execution is not None
+        and execution.status == "succeeded"
+        and (action != "refund" or verification == "verified")
+    )
+
+
 def case_status(
     session: Session, case: Case, now: datetime | None = None, language: str | None = None
 ) -> CaseStatus:
@@ -94,13 +104,7 @@ def case_status(
         else None
     )
     # The provider confirmed this payout (a refund also re-read and matched by the verifier).
-    payout_confirmed = (
-        execution is not None
-        and execution.status == "succeeded"
-        and (proposal.action != "refund" or verification == "verified")
-    )
-    if case.close_reason and not payout_confirmed:  # closed by a person; no payout was open
-        return CaseStatus("closed", t(f"close.{case.close_reason}", lang), **common)
+    payout_confirmed = is_payout_confirmed(proposal.action, execution, verification)
     if (
         case.status == "escalated"
         and not payout_confirmed

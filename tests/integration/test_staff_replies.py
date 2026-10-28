@@ -13,14 +13,19 @@ from sqlalchemy import delete, select
 from app.core.db import tenant_session
 from app.core.i18n import LANGUAGES, TEMPLATES, t
 from app.core.models import (
+    ActionProposal,
+    Approval,
     AuditEvent,
     Case,
     Customer,
+    Execution,
     Location,
+    RefundOperation,
     Ticket,
     TicketMessage,
     Transaction,
     User,
+    Verification,
 )
 from app.core.money import format_inr
 from app.core.tenancy import load_context, tenant_id_for
@@ -75,6 +80,8 @@ def world(api, app_engine, seeded_history, tenant):
 
 def _cleanup(w, maint_engine):
     with tenant_session(w["tid"], maint_engine) as s:
+        mine = select(ActionProposal.id).where(ActionProposal.case_id.in_(w["cases"]))
+        s.execute(delete(RefundOperation).where(RefundOperation.proposal_id.in_(mine)))
         s.execute(
             delete(Ticket).where(Ticket.tenant_id == w["tid"], Ticket.case_id.in_(w["cases"]))
         )
@@ -413,3 +420,154 @@ def test_customers_are_forbidden_and_other_tenant_or_out_of_scope_is_404(world, 
             w, next(i for s, i in w["locs"].items() if s in scoped.locations and i in w["order_at"])
         )
         assert _reply(w, sh, near).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        "Your orders will be checked",
+        "Two hours at most",
+        "Our partners are helping",
+        "We will call you at 4 pm",
+    ],
+)
+def test_everyday_words_are_not_mistaken_for_money(world, note):
+    w = world
+    cid = _case(w, _loc(w))
+    assert _reply(w, _hq(w), cid, note=note).status_code == 200
+
+
+@pytest.mark.parametrize(
+    "note",
+    [
+        "ref​und soon",  # zero-width character inside the word
+        "ｒｅｆｕｎｄ soon",  # full-width letters (NFKC)
+        "the amount will arrive",
+        "you were charged twice",
+        "check your bank",
+        "reversed already",
+        "call 18001234",
+        "paying you now",
+    ],
+)
+def test_disguised_money_talk_is_refused(world, note):
+    w = world
+    cid = _case(w, _loc(w))
+    assert _reply(w, _hq(w), cid, note=note).status_code == 422
+
+
+def test_same_key_with_different_content_is_refused(world):
+    w = world
+    cid = _case(w, _loc(w))
+    key = uuid.uuid4().hex
+    assert _reply(w, _hq(w), cid, idempotency_key=key).status_code == 200
+    again = _reply(w, _hq(w), cid, "share_photo", idempotency_key=key)
+    assert again.status_code == 409
+    same = _reply(w, _hq(w), cid, idempotency_key=key)
+    assert same.status_code == 200 and same.json()["sent"] is False
+
+
+def _refund_case(w, state):
+    """An approved refund in a given payout state. Returns the case id."""
+    loc = _loc(w)
+    cid = _case(w, loc, status="open")
+    order_id = w["order_at"][loc][0]
+    hq_user = _staff(w["cfg"], "hq_owner")[0]
+    with tenant_session(w["tid"], w["engine"]) as s:
+        proposal = create_proposal(
+            s, w["tid"], case_id=cid, action="refund", reason="p",
+            params={"transaction_id": str(order_id), "reason": "x", "amount_paise": 1000},
+        )  # fmt: skip
+        s.flush()
+        lifecycle.proposal_made(s, w["tid"], s.get(Case, cid), proposal.id, datetime.now(UTC))
+        pid = proposal.id
+    with tenant_session(w["tid"], w["engine"]) as s:
+        if s.scalar(select(Approval.id).where(Approval.proposal_id == pid)) is None:
+            ctx = load_context(s, w["tid"], w["ids"][hq_user.email])
+            decide(s, ctx, pid, "approved", datetime.now(UTC))
+    with tenant_session(w["tid"], w["engine"]) as s:
+        approval_id = s.scalar(select(Approval.id).where(Approval.proposal_id == pid))
+        status = "failed" if state == "failed" else "succeeded"
+        ex = Execution(
+            tenant_id=w["tid"], proposal_id=pid, approval_id=approval_id,
+            idempotency_key=f"s76-{uuid.uuid4().hex}", status=status,
+        )  # fmt: skip
+        s.add(ex)
+        s.flush()
+        verdict = {"verified": "verified", "pending_reconciliation": "verified",
+                   "mismatch": "mismatch"}.get(state)  # fmt: skip
+        if verdict:
+            s.add(Verification(tenant_id=w["tid"], execution_id=ex.id, status=verdict))
+        if state == "pending_reconciliation":
+            s.add(
+                RefundOperation(
+                    tenant_id=w["tid"], transaction_id=order_id, proposal_id=pid,
+                    idempotency_key=f"s76-{uuid.uuid4().hex}", amount_paise=1000,
+                    status="pending_reconciliation",
+                )
+            )  # fmt: skip
+    return cid
+
+
+@pytest.mark.parametrize("state", ["failed", "unverified", "mismatch", "pending_reconciliation"])
+def test_close_is_refused_while_a_payout_is_failed_unverified_or_unreconciled(world, state):
+    w = world
+    cid = _refund_case(w, state)
+    r = w["api"].post(f"/cases/{cid}/close", json={"reason": "resolved"}, headers=_hq(w))
+    assert r.status_code == 409, r.text
+    with tenant_session(w["tid"], w["engine"]) as s:
+        assert s.get(Case, cid).status != "closed"
+        assert s.get(Case, cid).close_reason is None
+
+
+def test_a_verified_payout_can_be_closed_and_the_customer_still_sees_it_confirmed(world):
+    w = world
+    cid = _refund_case(w, "verified")
+    r = w["api"].post(f"/cases/{cid}/close", json={"reason": "resolved"}, headers=_hq(w))
+    assert r.status_code == 200, r.text
+    out = w["api"].get(f"/cases/{cid}", headers=_customer_headers(w, cid)).json()
+    assert out["stage"] == "confirmed"  # the confirmed money fact is not replaced by "closed"
+
+
+def test_close_is_refused_while_the_ai_is_being_run_again(world):
+    from app.engine import ai_rerun
+
+    w = world
+    cid = _case(w, _loc(w), status="investigating")
+    with tenant_session(w["tid"], w["engine"]) as s:
+        s.add(
+            AuditEvent(
+                tenant_id=w["tid"], actor_type="user", event="case.ai_rerun_requested",
+                entity_type="case", entity_id=cid, payload={},
+            )
+        )  # fmt: skip
+    r = w["api"].post(f"/cases/{cid}/close", json={"reason": "resolved"}, headers=_hq(w))
+    assert r.status_code == 409
+    # and once closed, a re-run cannot be claimed
+    other = _case(w, _loc(w))
+    assert (
+        w["api"].post(f"/cases/{other}/close", json={"reason": "resolved"}, headers=_hq(w))
+    ).status_code == 200
+    assert ai_rerun.request_rerun(w["engine"], w["tid"], other, trigger="staff") == (
+        ai_rerun.NOT_ELIGIBLE
+    )
+
+
+def test_sender_and_closer_must_be_users_of_the_same_tenant(world, seeded_history, maint_engine):
+    from sqlalchemy.exc import IntegrityError
+
+    w = world
+    cid = _case(w, _loc(w))
+    other_cfg = next(c for c in seeded_history.values() if c.slug != w["cfg"].slug)
+    with tenant_session(tenant_id_for(other_cfg.slug), maint_engine) as s:
+        foreign = s.scalar(select(User.id))
+    with pytest.raises(IntegrityError), tenant_session(w["tid"], maint_engine) as s:
+        tk = s.scalar(select(Ticket.id).where(Ticket.case_id == cid))
+        s.add(
+            TicketMessage(
+                tenant_id=w["tid"], ticket_id=tk, author="staff", body="x",
+                sent_at=datetime.now(UTC), sender_user_id=foreign,
+            )
+        )  # fmt: skip
+    with pytest.raises(IntegrityError), tenant_session(w["tid"], maint_engine) as s:
+        s.get(Case, cid).closed_by_user_id = foreign
