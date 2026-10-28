@@ -57,7 +57,7 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         if tier is None or tier["remedy"] == "apology":
             return Remedy(None, {}, f"{why}: apology tier", "apology")
         if tier["remedy"] == "voucher":
-            return _voucher(order_ref, s, why)
+            return _voucher(order_ref, order.total_paise, s, why)
         # The tier's percent is what the tenant asks for; refund_max_percent stays the ceiling.
         percent = min(tier.get("percent", 0), s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
@@ -71,7 +71,7 @@ def decide_remedy(session: Session, case: Case) -> Remedy:
         cap = percent_of(order.total_paise, s["refund_max_percent"])
         return _refund(order_ref, min(missing, cap, facts.refundable_paise), "missing items")
 
-    return _voucher(order_ref, s, case.category.replace("_", " "))
+    return _voucher(order_ref, order.total_paise, s, case.category.replace("_", " "))
 
 
 def late_tier(tiers: list[dict], minutes: int, placed_on: date) -> dict | None:
@@ -98,9 +98,20 @@ def _refund(order_ref: str, amount: int, why: str) -> Remedy:
     return Remedy("refund", params, why, "proposed")
 
 
-def _voucher(order_ref: str, settings: dict, why: str) -> Remedy:
-    # The auto-approve cap: the largest voucher the tenant lets through without a human.
-    value = min(settings["voucher_auto_approve_max_paise"], settings["voucher_max_paise"])
+MIN_VOUCHER_PAISE = 1000  # Rs 10: below this a voucher is not worth issuing, a person looks
+_RUPEE = 100
+
+
+def _voucher(order_ref: str, order_total_paise: int, settings: dict, why: str) -> Remedy:
+    # Never more than the customer paid (voucher_percent of the order total, default 100),
+    # never above the tenant's hard cap or its auto-approve cap. The order total is used, not a
+    # line total: decide_remedy has no per-item link from the case, so we don't guess one.
+    # .get: a pack stored in the DB before voucher_percent existed lacks the key (100 = default).
+    scaled = percent_of(order_total_paise, settings.get("voucher_percent", 100))
+    value = min(settings["voucher_auto_approve_max_paise"], settings["voucher_max_paise"], scaled)
+    value -= value % _RUPEE  # whole rupees, rounded down
+    if value < MIN_VOUCHER_PAISE:
+        return Remedy(None, {}, "order too small for a voucher; a person decides", "escalate")
     params = {"transaction_id": order_ref, "value_paise": value, "reason": why}
     return Remedy("free_item_voucher", params, why, "proposed")
 
