@@ -36,6 +36,7 @@ from app.engine.case_timeline import case_timeline
 from app.engine.eligibility import order_facts
 from app.engine.proposals import create_proposal, proposal_hash_is_intact
 from app.engine.retention import unsettled_case_ids
+from app.engine.staff_actions import payout_unsettled
 from app.engine.switch import switch_remedy
 from tests.helpers import login
 
@@ -543,3 +544,15 @@ def test_retention_treats_a_switched_case_as_settled_once_the_new_one_is_decided
         decide(s, sw["mgr_ctx"], new, "approved", now)
     with tenant_session(sw["tid"], sw["engine"]) as s:
         assert case_id not in set(s.scalars(unsettled_case_ids(sw["tid"])))
+
+
+def test_a_superseded_proposal_does_not_block_closing_the_case(sw):
+    case_id, old = sw["new_pending"]()
+    now = datetime.now(UTC)
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        res = switch_remedy(s, sw["mgr_ctx"], old, action="free_item_voucher",
+                            amount_paise=9000, approve=False, note="x", now=now)  # fmt: skip
+        decide(s, sw["mgr_ctx"], res.proposal.id, "rejected", now)
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        # Old: superseded, never decided. New: rejected. Nothing is owed.
+        assert payout_unsettled(s, s.get(Case, case_id)) is False

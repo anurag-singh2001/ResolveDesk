@@ -39,6 +39,7 @@ from app.core.models import (
 from app.core.money import format_inr
 from app.core.tenancy import TenantContext
 from app.engine import ai_rerun
+from app.engine.approvals import not_superseded
 from app.engine.case_status import case_status, is_payout_confirmed
 
 NOTE_MAX_LENGTH = 280
@@ -302,8 +303,8 @@ def payout_unsettled(session: Session, case: Case) -> bool:
     mismatched payout all block a close: a customer is never told "closed" over money that
     has not been confirmed (hard rule 7)."""
     for proposal in session.scalars(
-        select(ActionProposal).where(ActionProposal.case_id == case.id)
-    ):
+        select(ActionProposal).where(ActionProposal.case_id == case.id, not_superseded())
+    ):  # a switched-away proposal is not owed anything (S7.10)
         approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal.id))
         if approval is None:
             return True

@@ -5,8 +5,8 @@ not a status on the proposal: it is a separate append-only row that links the ol
 the new one. At most one supersession per old proposal and per new proposal (a chain, never a
 fork). The app role can only INSERT and SELECT, and RLS keeps it to its tenant.
 
-Revision ID: 0022
-Revises: 0021
+Revision ID: 0023
+Revises: 0022
 Create Date: 2026-10-28
 """
 
@@ -19,8 +19,8 @@ from migrations.rls import disable_rls, enable_rls
 
 APP_ROLE = "resolvedesk_app"
 
-revision: str = "0022"
-down_revision: str | None = "0021"
+revision: str = "0023"
+down_revision: str | None = "0022"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
