@@ -372,7 +372,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     "held.purpose.payments": {
         "en": "To match refunds to what you paid. We hold references, not card numbers.",
-        "hi-Latn": "Refund ko aapke payment se milane ke liye. Hum references rakhte hain, card number nahin.",
+        "hi-Latn": "Refund ko aapke payment se milane ke liye. Hum references rakhte "
+        "hain, card number nahin.",
         "hi": "रिफ़ंड को आपके भुगतान से मिलाने के लिए। हम संदर्भ रखते हैं, कार्ड नंबर नहीं।",
     },
     "held.label.remedies": {
@@ -382,7 +383,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     "held.purpose.remedies": {
         "en": "To show what we offered or paid you, and to stop double payments.",
-        "hi-Latn": "Humne aapko kya diya ya offer kiya yeh dikhane aur double payment rokne ke liye.",
+        "hi-Latn": "Humne aapko kya diya ya offer kiya yeh dikhane aur double payment "
+        "rokne ke liye.",
         "hi": "हमने आपको क्या दिया या ऑफ़र किया यह दिखाने और दोहरा भुगतान रोकने के लिए।",
     },
     "held.label.consents": {
@@ -407,7 +409,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     "held.ret.support": {
         "en": "Removed {days} days after your case closes, or sooner if you ask us to erase it.",
-        "hi-Latn": "Aapka case band hone ke {days} din baad hata diya jaata hai, ya aap kahein to pehle.",
+        "hi-Latn": "Aapka case band hone ke {days} din baad hata diya jaata hai, ya aap "
+        "kahein to pehle.",
         "hi": "आपका मामला बंद होने के {days} दिन बाद हटा दिया जाता है, या आप कहें तो पहले।",
     },
     "held.ret.records": {
@@ -447,7 +450,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     "held.contact.target": {
         "en": "We aim to reply within {days} days. The legal limit is {ceiling} days.",
-        "hi-Latn": "Hum {days} din ke andar jawab dene ka lakshya rakhte hain. Kanooni seema {ceiling} din hai.",
+        "hi-Latn": "Hum {days} din ke andar jawab dene ka lakshya rakhte hain. Kanooni "
+        "seema {ceiling} din hai.",
         "hi": "हम {days} दिन के भीतर जवाब देने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} दिन है।",
     },
     "held.h.title": {

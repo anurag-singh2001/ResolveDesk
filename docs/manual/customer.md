@@ -117,6 +117,15 @@ Open **Our policies** in the menu to read the rules we follow. Each policy shows
 
 Open **Privacy & data** in the menu.
 
+- **What we hold about you.** A table at the top lists each kind of data we hold (your name,
+  masked phone number, orders, support messages, payment references, refund and voucher records
+  and your offer choices), your own count for each, why we keep it, how long, and whether it is
+  used to help with orders or for offers. The retention periods are marked **provisional** until
+  the business confirms them. Below the table, **Who else sees it** names the companies that
+  process data for us. A **What we do not keep** line appears only when the business has
+  confirmed the claim. The **Privacy contact** (name, email and how fast we aim to reply, with
+  the 90-day legal limit) shows at the top and bottom of the page. The page uses your chosen
+  language.
 - **Offers and promotions.** Help with an order never needs your permission for offers. If you
   want offers on WhatsApp, turn the switch on; to stop them, turn it off. One click either way,
   and it applies to the next message we would send. **History of your choices** lists each

@@ -26,6 +26,7 @@ import type {
   PolicyDoc,
   SweepReport,
   Consents,
+  DataHeld,
   ErasureRequest,
   TimelineEntry,
   Language,

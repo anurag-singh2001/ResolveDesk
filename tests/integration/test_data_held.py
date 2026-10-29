@@ -1,3 +1,4 @@
+# ruff: noqa: F811
 """S8.5a: "what we hold" for the signed-in customer, and the privacy contact.
 
 Runs for every tenant and names none. Each test builds the customers it needs and removes them
@@ -163,4 +164,3 @@ def test_a_rights_message_carries_the_contact(app_engine, tid):
     for lang in LANGUAGES:
         text = customer_message(datetime.now(UTC), settings, lang)
         assert settings["privacy_contact_email"] in text
-
