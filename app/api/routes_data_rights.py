@@ -24,6 +24,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
+from app.engine import data_held
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -188,6 +189,17 @@ def my_data_export(
         "consents": consent.model_dump(mode="json"),
         "processors": effective_settings(db).get("data_processors", []),
     }
+
+
+@router.get("/me/data-held")
+def my_data_held(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """What we hold about the signed-in customer: per item the purpose, retention (tenant
+    settings, labelled provisional), use and the customer's own count. The customer comes from
+    the token and there is no id to pass, so another customer's or tenant's data is unreachable."""
+    customer = own_customer(ctx, db)
+    return data_held.what_we_hold(db, customer, effective_settings(db))
 
 
 # --- erasure -----------------------------------------------------------------------------

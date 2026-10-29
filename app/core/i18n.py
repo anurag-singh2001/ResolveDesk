@@ -314,6 +314,187 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Hamara aantarik lakshya {date} tak jawab dene ka hai.",
         "hi": "हमारा आंतरिक लक्ष्य {date} तक जवाब देने का है।",
     },
+    # ---- what we hold (S8.5a). Hindi copy awaits native review (docs/DECISIONS.md).
+    "held.label.name": {
+        "en": "Your name",
+        "hi-Latn": "Aapka naam",
+        "hi": "आपका नाम",
+    },
+    "held.purpose.name": {
+        "en": "So we know who we are helping.",
+        "hi-Latn": "Taaki hum jaan sakein ki hum kiski madad kar rahe hain.",
+        "hi": "ताकि हम जान सकें कि हम किसकी मदद कर रहे हैं।",
+    },
+    "held.label.phone": {
+        "en": "Your phone number",
+        "hi-Latn": "Aapka phone number",
+        "hi": "आपका फ़ोन नंबर",
+    },
+    "held.purpose.phone": {
+        "en": "To reach you about your orders and cases.",
+        "hi-Latn": "Aapke orders aur cases ke bare mein aapse sampark karne ke liye.",
+        "hi": "आपके ऑर्डर और मामलों के बारे में आपसे संपर्क करने के लिए।",
+    },
+    "held.label.email": {
+        "en": "Your email",
+        "hi-Latn": "Aapka email",
+        "hi": "आपका ईमेल",
+    },
+    "held.purpose.email": {
+        "en": "To reach you about your orders and cases.",
+        "hi-Latn": "Aapke orders aur cases ke bare mein aapse sampark karne ke liye.",
+        "hi": "आपके ऑर्डर और मामलों के बारे में आपसे संपर्क करने के लिए।",
+    },
+    "held.label.orders": {
+        "en": "Your orders",
+        "hi-Latn": "Aapke orders",
+        "hi": "आपके ऑर्डर",
+    },
+    "held.purpose.orders": {
+        "en": "To show what you bought and to check your complaints.",
+        "hi-Latn": "Yeh dikhane ke liye ki aapne kya kharida aur aapki shikayat jaanchne ke liye.",
+        "hi": "यह दिखाने के लिए कि आपने क्या खरीदा और आपकी शिकायतें जाँचने के लिए।",
+    },
+    "held.label.messages": {
+        "en": "Your support messages",
+        "hi-Latn": "Aapke support messages",
+        "hi": "आपके सहायता संदेश",
+    },
+    "held.purpose.messages": {
+        "en": "To resolve your cases and keep a record of what we said.",
+        "hi-Latn": "Aapke cases suljhane aur humne kya kaha uska record rakhne ke liye.",
+        "hi": "आपके मामले सुलझाने और हमने क्या कहा इसका रिकॉर्ड रखने के लिए।",
+    },
+    "held.label.payments": {
+        "en": "Your payment references",
+        "hi-Latn": "Aapke payment references",
+        "hi": "आपके भुगतान संदर्भ",
+    },
+    "held.purpose.payments": {
+        "en": "To match refunds to what you paid. We hold references, not card numbers.",
+        "hi-Latn": "Refund ko aapke payment se milane ke liye. Hum references rakhte hain, card number nahin.",
+        "hi": "रिफ़ंड को आपके भुगतान से मिलाने के लिए। हम संदर्भ रखते हैं, कार्ड नंबर नहीं।",
+    },
+    "held.label.remedies": {
+        "en": "Your refund and voucher records",
+        "hi-Latn": "Aapke refund aur voucher records",
+        "hi": "आपके रिफ़ंड और वाउचर रिकॉर्ड",
+    },
+    "held.purpose.remedies": {
+        "en": "To show what we offered or paid you, and to stop double payments.",
+        "hi-Latn": "Humne aapko kya diya ya offer kiya yeh dikhane aur double payment rokne ke liye.",
+        "hi": "हमने आपको क्या दिया या ऑफ़र किया यह दिखाने और दोहरा भुगतान रोकने के लिए।",
+    },
+    "held.label.consents": {
+        "en": "Your offer choices",
+        "hi-Latn": "Aapke offers ke choices",
+        "hi": "आपके ऑफ़र संबंधी विकल्प",
+    },
+    "held.purpose.consents": {
+        "en": "To follow your choice about offers and prove it.",
+        "hi-Latn": "Offers ke bare mein aapka choice maanne aur uska saboot rakhne ke liye.",
+        "hi": "ऑफ़र के बारे में आपकी पसंद मानने और उसका प्रमाण रखने के लिए।",
+    },
+    "held.use.help": {
+        "en": "Help with your orders",
+        "hi-Latn": "Aapke orders mein madad",
+        "hi": "आपके ऑर्डर में मदद",
+    },
+    "held.use.marketing": {
+        "en": "Offers, only if you agree",
+        "hi-Latn": "Offers, sirf aapki sahmati se",
+        "hi": "ऑफ़र, केवल आपकी सहमति से",
+    },
+    "held.ret.support": {
+        "en": "Removed {days} days after your case closes, or sooner if you ask us to erase it.",
+        "hi-Latn": "Aapka case band hone ke {days} din baad hata diya jaata hai, ya aap kahein to pehle.",
+        "hi": "आपका मामला बंद होने के {days} दिन बाद हटा दिया जाता है, या आप कहें तो पहले।",
+    },
+    "held.ret.records": {
+        "en": "Kept {years} years, as business records.",
+        "hi-Latn": "{years} saal tak rakha jaata hai, business record ke roop mein.",
+        "hi": "व्यवसाय रिकॉर्ड के रूप में {years} साल तक रखा जाता है।",
+    },
+    "held.ret.consents": {
+        "en": "Kept as proof of your choices.",
+        "hi-Latn": "Aapke choices ke saboot ke roop mein rakha jaata hai.",
+        "hi": "आपकी पसंद के प्रमाण के रूप में रखा जाता है।",
+    },
+    "held.provisional": {
+        "en": "provisional",
+        "hi-Latn": "abhi tay nahin",
+        "hi": "अभी अंतिम नहीं",
+    },
+    "held.count": {
+        "en": "{n} on record",
+        "hi-Latn": "{n} record mein",
+        "hi": "{n} रिकॉर्ड में",
+    },
+    "held.not_kept.card_numbers": {
+        "en": "We do not keep your card numbers.",
+        "hi-Latn": "Hum aapke card number nahin rakhte.",
+        "hi": "हम आपके कार्ड नंबर नहीं रखते।",
+    },
+    "held.not_kept.upi_details": {
+        "en": "We do not keep your UPI details.",
+        "hi-Latn": "Hum aapke UPI details nahin rakhte.",
+        "hi": "हम आपके UPI विवरण नहीं रखते।",
+    },
+    "held.contact.label": {
+        "en": "Privacy contact",
+        "hi-Latn": "Privacy contact",
+        "hi": "प्राइवेसी संपर्क",
+    },
+    "held.contact.target": {
+        "en": "We aim to reply within {days} days. The legal limit is {ceiling} days.",
+        "hi-Latn": "Hum {days} din ke andar jawab dene ka lakshya rakhte hain. Kanooni seema {ceiling} din hai.",
+        "hi": "हम {days} दिन के भीतर जवाब देने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} दिन है।",
+    },
+    "held.h.title": {
+        "en": "What we hold about you",
+        "hi-Latn": "Hum aapke bare mein kya rakhte hain",
+        "hi": "हम आपके बारे में क्या रखते हैं",
+    },
+    "held.h.item": {
+        "en": "Item",
+        "hi-Latn": "Cheez",
+        "hi": "विवरण",
+    },
+    "held.h.yours": {
+        "en": "What we hold",
+        "hi-Latn": "Humare paas kya hai",
+        "hi": "हमारे पास क्या है",
+    },
+    "held.h.purpose": {
+        "en": "Why",
+        "hi-Latn": "Kyon",
+        "hi": "क्यों",
+    },
+    "held.h.keep": {
+        "en": "How long",
+        "hi-Latn": "Kitne samay tak",
+        "hi": "कितने समय तक",
+    },
+    "held.h.use": {
+        "en": "Used for",
+        "hi-Latn": "Kis kaam mein",
+        "hi": "किस काम में",
+    },
+    "held.h.processors": {
+        "en": "Who else sees it",
+        "hi-Latn": "Aur kaun dekhta hai",
+        "hi": "और कौन देखता है",
+    },
+    "held.h.not_kept": {
+        "en": "What we do not keep",
+        "hi-Latn": "Hum kya nahin rakhte",
+        "hi": "हम क्या नहीं रखते",
+    },
+    "held.h.contact": {
+        "en": "Questions about your data",
+        "hi-Latn": "Aapke data ke bare mein sawal",
+        "hi": "आपके डेटा के बारे में सवाल",
+    },
     # ---- staff replies and closing (app/engine/staff_actions.py, S7.6) ----
     # Hinglish and Devanagari copy is plain and awaits native review (docs/DECISIONS.md).
     "staff.looking_into": {

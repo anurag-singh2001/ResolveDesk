@@ -70,6 +70,7 @@ export const api = {
   myConsents: () => request<Consents>("/me/consents"),
   setConsent: (purpose: string, granted: boolean) =>
     request<Consents>(`/me/consents/${enc(purpose)}`, { method: "POST", body: { granted } }),
+  dataHeld: () => request<DataHeld>("/me/data-held"),
   dataExport: () => request<unknown>("/me/data-export"),
   myErasureRequest: () => request<ErasureRequest | null>("/me/erasure-request"),
   requestErasure: () => request<ErasureRequest>("/me/erasure-request", { method: "POST" }),
