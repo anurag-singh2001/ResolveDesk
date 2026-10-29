@@ -220,3 +220,70 @@ Verified against git: test head 5025c9f (S7.12 merged locally, not pushed), S7.1
 7. Merge test to main only when the full suite is green.
 
 Ticks today: none. S7.1 meets its code criteria on test but lacks browser walkthrough evidence, so it stays [~].
+
+## Sprint Review (draft, 2026-10-29)
+
+Status: DRAFT. Verified from `git log` on branch test (head 3425721). Test counts are coordinator-reported (not re-run by the scrum-master); the merge commit hashes below are in git. Nothing is ticked `[x]`: no browser walkthrough has been done for any story, no eval run has happened after the AI/routing/language changes, and the full suite has not been run on the test head. Stories that are code-complete and merged with a safety review are marked `[~]` in docs/EPICS.md.
+
+Common missing DoD items: browser walkthrough for every UI story (demo servers were stopped for low memory); eval runs after S7.4, S7.8, S7.12 (and routing/S7.9 wording changes); one full suite plus chaos run on the test head; `make lint`; CI green.
+
+### Per story: acceptance criteria vs evidence
+
+| Story (SP) | Acceptance criteria vs evidence | Verdict | Missing for DoD |
+| --- | --- | --- | --- |
+| S7.1 Case page: order and customer words (3) | Items/totals/times via GET /orders/{id} scoped by visible_orders; exact message in CaseOut.customer_message; out-of-scope and other-tenant 404. Merge 1c46a1f, follow-up 2793237 (53 passed/1 skipped, vitest 85); safety review: no blockers | Meets (code) | Browser walkthrough |
+| S7.2 Routing by hierarchy (5) | owner_user_id = location manager; franchisee own locations, HQ all; needs_hq to HQ; 404 outside scope; migrations 0020/0021 with RLS. Merge f91a79d, 324 passed/3 skipped on the real migration chain; safety review no blockers (6 fixes, b8038ab) | Meets (code) | Eval run (routing change), full suite |
+| S7.3 Escalation queue (3) | Role-scoped queue with reason, wait time, owner; server-side filters; no cross-tenant. Same merge f91a79d and counts | Meets (code) | Browser walkthrough |
+| S7.4 Re-run the AI (3) | Re-run on AI-unavailable/ProviderFailed; idempotent on repeat; bounded sweeper retry (cap 5 per pass); no button for other reasons. Merge b3535c7 (with S7.7), 172 passed/2 skipped; review fixes dfe6bca | Meets (code) | Eval run (AI path), walkthrough |
+| S7.5 Staff categorise and propose (8) | Not merged, no commit on test. In progress; 3 safety blockers being fixed (four-eyes, no auto-approve for staff proposals, superseded replay) | Not met | Fix blockers, re-review, merge, tests both tenants, walkthrough |
+| S7.6 Templated replies and close-with-reason (5) | Template reply in case language, "from our team" free text, four close reasons stored and audited, closed case refuses repeat. Merge 55c0330, 402 passed/2 skipped; safety fixes fb0bee4 (payout-settled close rule, money-word filter, tenant FKs) | Meets (code); shared staff actions with S7.5 still to reconcile | Walkthrough; re-check wiring when S7.5 lands |
+| S7.7 Clear up O0005779 (1) | Runbook and Re-run path delivered in 0eba4c8/b3535c7. No evidence the case itself was re-run and shown correctly in the UI | Partial | Re-run O0005779 (needs live providers) and view it in the UI |
+| S7.8 Vouchers sized to the order (3) | voucher = min(cap, percent, order total) in paise; Rs 149 order test; absent voucher_percent gets a safe default via the settings resolver (KeyError on old packs fixed, bf09f2e). Merge d1b5995, 553 passed/7 skipped | Meets (code) | Eval run (sr-quality style cases) |
+| S7.9 Customer chooses voucher or refund (5) | Options shown, limits enforced by code, single-remedy categories show no choice, out-of-pack option rejected, ownership server-side. Merge 3425721 (branch tree identical to merged); 28+19+63+82+164 passed, vitest 110; review fixes 1e504e5 (refund is a request, instant needs fair-use, fallback on unworkable pick) | Meets (code) | Walkthrough; refund-wording decision below |
+| S7.10 Approver switches remedy (5) | Old proposal superseded, new payload hash, old approval cannot execute the new one, limits enforced, audited with who and why. Merge 5500c00, migration 0023, trigger fix eec63f0; 534 passed, then 227 passed/1 skipped after fix; review fixes d6a7c04 | Meets (code) | Walkthrough; four-eyes decision below |
+| S7.11 Fair-use warning (1) | "Repeat claimant: N in 30 days, needs a person" in warning style, no red "failed". Merge d1b5995 | Meets (code) | Web test run and walkthrough evidence |
+| S7.12 Language from message (5) | Devanagari -> hi, Roman Hindi -> hi-Latn (classifier plus heuristic fallback), English en, cases.language migration, Help picker removed. Merge 5025c9f (75 passed merged head), 4197f75 six safety fixes | Partial | Per-language eval run (a stated acceptance criterion), walkthrough of the Help page |
+| S7.D1 Design system (5) | Published in Claude Design, dark and light; owner directed implementation 2026-10-28. No repo artefact to cite | Meets per coordinator | Record owner approval and link/screenshots here |
+| S7.D2 Wireframes (8) | Published in Claude Design; owner directed implementation 2026-10-28, which implies approval. Not recorded in repo | Meets per coordinator | Owner's approval or change requests written here (criterion says so) |
+
+Note: S7.6 was planned after S7.5 but merged first; its staff-action surface must be re-checked when S7.5 merges.
+
+### Increment for the owner (plain English)
+- A manager opening a case now sees what was ordered, the totals, promised versus delivered times and the customer's exact words.
+- Escalated cases get an owner by the hierarchy: outlet manager first, HQ when the amount is above the limit. A "Cases to handle" list shows why each case escalated, how long it has waited and who owns it, scoped to the viewer's role.
+- If the AI was down when a case came in, staff or an automatic retry can run it again without duplicate payouts or replies.
+- Staff can send a templated reply, add a clearly labelled "from our team" note, and close a case with a reason.
+- Vouchers can never be larger than the order. Where the rule allows both, the customer can choose a voucher or a refund request. An approver can switch a pending remedy to another allowed one; the earlier approval cannot be reused.
+- Repeat-claim signals read as a calm warning ("needs a person"), not a red failure.
+- Replies follow the language the customer writes in (Hindi, Hinglish, English); the language picker is gone.
+- Not yet in your hands: staff choosing a category and remedy themselves (S7.5, being fixed after safety review) and a click-through demo of any of the above. The design system and wireframes are published; the UI branch feature/UI-chaiui is ready except the Case page, which is being restyled.
+
+### Velocity
+| Measure | SP |
+| --- | --- |
+| Planned | 60 (47 code + 13 design; capacity about 40) |
+| Meeting full DoD now (ticked `[x]`) | 0 |
+| Code-complete, merged, safety-reviewed (`[~]`) | 39 (S7.1 3, S7.2 5, S7.3 3, S7.4 3, S7.6 5, S7.8 3, S7.9 5, S7.10 5, S7.11 1, S7.12 5) |
+| Partial | 1 (S7.7) |
+| Design delivered, approval not recorded | 13 (S7.D1, S7.D2) |
+| In progress | 8 (S7.5) |
+
+Observation: about 52 SP produced against a 40 SP capacity assumption, but 0 SP closed. Verification (walkthroughs, evals, full suite) is the bottleneck, not building. The ROADMAP.md Sprint 7 velocity cell stays unfilled until ticks happen. If S7.5 is not merged by sprint end it carries over with 8 SP unchanged. ROADMAP lists S7.9 as a Sprint 8 carry-over; it is now merged, so only its walkthrough remains.
+
+### Needed to tick
+1. Browser walkthroughs: S7.1, S7.3, S7.4/S7.7, S7.6, S7.9, S7.10, S7.11, S7.12 (Help page).
+2. Eval runs: S7.4, S7.8, S7.12 (per language), plus routing and S7.9 wording changes.
+3. Full suite and chaos on the test head; `make lint`; CI green.
+4. S7.5 blockers fixed, re-reviewed, merged.
+5. Owner approval of designs recorded.
+
+### Owner decisions pending
+1. Highlight case: capitalize versus sentence case (blocks the UI restyle).
+2. S7.10: should switching a remedy need four-eyes (a second approver)?
+3. S7.9: should the refund option be fitted to the policy rule (offer versus what the rule allows)?
+4. Customer-facing wording when the close reason is "no remedy is due".
+5. S7.5 defaults: four-eyes on staff-created proposals and no staff auto-approve (recommended: both on).
+6. Privacy defaults (365-day retention floor, contact label, 30-day target vs 90-day ceiling, no consent record for support).
+7. Campaign dual approval (S11 marketing).
+8. Sprint 8 dates.
+9. Human-only items still open: E0.3 rotate Neon owner password, E7.2 copy .env to the clean clone, Hinglish/Devanagari native review.
