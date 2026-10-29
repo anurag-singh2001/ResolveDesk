@@ -17,11 +17,11 @@ export function RemedyChoice({
   if (options.length < 2) return null; // a single option is not a choice
   return (
     <fieldset className="space-y-2">
-      <legend className="text-sm font-medium text-slate-900">How would you like this settled?</legend>
+      <legend className="text-sm font-medium text-foreground">How would you like this settled?</legend>
       {options.map((o) => (
         <label
           key={o.code}
-          className="flex cursor-pointer items-start gap-3 rounded-lg border border-slate-200 p-3 has-[:checked]:border-slate-900"
+          className="flex cursor-pointer items-start gap-3 rounded-lg border border-border p-3 has-[:checked]:border-foreground"
         >
           <input
             type="radio"
@@ -29,12 +29,12 @@ export function RemedyChoice({
             value={o.code}
             checked={value === o.code}
             onChange={() => onChange(o.code)}
-            className="mt-1"
+            className="mt-1 accent-current"
           />
           <span className="text-sm">
-            <span className="block font-medium text-slate-900">{o.title}</span>
-            <span className="block text-slate-700">{o.summary}</span>
-            <span className="block text-xs text-slate-500">{o.timing}</span>
+            <span className="block font-medium text-foreground">{o.title}</span>
+            <span className="block text-foreground">{o.summary}</span>
+            <span className="block text-xs text-muted-foreground">{o.timing}</span>
           </span>
         </label>
       ))}
@@ -88,10 +88,10 @@ export function CaseRemedyChoice({ caseId }: { caseId: string }) {
       />
       {error && <Alert>{error}</Alert>}
       <div className="mt-3 flex items-center gap-3">
-        <Button type="button" onClick={save}>
+        <Button type="button" variant="soft" onClick={save}>
           Save my choice
         </Button>
-        {saved && <span className="text-sm text-slate-600">Saved.</span>}
+        {saved && <span className="text-sm text-muted-foreground">Saved.</span>}
       </div>
     </Card>
   );

@@ -1,7 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { RiskBadge } from "../components/badges";
-import { Badge, Card, EmptyState, ErrorState, Loading, PageHeader } from "../components/ui";
+import { Badge, Button, Card, EmptyState, ErrorState, Loading, PageHeader, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { age, categoryLabel, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
@@ -12,7 +12,8 @@ const SORTS: [string, string][] = [
   ["newest", "Newest first"],
   ["amount_desc", "Highest amount"],
 ];
-const SELECT = "rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm";
+const SELECT =
+  "rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
 
 export function ApprovalsPage() {
   // Filters live in the URL so a reload (or a shared link) keeps them.
@@ -40,15 +41,16 @@ export function ApprovalsPage() {
     <>
       <PageHeader
         title="Approvals"
-        subtitle="Remedies the system proposed that need a person's decision. Oldest first unless you sort differently."
+        subtitle="Remedies the system proposed. Nothing is paid or sent until"
+        highlight="a person decides"
         actions={
-          <button type="button" onClick={() => void reload()} className="rounded-lg px-3 py-2 text-sm text-slate-600 hover:bg-slate-100">
+          <Button type="button" variant="quiet" onClick={() => void reload()}>
             Refresh
-          </button>
+          </Button>
         }
       />
       <div className="mb-4 flex flex-wrap gap-3" role="group" aria-label="Filter approvals">
-        <label className="text-sm text-slate-600">
+        <label className="text-sm text-muted-foreground">
           <span className="mr-2">Outlet</span>
           <select className={SELECT} value={location_id} onChange={(e) => setFilter("location_id", e.target.value)}>
             <option value="">All outlets</option>
@@ -59,7 +61,7 @@ export function ApprovalsPage() {
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-600">
+        <label className="text-sm text-muted-foreground">
           <span className="mr-2">Action</span>
           <select className={SELECT} value={action} onChange={(e) => setFilter("action", e.target.value)}>
             <option value="">All actions</option>
@@ -70,7 +72,7 @@ export function ApprovalsPage() {
             ))}
           </select>
         </label>
-        <label className="text-sm text-slate-600">
+        <label className="text-sm text-muted-foreground">
           <span className="mr-2">Sort</span>
           <select className={SELECT} value={sort} onChange={(e) => setFilter("sort", e.target.value)}>
             {SORTS.map(([v, label]) => (
@@ -101,17 +103,17 @@ export function ApprovalsPage() {
                   <Card className="p-4">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <div className="text-sm font-medium text-slate-900">{categoryLabel(p.category)}</div>
-                        <div className="font-mono text-xs text-slate-500">{p.order_ref ?? "—"}</div>
+                        <div className="text-sm font-medium text-foreground">{categoryLabel(p.category)}</div>
+                        <div className="font-mono text-xs text-muted-foreground">{p.order_ref ?? "n/a"}</div>
                       </div>
                       <RiskBadge risk={p.risk} />
                     </div>
                     <div className="mt-3 flex items-end justify-between">
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-muted-foreground">
                         {p.location_name ? `${p.location_name} · ` : ""}
                         {age(p.created_at)}
                       </span>
-                      <span className="font-semibold tabular-nums">
+                      <span className={`${numClass} font-medium text-foreground`}>
                         {humanize(p.action)} {formatPaise(p.amount_paise)}
                       </span>
                     </div>
@@ -121,24 +123,24 @@ export function ApprovalsPage() {
             ))}
           </ul>
           {/* Desktop: table */}
-          <Card className="hidden overflow-hidden md:block">
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+          <div className={`${tableWrapClass} hidden md:block`}>
+            <table className={tableClass}>
+              <thead>
                 <tr>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Category</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Order</th>
-                  {showOutlet && <th scope="col" className="px-4 py-2.5 font-medium">Outlet</th>}
-                  <th scope="col" className="px-4 py-2.5 font-medium">Action</th>
-                  <th scope="col" className="px-4 py-2.5 text-right font-medium">Amount</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Risk</th>
-                  <th scope="col" className="px-4 py-2.5 font-medium">Age</th>
-                  <th scope="col" className="px-4 py-2.5"><span className="sr-only">Open</span></th>
+                  <th scope="col" className={thClass}>Category</th>
+                  <th scope="col" className={thClass}>Order</th>
+                  {showOutlet && <th scope="col" className={thClass}>Outlet</th>}
+                  <th scope="col" className={thClass}>Action</th>
+                  <th scope="col" className={`${thClass} text-right`}>Amount</th>
+                  <th scope="col" className={thClass}>Risk</th>
+                  <th scope="col" className={thClass}>Age</th>
+                  <th scope="col" className={thClass}><span className="sr-only">Open</span></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody>
                 {data.map((p) => (
-                  <tr key={p.proposal_id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 font-medium text-slate-900">
+                  <tr key={p.proposal_id} className="hover:bg-muted">
+                    <td className={`${tdClass} font-medium`}>
                       {categoryLabel(p.category)}
                       {!p.eligible && (
                         <Badge tone="danger" className="ml-2">
@@ -146,14 +148,14 @@ export function ApprovalsPage() {
                         </Badge>
                       )}
                     </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-600">{p.order_ref ?? "—"}</td>
-                    {showOutlet && <td className="px-4 py-3 text-slate-700">{p.location_name ?? "—"}</td>}
-                    <td className="px-4 py-3 text-slate-700">{humanize(p.action)}</td>
-                    <td className="px-4 py-3 text-right font-semibold tabular-nums">{formatPaise(p.amount_paise)}</td>
-                    <td className="px-4 py-3"><RiskBadge risk={p.risk} /></td>
-                    <td className="px-4 py-3 text-slate-500">{age(p.created_at)}</td>
-                    <td className="px-4 py-3 text-right">
-                      <Link to={`/approvals/${p.proposal_id}`} className="font-medium text-accent-700 hover:text-accent-600">
+                    <td className={`${tdClass} font-mono text-xs text-muted-foreground`}>{p.order_ref ?? "n/a"}</td>
+                    {showOutlet && <td className={tdClass}>{p.location_name ?? "n/a"}</td>}
+                    <td className={tdClass}>{humanize(p.action)}</td>
+                    <td className={`${tdClass} ${numClass} text-right`}>{formatPaise(p.amount_paise)}</td>
+                    <td className={tdClass}><RiskBadge risk={p.risk} /></td>
+                    <td className={`${tdClass} text-muted-foreground`}>{age(p.created_at)}</td>
+                    <td className={`${tdClass} text-right`}>
+                      <Link to={`/approvals/${p.proposal_id}`} className="font-medium text-foreground underline underline-offset-2 hover:text-brand">
                         Review<span className="sr-only"> {categoryLabel(p.category)} on {p.order_ref}</span>
                       </Link>
                     </td>
@@ -161,7 +163,7 @@ export function ApprovalsPage() {
                 ))}
               </tbody>
             </table>
-          </Card>
+          </div>
         </>
       )}
     </>

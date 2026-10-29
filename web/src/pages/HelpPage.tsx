@@ -20,10 +20,10 @@ export function HelpPage() {
       <PageHeader title="Help" subtitle={`The manual for your role: ${roleLabel(role)}.`} />
       {privacy && privacy.email && (
         <Card className="mb-4 p-4">
-          <h2 className="text-sm font-semibold text-slate-900">Privacy contact</h2>
-          <p className="mt-1 text-sm text-slate-600">
+          <h2 className="font-montserrat text-sm font-semibold text-foreground">Privacy contact</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
             For questions about your personal data, or to make a privacy request: {privacy.name},{" "}
-            <a className="underline" href={`mailto:${privacy.email}`}>
+            <a className="font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand" href={`mailto:${privacy.email}`}>
               {privacy.email}
             </a>
             . You can also report a problem on an order and choose the privacy request category.
