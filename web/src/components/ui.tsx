@@ -208,6 +208,49 @@ export const thClass = "border-b border-border px-4 py-2.5 text-left text-xs fon
 export const tdClass = "border-b border-border px-4 py-3 align-top text-foreground";
 export const numClass = "font-mono tabular-nums";
 
+/** A labelled on/off switch. The label and the state word are always visible, so the control
+ * never relies on colour alone. The caller passes the saved state (the component never
+ * pre-sets it) and both positions have the same weight. */
+export function Switch({
+  id,
+  label,
+  stateLabel,
+  checked,
+  disabled,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  stateLabel: string;
+  checked: boolean;
+  disabled?: boolean;
+  onChange: (next: boolean) => void;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span id={`${id}-label`} className="text-sm text-foreground">
+        {label}
+      </span>
+      <button
+        id={id}
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-labelledby={`${id}-label`}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className="inline-flex items-center gap-2 rounded-full border border-border px-2.5 py-1 text-xs font-medium text-foreground disabled:opacity-50"
+      >
+        <span
+          aria-hidden="true"
+          className={cx("h-3 w-3 rounded-full border border-foreground", checked ? "bg-foreground" : "bg-transparent")}
+        />
+        {stateLabel}
+      </button>
+    </div>
+  );
+}
+
 export function Dl({ items }: { items: Array<[string, ReactNode]> }) {
   return (
     <dl className="grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2">

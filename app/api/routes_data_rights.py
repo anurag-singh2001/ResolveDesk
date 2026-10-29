@@ -24,7 +24,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import data_held
+from app.engine import consent_benefits, data_held
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -60,6 +60,9 @@ class ConsentsOut(BaseModel):
     notice_version: str
     consents: list[ConsentOut]
     history: list[ConsentEventOut]
+    # Benefit wording, frequency cap and the always-on help note (S8.5b), in the customer's
+    # language. Optional so the data export can embed the plain state without the copy.
+    benefits: dict | None = None
 
 
 def _consents(db: Session, customer: Customer) -> ConsentsOut:
@@ -84,8 +87,10 @@ def _consents(db: Session, customer: Customer) -> ConsentsOut:
         .where(ConsentEvent.customer_id == customer.id)
         .order_by(ConsentEvent.created_at, ConsentEvent.id)
     )
+    events = list(events)
     return ConsentsOut(
         notice_version=privacy.NOTICE_VERSION,
+        benefits=consent_benefits.build(customer.preferred_language, current, events),
         consents=current,
         history=[
             ConsentEventOut(
@@ -186,7 +191,7 @@ def my_data_export(
             for t, brand, place in orders
         ],
         "cases": cases,
-        "consents": consent.model_dump(mode="json"),
+        "consents": consent.model_dump(mode="json", exclude={"benefits"}),
         "processors": effective_settings(db).get("data_processors", []),
     }
 

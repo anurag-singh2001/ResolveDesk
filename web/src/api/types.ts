@@ -419,10 +419,39 @@ export interface ConsentEvent {
   at: string;
 }
 
+export interface ConsentPurposeCopy {
+  purpose: string;
+  channel: string;
+  granted: boolean;
+  title: string;
+  benefit: string;
+  sent: string;
+  cap: string;
+  cap_days: number;
+  channel_label: string;
+  switch_label: string;
+  state_label: string;
+}
+
+export interface ConsentHistoryCopy extends ConsentEvent {
+  purpose_label: string;
+  channel_label: string;
+  action_label: string;
+}
+
+export interface ConsentBenefits {
+  language: string;
+  headings: Record<"title" | "intro" | "history" | "note" | "on" | "off" | "notice", string>;
+  always_on: { title: string; body: string; badge: string };
+  purposes: ConsentPurposeCopy[];
+  history_labelled: ConsentHistoryCopy[];
+}
+
 export interface Consents {
   notice_version: string;
   consents: ConsentState[];
   history: ConsentEvent[];
+  benefits: ConsentBenefits;
 }
 
 export interface HeldItem {
