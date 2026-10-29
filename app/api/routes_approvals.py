@@ -16,6 +16,7 @@ from app.core.models import (
     Case,
     Location,
     Transaction,
+    User,
 )
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
@@ -54,6 +55,9 @@ class PendingOut(BaseModel):
     created_at: datetime
     # The customer's own words (their first message on the case), shown to staff as text.
     customer_message: str | None
+    # Staff who proposed it (S7.5), by name; None for an engine proposal. An erased or unknown
+    # user shows as "Former staff member".
+    proposed_by_name: str | None = None
     location_name: str | None
     citations: list[CitationOut]
 
@@ -122,7 +126,15 @@ def pending_approvals(
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
-    for proposal, case, order, location_name in db.execute(query).all():
+    rows = db.execute(query).all()
+    proposers = {p.proposed_by for p, *_ in rows if p.proposed_by}
+    names = {
+        uid: name if erased is None else "Former staff member"
+        for uid, name, erased in db.execute(
+            select(User.id, User.display_name, User.erased_at).where(User.id.in_(proposers))
+        ).all()
+    }
+    for proposal, case, order, location_name in rows:
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         out.append(
             PendingOut(
@@ -140,6 +152,11 @@ def pending_approvals(
                 errors=result.errors,
                 created_at=proposal.created_at,
                 customer_message=first_customer_message(db, case.id),
+                proposed_by_name=(
+                    names.get(proposal.proposed_by, "Former staff member")
+                    if proposal.proposed_by
+                    else None
+                ),
                 location_name=location_name,
                 citations=_citations(proposal.citations),
             )

@@ -803,8 +803,7 @@ class ProposedOut(BaseModel):
     action: str
     amount_paise: int | None
     created: bool
-    auto_approved: bool
-    status: Literal["awaiting_approval", "approved"]
+    status: Literal["awaiting_approval", "approved", "executed", "rejected", "expired"]
     needs_hq: bool
 
 
@@ -813,10 +812,8 @@ def propose_remedy(
     case_id: uuid.UUID,
     body: ProposeIn,
     response: Response,
-    background: BackgroundTasks,
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
-    engine: Engine = Depends(get_db_engine),
 ) -> ProposedOut:
     """Staff pick a remedy for a case that needs a person. It becomes an ordinary proposal
     (same checks, same approval, same executor as the AI's); nothing is paid here."""
@@ -829,23 +826,14 @@ def propose_remedy(
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
     except staff_decisions.InvalidChoice as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
-    proposal = out.proposal
-    if out.created and out.auto_approved and executable(proposal.action):
-        background.add_task(run_execution, engine, ctx, proposal.id, proposal.action)
+    proposal = out.proposal  # a person proposed it, so it always waits for another person
     response.status_code = status.HTTP_201_CREATED if out.created else status.HTTP_200_OK
-    limit = effective_settings(db).get("refund_without_escalation_paise")
     return ProposedOut(
         proposal_id=proposal.id,
         case_id=case.id,
         action=proposal.action,
         amount_paise=proposal.amount_paise,
         created=out.created,
-        auto_approved=out.auto_approved,
-        status="approved" if out.auto_approved else "awaiting_approval",
-        needs_hq=bool(
-            proposal.action == "refund"
-            and proposal.amount_paise is not None
-            and limit is not None
-            and proposal.amount_paise > limit
-        ),
+        status=out.state,
+        needs_hq=bool(out.checks.get("needs_hq")),
     )

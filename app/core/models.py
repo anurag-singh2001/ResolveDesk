@@ -645,14 +645,6 @@ class ActionProposal(TenantOwned, Base):
             "amount_paise IS NULL OR amount_paise > 0", name="ck_action_proposals_amount"
         ),
         CheckConstraint("risk IN ('low', 'medium', 'high')", name="ck_action_proposals_risk"),
-        Index(
-            "uq_action_proposals_staff_once",
-            "tenant_id",
-            "case_id",
-            "payload_hash",
-            unique=True,
-            postgresql_where=text("proposed_by IS NOT NULL"),
-        ),
     )
 
     case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)

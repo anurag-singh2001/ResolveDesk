@@ -211,7 +211,7 @@ def test_refund_follows_the_same_path_to_one_verified_payout(api, world):
     assert first.status_code == 201, first.text
     body = first.json()
     assert body["status"] == "awaiting_approval" and body["created"] is True
-    assert body["amount_paise"] == amount and body["auto_approved"] is False
+    assert body["amount_paise"] == amount
     again = _propose(api, w, "refund", amount)  # a double click: same proposal
     assert again.status_code == 200 and again.json()["proposal_id"] == body["proposal_id"]
     assert again.json()["created"] is False
@@ -289,6 +289,11 @@ def test_voucher_is_sized_to_the_order_and_goes_through_the_same_checks(api, wor
     [proposal] = _proposals(w)
     assert proposal.action == "free_item_voucher" and proposal.proposed_by == w["manager_id"]
     assert proposal.amount_paise == voucher["min_paise"] <= w["total"]
+    # Even under the auto-approve cap a person-made proposal waits for another person.
+    assert ok.json()["status"] == "awaiting_approval"
+    with tenant_session(w["tid"], w["engine"]) as s:
+        assert s.scalar(select(Approval.id).where(Approval.proposal_id == proposal.id)) is None
+        assert s.get(Case, w["case"]).status == "awaiting_approval"
 
 
 def test_two_simultaneous_identical_requests_make_one_proposal(api, world):
@@ -357,3 +362,69 @@ def test_a_case_with_an_approved_payout_is_not_proposed_again(api, world):
         s.execute(update(Case).where(Case.id == w["case"]).values(status="escalated"))
     assert _propose(api, w, "refund", top["max_paise"]).status_code == 409
     assert len(_proposals(w)) == 1
+
+
+def _decide(api, w, who, pid, decision="approved"):
+    return api.post(f"/approvals/{pid}/decision", headers=w[who], json={"decision": decision})
+
+
+def test_the_proposer_cannot_approve_but_can_withdraw(api, world):
+    w = world
+    _categorise(api, w, w["refund_cat"])
+    low = next(o for o in _options(api, w).json()["options"] if o["action"] == "refund")[
+        "min_paise"
+    ]
+    pid = _propose(api, w, "refund", low).json()["proposal_id"]
+    assert _decide(api, w, "mgr", pid).status_code == 403  # four eyes, whatever the amount
+    with tenant_session(w["tid"], w["engine"]) as s:
+        assert s.scalar(select(Approval.id).where(Approval.proposal_id == uuid.UUID(pid))) is None
+    shown = next(
+        p for p in api.get("/approvals", headers=w["hq"]).json() if p["proposal_id"] == pid
+    )
+    assert shown["proposed_by_name"]
+    assert _decide(api, w, "mgr", pid, "rejected").status_code == 200  # withdrawing is allowed
+
+
+def test_another_approver_in_scope_can_approve_a_staff_proposal(api, world):
+    w = world
+    _categorise(api, w, w["voucher_cat"])
+    low = _options(api, w).json()["options"][0]["min_paise"]
+    action = _options(api, w).json()["options"][0]["action"]
+    pid = _propose(api, w, action, low).json()["proposal_id"]
+    assert _decide(api, w, "hq", pid).status_code == 200
+
+
+def test_a_replay_reports_the_real_state(api, world):
+    w = world
+    _categorise(api, w, w["voucher_cat"])
+    opt = _options(api, w).json()["options"][0]
+    first = _propose(api, w, opt["action"], opt["min_paise"]).json()
+    assert _decide(api, w, "hq", first["proposal_id"], "rejected").status_code == 200
+    again = _propose(api, w, opt["action"], opt["min_paise"])
+    assert again.status_code == 200 and again.json()["status"] == "rejected"
+
+
+def test_after_a_switch_the_same_payload_is_a_new_proposal(api, world):
+    w = world
+    _categorise(api, w, w["refund_cat"])
+    refund = next(o for o in _options(api, w).json()["options"] if o["action"] == "refund")
+    old = _propose(api, w, "refund", refund["min_paise"]).json()["proposal_id"]
+    voucher_opts = [o for o in _options_for(api, w, old) if o["action"] != "refund"]
+    if not voucher_opts:  # a pack whose rule has only refunds: nothing to switch to
+        pytest.skip("no other remedy to switch to")
+    alt = voucher_opts[0]
+    sw = api.post(
+        f"/approvals/{old}/switch",
+        headers=w["hq"],
+        json={"action": alt["action"], "amount_paise": alt["min_paise"], "note": "test"},
+    )
+    assert sw.status_code == 200, sw.text
+    _set_status(w, "escalated")  # the case needs a person again
+    again = _propose(api, w, "refund", refund["min_paise"])
+    assert again.status_code == 201 and again.json()["proposal_id"] != old
+
+
+def _options_for(api, w, pid):
+    resp = api.get(f"/approvals/{pid}/alternatives", headers=w["hq"])
+    assert resp.status_code == 200, resp.text
+    return resp.json()["alternatives"]

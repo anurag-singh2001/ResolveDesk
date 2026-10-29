@@ -198,6 +198,10 @@ def decide(
     lock_case(session, proposal.case_id)
     if is_superseded(session, proposal.id):
         raise AlreadyDecided("this proposal was superseded by another remedy")
+    if decision == "approved" and proposal.proposed_by == ctx.user_id:
+        # Four eyes: whoever proposed a remedy cannot approve it (any path). Rejecting your own
+        # proposal stays allowed: it is a withdrawal, not a payout.
+        raise Forbidden("you proposed this remedy, so someone else must approve it")
     if not proposal_hash_is_intact(proposal):
         raise NotEligible(["proposal no longer matches its payload hash"])
     action, inp, facts, result = evaluate_proposal(session, ctx, proposal, now)
@@ -253,6 +257,8 @@ def auto_decide(
     if proposal is None:
         raise NotFound("proposal not found")
     if not proposal_hash_is_intact(proposal):
+        return None
+    if proposal.proposed_by is not None:  # a person proposed it: another person decides (S7.5)
         return None
     action_cls = get_action(proposal.action)
     if not action_cls.auto_approvable:  # refunds: never (PROJECT.md section 2)

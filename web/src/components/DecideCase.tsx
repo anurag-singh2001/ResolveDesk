@@ -36,7 +36,7 @@ export function DecideCase({ caseId, stage, onChanged }: { caseId: string; stage
         <h2 className="text-sm font-semibold text-foreground">Decide this case</h2>
         <p className="mt-3 text-sm text-foreground" role="status">
           {humanize(sent.action)} of {formatPaise(sent.amount_paise)}{" "}
-          {sent.status === "approved" ? "was approved by the tenant rule and is being processed." : "is awaiting approval."}
+          {sent.status === "awaiting_approval" ? "is awaiting approval by someone else." : `is already ${sent.status}.`}
         </p>
         {sent.needs_hq && <p className="mt-2 text-xs text-muted-foreground">This amount needs an HQ owner to approve it.</p>}
       </Card>

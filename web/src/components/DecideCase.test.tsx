@@ -41,7 +41,7 @@ function setup(role: Role, options: { status?: number; body?: unknown }) {
     "POST /cases/c-1/categorise": { body: categorised },
     "POST /cases/c-1/propose": {
       status: 201,
-      body: { proposal_id: "p-1", case_id: "c-1", action: "refund", amount_paise: 12050, created: true, auto_approved: false, status: "awaiting_approval", needs_hq: false },
+      body: { proposal_id: "p-1", case_id: "c-1", action: "refund", amount_paise: 12050, created: true, status: "awaiting_approval", needs_hq: false },
     },
   });
 }
@@ -57,7 +57,7 @@ describe("decide this case", () => {
 
     await user.type(screen.getByLabelText("Amount (₹)"), "120.50");
     await user.click(screen.getByRole("button", { name: "Propose for approval" }));
-    expect(await screen.findByRole("status")).toHaveTextContent("Refund of ₹120.50 is awaiting approval.");
+    expect(await screen.findByRole("status")).toHaveTextContent("Refund of ₹120.50 is awaiting approval by someone else.");
     expect(calls.find((c) => c.path === "/cases/c-1/propose")?.body).toEqual({ action: "refund", amount_paise: 12050 });
   });
 

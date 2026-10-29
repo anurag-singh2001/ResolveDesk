@@ -19,13 +19,13 @@ from sqlalchemy.orm import Session
 
 from app.actions.base import enabled_actions
 from app.core import audit
-from app.core.models import ActionProposal, Approval, Case, Ticket
+from app.core.models import ActionProposal, Approval, Case, Execution, Ticket
 from app.core.money import format_inr, percent_of
 from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 from app.core.verticals import RefundPercentOption, rule_options
 from app.engine import lifecycle
-from app.engine.approvals import evaluate_proposal
+from app.engine.approvals import evaluate_proposal, not_superseded
 from app.engine.eligibility import order_facts
 from app.engine.privacy import PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal, parse_params, payload_hash
@@ -78,8 +78,8 @@ class RemedyOptions:
 class Proposed:
     proposal: ActionProposal
     created: bool
-    auto_approved: bool
-    checks: dict = field(default_factory=dict)
+    state: str  # awaiting_approval | approved | executed | rejected | expired
+    checks: dict = field(default_factory=dict)  # the action's code checks, e.g. needs_hq
 
 
 def lock_case(session: Session, case_id: uuid.UUID) -> Case:
@@ -178,6 +178,18 @@ def categorise(
     return case
 
 
+def proposal_state(session: Session, proposal: ActionProposal, now: datetime) -> str:
+    """The proposal's real state, for a repeated request (never assume it is still pending)."""
+    approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal.id))
+    if approval is None:
+        return "awaiting_approval"
+    if approval.decision != "approved":
+        return "rejected"
+    if session.scalar(select(Execution.id).where(Execution.proposal_id == proposal.id)):
+        return "executed"
+    return "expired" if now >= approval.expires_at else "approved"
+
+
 def propose(
     session: Session,
     ctx: TenantContext,
@@ -216,15 +228,12 @@ def propose(
             ActionProposal.case_id == case.id,
             ActionProposal.payload_hash == digest,
             ActionProposal.proposed_by.is_not(None),
+            not_superseded(),  # a switched-away proposal may be proposed again as a new one
         )
     )
     if existing is not None:  # a retry or a double click: same proposal, nothing new
-        approved = session.scalar(
-            select(Approval.id).where(
-                Approval.proposal_id == existing.id, Approval.decision == "approved"
-            )
-        )
-        return Proposed(existing, False, approved is not None)
+        _, _, _, again = evaluate_proposal(session, ctx, existing, now)
+        return Proposed(existing, False, proposal_state(session, existing, now), again.checks)
     require_person_needed(session, case)
     option = {o.action: o for o in remedy_options(session, case).options}.get(action)
     if option is None:
@@ -249,7 +258,8 @@ def propose(
     _, _, _, result = evaluate_proposal(session, ctx, proposal, now)
     if not result.ok:  # the action's own checks, run again on the stored proposal
         raise InvalidChoice("; ".join(result.errors))
-    approval = lifecycle.proposal_made(session, ctx.tenant_id, case, proposal.id, now)
+    # auto_decide skips person-made proposals, so this always leaves it awaiting approval.
+    lifecycle.proposal_made(session, ctx.tenant_id, case, proposal.id, now)
     assign_owner(session, ctx.tenant_id, case, now)
     audit.record(
         session,
@@ -264,7 +274,6 @@ def propose(
             "action": action,
             "amount_paise": amount_paise,
             "proposed_by": str(ctx.user_id),
-            "auto_approved": approval is not None,
         },
     )
-    return Proposed(proposal, True, approval is not None, result.checks)
+    return Proposed(proposal, True, proposal_state(session, proposal, now), result.checks)

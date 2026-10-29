@@ -85,6 +85,7 @@ def create_proposal(
         tenant_id=tenant_id,
         case_id=case_id,
         run_id=run_id,
+        # Only ever the authenticated staff user's id (from the token), never a request value.
         proposed_by=proposed_by,  # a staff user (S7.5); None for the engine
         action=action,
         params=normalised,
