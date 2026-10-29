@@ -4,6 +4,7 @@ import { ApiError, errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { DecisionResponse, PendingApproval } from "../api/types";
 import { RiskBadge } from "../components/badges";
+import { RemedyBasis, SourceLinks } from "../components/DecisionSources";
 import { SwitchRemedy } from "../components/SwitchRemedy";
 import { Alert, Badge, Button, Card, Dl, EmptyState, ErrorState, Field, Loading, PageHeader, inputClass } from "../components/ui";
 import { age, categoryLabel, formatDateTime, humanize } from "../lib/format";
@@ -169,7 +170,15 @@ export function ApprovalDetailPage() {
           <Card className="p-4 sm:p-5">
             <h2 className="font-montserrat text-sm font-semibold text-foreground">Why this was proposed</h2>
             <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{p.reason || "-"}</p>
-            {p.citations && p.citations.length > 0 && (
+            <RemedyBasis lines={p.basis} />
+            {p.sources && p.sources.length > 0 ? (
+              <div className="mt-4">
+                <h3 className="text-xs font-medium text-muted-foreground">Policy cited</h3>
+                <SourceLinks sources={p.sources} showVersion />
+                <p className="mt-2 text-xs text-muted-foreground">Policy text is reference only; the amount comes from the business rules, not from the text.</p>
+              </div>
+            ) : (
+              p.citations && p.citations.length > 0 && (
               <div className="mt-4">
                 <h3 className="text-xs font-medium text-muted-foreground">Policy cited</h3>
                 <ul className="mt-2 flex flex-wrap gap-2" aria-label="Policy citations">
@@ -183,6 +192,7 @@ export function ApprovalDetailPage() {
                 </ul>
                 <p className="mt-2 text-xs text-muted-foreground">Policy text is reference only; the amount comes from the business rules, not from the text.</p>
               </div>
+              )
             )}
           </Card>
 

@@ -70,6 +70,7 @@ def create_proposal(
     reason: str,
     citations: list[dict] | None = None,
     run_id: uuid.UUID | None = None,
+    basis: list[dict] | None = None,
 ) -> ActionProposal:
     """Store an immutable proposal in the caller's tenant (session must be scoped to it)."""
     enabled = enabled_actions(tenant_pack(session).actions)
@@ -92,6 +93,8 @@ def create_proposal(
         risk=action_cls.risk.value,
         reason=reason,
         citations=citations or [],
+        # Which rule set the amount: structured codes from code, never model text (S8.3).
+        validation={"basis": basis} if basis else {},
     )
     session.add(proposal)
     session.flush()

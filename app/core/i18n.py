@@ -701,6 +701,69 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Loyalty ka sawaal",
         "hi": "लॉयल्टी से जुड़ा सवाल",
     },
+    # ---- why a remedy has this amount (app/api/decision_sources.py, S8.3) ----
+    "basis.voucher_order_total": {
+        "en": "The voucher is sized to the order total.",
+        "hi-Latn": "Voucher ki value aapke order ke total ke hisaab se rakhi gayi hai.",
+        "hi": "वाउचर की राशि आपके ऑर्डर के कुल के हिसाब से रखी गई है।",
+    },
+    "basis.voucher_order_percent": {
+        "en": "The voucher is {percent}% of the order total.",
+        "hi-Latn": "Voucher order ke total ka {percent}% hai.",
+        "hi": "वाउचर ऑर्डर के कुल का {percent}% है।",
+    },
+    "basis.voucher_cap": {
+        "en": "The voucher is capped at {cap} by the voucher limit.",
+        "hi-Latn": "Voucher ki value voucher limit ke hisaab se {cap} par roki gayi hai.",
+        "hi": "वाउचर की राशि वाउचर सीमा के अनुसार {cap} पर सीमित है।",
+    },
+    "basis.late_tier": {
+        "en": "The order was {minutes} minutes late, which reached the late-delivery tier "
+        "for {tier} minutes or more.",
+        "hi-Latn": "Order {minutes} minute late tha, jo {tier} minute ya usse zyada ke "
+        "late-delivery tier tak pahunchta hai.",
+        "hi": "ऑर्डर {minutes} मिनट देर से आया, जो {tier} मिनट या उससे अधिक के देरी-स्तर तक पहुँचता है।",
+    },
+    "basis.refund_percent": {
+        "en": "The refund is {percent}% of the order total.",
+        "hi-Latn": "Refund order ke total ka {percent}% hai.",
+        "hi": "रिफ़ंड ऑर्डर के कुल का {percent}% है।",
+    },
+    "basis.refund_choice": {
+        "en": "The refund is {percent}% of the order total, the option that was chosen.",
+        "hi-Latn": "Refund order ke total ka {percent}% hai, jo vikalp chuna gaya tha.",
+        "hi": "रिफ़ंड ऑर्डर के कुल का {percent}% है, जो विकल्प चुना गया था।",
+    },
+    "basis.capped_refundable": {
+        "en": "It is limited to what is still refundable on this order.",
+        "hi-Latn": "Yeh is order par abhi bacha refund-yogya hissa tak seemit hai.",
+        "hi": "यह इस ऑर्डर पर अभी शेष रिफ़ंड योग्य राशि तक सीमित है।",
+    },
+    "basis.refund_missing": {
+        "en": "The refund is the price of the items missing from the order.",
+        "hi-Latn": "Refund order se gayab items ki keemat ke barabar hai.",
+        "hi": "रिफ़ंड ऑर्डर से गायब आइटमों की कीमत के बराबर है।",
+    },
+    "basis.refund_missing_capped": {
+        "en": "It is limited by the refund rule or what is still refundable.",
+        "hi-Latn": "Yeh refund niyam ya bache refund-yogya hisse se seemit hai.",
+        "hi": "यह रिफ़ंड नियम या शेष रिफ़ंड योग्य राशि से सीमित है।",
+    },
+    "basis.approver_set": {
+        "en": "A team member set this amount.",
+        "hi-Latn": "Yeh raashi team ke ek sadasya ne tay ki.",
+        "hi": "यह राशि टीम के एक सदस्य ने तय की।",
+    },
+    "source.version_changed": {
+        "en": "This policy has changed since the decision; the link shows the current wording.",
+        "hi-Latn": "Faisle ke baad yeh policy badal gayi hai; link mein abhi ka text dikhta hai.",
+        "hi": "निर्णय के बाद यह नीति बदल गई है; लिंक में अभी का पाठ दिखता है।",
+    },
+    "source.changed": {
+        "en": "This section has changed since the decision; the document is linked instead.",
+        "hi-Latn": "Faisle ke baad yeh section badal gaya hai; uski jagah document ka link hai.",
+        "hi": "निर्णय के बाद यह भाग बदल गया है; इसकी जगह दस्तावेज़ का लिंक दिया गया है।",
+    },
 }
 
 # The five money states a customer can be told, each mapped to its own template (hard rule 7:

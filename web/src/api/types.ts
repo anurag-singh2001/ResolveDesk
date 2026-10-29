@@ -190,6 +190,8 @@ export interface Case {
   staff_messages?: StaffMessage[]; // GET /cases/{id}, staff only (S7.6)
   closed?: boolean;
   close_reason?: string | null;
+  basis?: string[]; // which rule set the amount (S8.3)
+  sources?: DecisionSource[]; // cited policy sections as links (S8.3)
 }
 
 export interface RerunAiResult {
@@ -224,6 +226,26 @@ export interface AuditEvent {
   actor_type: string;
   event: string;
   payload: Record<string, unknown>;
+}
+
+/** A cited policy section resolved on the server (S8.3): title and number from our policy table. */
+export interface DecisionSource {
+  doc_key: string | null;
+  version: number | null;
+  document_title: string | null;
+  section_id: string | null;
+  href: string; // /policies#<doc>-<section>, the document, or the page when the section changed
+  section_changed: boolean;
+  policy_revised?: boolean;
+  note: string | null;
+}
+
+export interface PolicySectionDetail extends PolicySection {
+  document_id: string;
+  document_title: string;
+  version: number;
+  in_force_from: string;
+  in_force_to: string | null;
 }
 
 export interface Citation {
@@ -270,6 +292,8 @@ export interface PendingApproval {
   customer_message?: string | null; // NEW
   location_name?: string | null; // NEW
   citations?: Citation[]; // NEW
+  basis?: string[]; // which rule set the amount (S8.3)
+  sources?: DecisionSource[]; // cited sections as links (S8.3)
 }
 
 export interface OutletInsight {

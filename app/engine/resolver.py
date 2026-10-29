@@ -33,6 +33,9 @@ class Remedy:
     reason: str
     outcome: str  # proposed | apology | escalate
     fallback_from: str | None = None  # the customer's pick, when it could not be honoured
+    # Which rule set the amount: structured codes + params (never free text), stored with the
+    # proposal and rendered from templates (app/engine/sources.py).
+    basis: tuple[dict, ...] = ()
 
 
 class InvalidRemedyChoice(ValueError):
@@ -100,7 +103,10 @@ def _apply(session: Session, order: Transaction, facts, category: str, option) -
         # The option's percent is what the pack offers; refund_max_percent stays the ceiling.
         percent = min(option.refund_percent, s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
-        return _refund(order_ref, amount, f"customer chose a {percent}% refund")
+        return _refund(
+            order_ref, amount, f"customer chose a {percent}% refund",
+            _percent_basis("refund_choice", percent, amount, order.total_paise, facts),
+        )  # fmt: skip
 
     if option == "late_tiers":
         f = session.scalar(select(Fulfilment).where(Fulfilment.transaction_id == order.id))
@@ -118,11 +124,15 @@ def _apply(session: Session, order: Transaction, facts, category: str, option) -
         if tier is None or tier["remedy"] == "apology":
             return Remedy(None, {}, f"{why}: apology tier", "apology")
         if tier["remedy"] == "voucher":
-            return _voucher(order_ref, order.total_paise, s, why)
+            return _voucher(order_ref, order.total_paise, s, why, (_tier_basis(tier, minutes),))
         # The tier's percent is what the tenant asks for; refund_max_percent stays the ceiling.
         percent = min(tier.get("percent", 0), s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)
-        return _refund(order_ref, amount, f"{why}: {percent}% refund tier")
+        return _refund(
+            order_ref, amount, f"{why}: {percent}% refund tier",
+            (_tier_basis(tier, minutes),)
+            + _percent_basis("refund_percent", percent, amount, order.total_paise, facts),
+        )  # fmt: skip
 
     if option == "refund_missing":
         lines = session.scalars(select(LineItem).where(LineItem.transaction_id == order.id))
@@ -130,7 +140,9 @@ def _apply(session: Session, order: Transaction, facts, category: str, option) -
         if missing <= 0:
             return Remedy(None, {}, "no missing items on record for this order", "escalate")
         cap = percent_of(order.total_paise, s["refund_max_percent"])
-        return _refund(order_ref, min(missing, cap, facts.refundable_paise), "missing items")
+        amount = min(missing, cap, facts.refundable_paise)
+        basis = {"code": "refund_missing", "params": {"capped": amount < missing}}
+        return _refund(order_ref, amount, "missing items", (basis,))
 
     return _voucher(order_ref, order.total_paise, s, category.replace("_", " "))
 
@@ -152,11 +164,24 @@ def late_tier(tiers: list[dict], minutes: int, placed_on: date) -> dict | None:
     return max(reached, key=lambda t: t["min_minutes_late"], default=None)
 
 
-def _refund(order_ref: str, amount: int, why: str) -> Remedy:
+def _tier_basis(tier: dict, minutes: int) -> dict:
+    return {
+        "code": "late_tier",
+        "params": {"tier_minutes": tier["min_minutes_late"], "minutes": minutes},
+    }
+
+
+def _percent_basis(code: str, percent: int, amount: int, total: int, facts) -> tuple[dict, ...]:
+    """A percent-of-order refund; flags when the order's refundable balance cut it short."""
+    capped = amount < percent_of(total, percent) and amount == facts.refundable_paise
+    return ({"code": code, "params": {"percent": percent, "capped": capped}},)
+
+
+def _refund(order_ref: str, amount: int, why: str, basis: tuple[dict, ...] = ()) -> Remedy:
     if amount <= 0:
         return Remedy(None, {}, "nothing left to refund on this order", "escalate")
     params = {"transaction_id": order_ref, "amount_paise": amount, "reason": why}
-    return Remedy("refund", params, why, "proposed")
+    return Remedy("refund", params, why, "proposed", basis=basis)
 
 
 _RUPEE = 100
@@ -170,18 +195,30 @@ def voucher_ceiling_paise(settings: dict) -> int:
     return value - value % _RUPEE
 
 
-def _voucher(order_ref: str, order_total_paise: int, settings: dict, why: str) -> Remedy:
+def _voucher(
+    order_ref: str, order_total_paise: int, settings: dict, why: str, lead: tuple[dict, ...] = ()
+) -> Remedy:
     # Never more than the customer paid (voucher_percent of the order total, default 100),
     # never above the tenant's hard cap or its auto-approve cap. The order total is used, not a
     # line total: decide_remedy has no per-item link from the case, so we don't guess one.
     # .get: a pack stored in the DB before voucher_percent existed lacks the key (100 = default).
-    scaled = percent_of(order_total_paise, settings.get("voucher_percent", 100))
-    value = min(voucher_ceiling_paise(settings), scaled)
+    percent = settings.get("voucher_percent", 100)
+    scaled = percent_of(order_total_paise, percent)
+    ceiling = voucher_ceiling_paise(settings)
+    value = min(ceiling, scaled)
     value -= value % _RUPEE  # whole rupees, rounded down
     if value < MIN_VOUCHER_PAISE:
         return Remedy(None, {}, "order too small for a voucher; a person decides", "escalate")
+    # Which rule set the amount. Both codes when the order total and the cap coincide. The cap
+    # figure is the amount actually given (after the round-down), so the line never disagrees
+    # with the voucher.
+    basis = []
+    if scaled <= ceiling:
+        basis.append({"code": "voucher_order_total", "params": {"percent": percent}})
+    if ceiling <= scaled:
+        basis.append({"code": "voucher_cap", "params": {"cap_paise": value}})
     params = {"transaction_id": order_ref, "value_paise": value, "reason": why}
-    return Remedy("free_item_voucher", params, why, "proposed")
+    return Remedy("free_item_voucher", params, why, "proposed", basis=lead + tuple(basis))
 
 
 def propose_for_case(
@@ -198,6 +235,7 @@ def propose_for_case(
         action=remedy.action,
         params=remedy.params,
         reason=f"deterministic rule: {remedy.reason}",
+        basis=list(remedy.basis),
     )
     return remedy, proposal.id
 

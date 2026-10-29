@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import Engine, and_, or_, select
 from sqlalchemy.orm import Session
 
+from app.api.decision_sources import SourceOut, decision_sources
 from app.api.deps import (
     get_clock,
     get_db_engine,
@@ -117,6 +118,10 @@ class CaseDetailOut(CaseOut):
     staff_messages: list["StaffMessageOut"] = []
     closed: bool = False
     close_reason: str | None = None
+    # S8.3: which rule set the remedy amount and which policy sections it cites, in the case's
+    # language (customer) or English (staff). Fixed templates and our own policy table only.
+    basis: list[str] = []
+    sources: list[SourceOut] = []
 
 
 def _out(db: Session, case: Case, now: datetime) -> CaseOut:
@@ -530,8 +535,16 @@ def get_case(
             for m in staff_messages(db, case.id)
         ]
     )
+    out = _out(db, case, now)
+    # case_status just loaded this proposal into the session, so db.get answers from the
+    # identity map (no second query).
+    proposal = db.get(ActionProposal, uuid.UUID(out.proposal_id)) if out.proposal_id else None
+    lang = case_language(db, case) if ctx.role == "customer" else "en"
+    why = decision_sources(db, ctx, proposal, lang) if proposal is not None else None
     return CaseDetailOut(
-        **_out(db, case, now).model_dump(),
+        **out.model_dump(),
+        basis=why.basis if why else [],
+        sources=why.sources if why else [],
         customer_messages=[
             CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
         ],

@@ -60,7 +60,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const why: Case = {
+  ...base,
+  basis: ["The voucher is sized to the order total."],
+  sources: [{ doc_key: "late_delivery_v3", version: 3, document_title: "Late delivery policy", section_id: "2.1", href: "/policies#late_delivery_v3-2.1", section_changed: false, note: null }],
+};
+
 describe("case page", () => {
+  it.each(["customer", "hq_owner"] as Role[])("shows why the amount is what it is, with a link to the policy section (%s)", async (role) => {
+    setup(role, why);
+    renderApp("/cases/c-1");
+    expect(await screen.findByTestId("remedy-basis")).toHaveTextContent("sized to the order total");
+    const link = screen.getByRole("link", { name: "Late delivery policy, section 2.1" });
+    expect(link).toHaveAttribute("href", "/policies#late_delivery_v3-2.1");
+  });
+
   it("shows the API message, the proposed remedy and the timeline", async () => {
     setup("customer", base, {
       body: [{ at: "2026-10-25T10:00:00Z", stage: "received", title: "We got your report", text: "Thanks for telling us." }],
