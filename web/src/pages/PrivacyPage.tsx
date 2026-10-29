@@ -1,8 +1,21 @@
 import { useState } from "react";
 import { errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
-import type { Consents, ErasureRequest } from "../api/types";
-import { Alert, Badge, Button, Card, ErrorState, Loading, PageHeader } from "../components/ui";
+import type { Consents, DataHeld, ErasureRequest, PrivacyContact } from "../api/types";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ErrorState,
+  Loading,
+  PageHeader,
+  numClass,
+  tableClass,
+  tableWrapClass,
+  tdClass,
+  thClass,
+} from "../components/ui";
 import { useApi } from "../lib/useApi";
 
 const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp" };
@@ -125,7 +138,84 @@ function ErasureCard() {
   );
 }
 
+function ContactLine({ contact }: { contact: PrivacyContact }) {
+  const who = [contact.name, contact.email].filter(Boolean).join(", ");
+  return (
+    <p className="text-sm text-foreground" data-testid="privacy-contact">
+      <span className="font-medium">{contact.label}:</span> {who}
+      {who ? ". " : ""}
+      {contact.response_text}
+    </p>
+  );
+}
+
+function HeldCard({ data }: { data: DataHeld }) {
+  const h = data.headings;
+  return (
+    <Card className="p-5">
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{h.title}</h2>
+      <div className={`mt-3 ${tableWrapClass}`}>
+        <table className={tableClass} data-testid="held-table">
+          <thead>
+            <tr>
+              <th scope="col" className={thClass}>{h.item}</th>
+              <th scope="col" className={thClass}>{h.yours}</th>
+              <th scope="col" className={thClass}>{h.purpose}</th>
+              <th scope="col" className={thClass}>{h.keep}</th>
+              <th scope="col" className={thClass}>{h.use}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((item) => (
+              <tr key={item.key} data-testid={`held-${item.key}`}>
+                <th scope="row" className={`${tdClass} text-left font-medium`}>{item.label}</th>
+                <td className={`${tdClass} ${numClass}`}>{item.summary}</td>
+                <td className={`${tdClass} text-muted-foreground`}>{item.purpose}</td>
+                <td className={`${tdClass} text-muted-foreground`}>
+                  {item.retention}
+                  {item.retention_provisional && data.provisional_label && (
+                    <Badge tone="warning" className="ml-1">{data.provisional_label}</Badge>
+                  )}
+                </td>
+                <td className={`${tdClass} text-muted-foreground`}>{item.use_label}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.processors.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-foreground">
+            {h.processors}
+            {data.provisional_label && (
+              <Badge tone="warning" className="ml-2">{data.provisional_label}</Badge>
+            )}
+          </h3>
+          <ul className="mt-1 space-y-1 text-sm text-muted-foreground" data-testid="held-processors">
+            {data.processors.map((p) => (
+              <li key={p.name}>
+                {p.name} ({p.role}): {p.data}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.not_kept.length > 0 && (
+        <div className="mt-4" data-testid="held-not-kept">
+          <h3 className="text-sm font-semibold text-foreground">{h.not_kept}</h3>
+          <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
+            {data.not_kept.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export function PrivacyPage() {
+  const held = useApi(() => api.dataHeld(), []);
   const consents = useApi(() => api.myConsents(), []);
   const [downloading, setDownloading] = useState(false);
   const [dlError, setDlError] = useState<string | null>(null);
@@ -155,6 +245,18 @@ export function PrivacyPage() {
     <>
       <PageHeader title="Privacy & data" subtitle="Choose what we may send you, see what we hold, or ask us to erase it." />
       <div className="space-y-4">
+        {held.data && (
+          <Card className="p-4">
+            <ContactLine contact={held.data.contact} />
+          </Card>
+        )}
+        {held.loading ? (
+          <Loading />
+        ) : held.error || !held.data ? (
+          <ErrorState error={held.error} onRetry={held.reload} />
+        ) : (
+          <HeldCard data={held.data} />
+        )}
         {consents.loading ? (
           <Loading />
         ) : consents.error || !current ? (
@@ -175,6 +277,11 @@ export function PrivacyPage() {
           </div>
         </Card>
         <ErasureCard />
+        {held.data && (
+          <footer className="border-t border-border pt-3">
+            <ContactLine contact={held.data.contact} />
+          </footer>
+        )}
       </div>
     </>
   );

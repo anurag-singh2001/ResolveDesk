@@ -360,6 +360,39 @@ export interface Consents {
   history: ConsentEvent[];
 }
 
+export interface HeldItem {
+  key: string;
+  label: string;
+  purpose: string;
+  use: "help" | "marketing";
+  use_label: string;
+  retention: string;
+  retention_provisional: boolean;
+  value: string | null;
+  count: number | null;
+  summary: string;
+}
+
+export interface PrivacyContact {
+  label: string;
+  configured: boolean;
+  name: string;
+  email: string;
+  response_target_days: number;
+  legal_ceiling_days: number;
+  response_text: string;
+}
+
+export interface DataHeld {
+  language: string;
+  headings: Record<"title" | "item" | "yours" | "purpose" | "keep" | "use" | "processors" | "not_kept" | "contact", string>;
+  items: HeldItem[];
+  processors: { name: string; role: string; data: string }[];
+  not_kept: string[];
+  provisional_label: string | null;
+  contact: PrivacyContact;
+}
+
 export interface ErasureRequest {
   id: string;
   kind: string;
