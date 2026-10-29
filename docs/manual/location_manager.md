@@ -75,6 +75,15 @@ Messages you may see:
 An approval is tied to exactly the proposal you saw. If the proposal changes, or the approval is
 not used within a few hours, it expires and has to be approved again.
 
+## Switching the remedy
+
+If the proposed remedy is not the fair one (say a voucher where a partial refund fits, or the voucher is too small), click **Switch remedy** instead of rejecting. You get the remedies the rules allow for this case, each with its amount range. Choose one, enter the amount in rupees, and say **why** (it is saved in the audit trail). Optionally tick **Approve it now as well**. Then **Review switch** and confirm with **Yes, switch** (**Cancel** is selected first).
+
+- The old proposal is replaced and can no longer be approved. A new proposal is created and checked by the same rules as any other (limits, voucher not above the order total, repeat-claim warning).
+- **Approve it now** only works if you could approve that amount anyway. Above your limit the new proposal is created and waits for a senior approver (the case is handed to HQ); you are told so.
+- The customer only ever sees the result of the new proposal, never the one you replaced.
+- "Someone has already decided or switched this proposal" means another approver got there first; reload the queue.
+
 ## Cases to handle
 
 **Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of your own outlet only. The number next to the menu item is how many are waiting. The oldest wait comes first.
@@ -91,6 +100,14 @@ Every such case has one owner, chosen automatically when it needs a person: the 
 Click a case to open it. You see what the customer sees (the progress bar, the current message,
 the remedy and the timeline) plus an **Audit trail** at the bottom. Click it to expand the raw
 record of every step: who or what acted, when, and the details. Personal details are hidden.
+
+### Replying to the customer and closing a case
+
+On a case in your scope, **Reply to the customer** lets you send a ready-made message. Pick one from the list (for example "We're looking into it", "Please share a photo", "We've passed this to the outlet"). The preview shows the exact words the customer will read, in the language they wrote in (English, Hinglish or Hindi). "Your refund is processing" only appears while an approved refund really is being processed, and the amount is filled in by the system, so you cannot send it by mistake.
+
+You can add a short **note** (up to 280 characters). The customer sees it on its own line labelled "From our team", exactly as you typed it, never inside the ready-made message. Notes are refused if they mention refunds, payments or amounts, or contain links: use a message for those so the figures come from the system. Pressing Send twice sends one message. Every reply is recorded in the audit trail with the message id and the note's length, not its words; **Sent to the customer** lists what went out.
+
+To finish a case, choose a **Reason** (Resolved, No remedy due, Duplicate of another case, Customer unreachable) and press **Close case**. A box asks you to confirm; it starts on **Cancel**. The customer is told the case is closed. You cannot close a case while a remedy is waiting for a decision or approved but not yet carried out: decide it, or wait for it to finish. A closed case cannot be replied to or closed again.
 
 ### Stages
 

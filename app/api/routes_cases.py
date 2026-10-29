@@ -18,6 +18,7 @@ from app.api.deps import (
 )
 from app.api.routes_approvals import run_execution
 from app.config import get_settings
+from app.core.i18n import case_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -28,13 +29,23 @@ from app.core.models import (
     Transaction,
     User,
 )
+from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
+from app.engine import ai_rerun
 from app.engine.agent_runner import resume_info, run_agents
-from app.engine.case_messages import customer_messages
+from app.engine.approvals import not_superseded
+from app.engine.case_messages import customer_messages, staff_messages
 from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
 from app.engine.dispatch import executable
+from app.engine.remedy_choice import (
+    ChoiceClosed,
+    InvalidChoice,
+    customer_language,
+    options_for_order,
+    set_choice,
+)
 from app.engine.routing import (
     NEEDS_PERSON_STATUSES,
     REASON_LABELS,
@@ -43,6 +54,17 @@ from app.engine.routing import (
     NotNeedingPerson,
     reason_code,
     reassign,
+)
+from app.engine.staff_actions import (
+    CLOSE_REASONS,
+    NOTE_MAX_LENGTH,
+    CaseClosed,
+    PayoutInFlight,
+    ReplayMismatch,
+    StaffActionError,
+    available_templates,
+    close_case,
+    send_reply,
 )
 
 log = logging.getLogger(__name__)
@@ -54,6 +76,8 @@ class CaseIn(BaseModel):
     # Required in deterministic mode; optional in agents mode (the classifier decides).
     category: str | None = None
     message: str = Field(min_length=1, max_length=2000)
+    # One of the option codes offered for this order and category (S7.9); optional.
+    remedy_choice: str | None = Field(default=None, max_length=32)
 
 
 class CustomerMessageOut(BaseModel):
@@ -74,10 +98,25 @@ class CaseOut(BaseModel):
     created_at: datetime
 
 
+class StaffMessageOut(BaseModel):
+    at: datetime
+    kind: str  # template | note
+    template_id: str | None
+    text: str
+    sender_user_id: uuid.UUID | None
+
+
 class CaseDetailOut(CaseOut):
     # The customer's own words, oldest first. Only on GET /cases/{id}, after visible_case
     # (the owning customer or staff who can see the order); list responses omit the field.
     customer_messages: list[CustomerMessageOut] = []
+    # Staff only: the case escalated for an AI failure, so "Run the AI again" applies (S7.4).
+    can_rerun_ai: bool = False
+    # Staff only (empty for customers, who see these in the timeline): what staff sent, and the
+    # close reason once closed (S7.6).
+    staff_messages: list["StaffMessageOut"] = []
+    closed: bool = False
+    close_reason: str | None = None
 
 
 def _out(db: Session, case: Case, now: datetime) -> CaseOut:
@@ -143,9 +182,12 @@ def create_case(
             category=body.category,
             message=body.message,
             now=datetime.now(UTC),  # a write: real time, never the dev clock
+            remedy_choice=body.remedy_choice,
         )
     except CaseNotFound:
         raise not_found() from None
+    except InvalidChoice as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except InvalidCategory as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     db.flush()
@@ -158,6 +200,96 @@ def create_case(
         approved = db.scalar(select(Approval.id).where(Approval.proposal_id == proposal_id))
         if approved is not None and executable(proposal.action):
             background.add_task(run_execution, engine, ctx, proposal_id, proposal.action)
+    return _out(db, case, datetime.now(UTC))
+
+
+class RemedyOptionOut(BaseModel):
+    code: str
+    kind: str
+    title: str
+    summary: str
+    amount_paise: int
+    approval: str  # instant | team
+    timing: str
+
+
+class RemedyOptionsOut(BaseModel):
+    options: list[RemedyOptionOut]
+    choice_required: bool  # False: zero or one option, so the customer has nothing to pick
+
+
+class RemedyChoiceIn(BaseModel):
+    option: str = Field(min_length=1, max_length=32)
+
+
+def _visible_order(db: Session, ctx: TenantContext, order_id: uuid.UUID) -> Transaction:
+    """The order if the caller may see it (their own, for a customer), else 404."""
+    order = db.scalar(select(Transaction).where(Transaction.id == order_id, ctx.visible_orders()))
+    if order is None:
+        raise not_found()
+    return order
+
+
+def _options_out(db: Session, ctx: TenantContext, order: Transaction, category: str, now: datetime):
+    options = options_for_order(db, order, category, customer_language(db, ctx), now)
+    return RemedyOptionsOut(options=options, choice_required=len(options) > 1)
+
+
+@router.get("/orders/{order_id}/remedy-options")
+def order_remedy_options(
+    order_id: uuid.UUID,
+    category: str = Query(min_length=1, max_length=64),
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> RemedyOptionsOut:
+    """What a customer may choose for this category on their own order. Another customer's or
+    tenant's order is a 404; the amounts are computed here, never taken from the client."""
+    if ctx.role != "customer":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "customers only")
+    if category not in tenant_pack(db).issue_categories:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "unknown category")
+    return _options_out(db, ctx, _visible_order(db, ctx, order_id), category, now)
+
+
+@router.get("/cases/{case_id}/remedy-options")
+def case_remedy_options(
+    case_id: uuid.UUID,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> RemedyOptionsOut:
+    """The same options for a case that is still undecided; empty once a proposal exists."""
+    if ctx.role != "customer":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "customers only")
+    case = visible_case(db, ctx, case_id)
+    has_proposal = db.scalar(select(ActionProposal.id).where(ActionProposal.case_id == case.id))
+    if (
+        case.status not in ("investigating", "awaiting_info")
+        or has_proposal is not None
+        or case.category is None
+        or case.transaction_id is None
+    ):
+        return RemedyOptionsOut(options=[], choice_required=False)
+    return _options_out(db, ctx, _visible_order(db, ctx, case.transaction_id), case.category, now)
+
+
+@router.put("/cases/{case_id}/remedy-choice")
+def put_remedy_choice(
+    case_id: uuid.UUID,
+    body: RemedyChoiceIn,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> CaseOut:
+    if ctx.role != "customer":
+        raise HTTPException(status.HTTP_403_FORBIDDEN, "customers only")
+    case = visible_case(db, ctx, case_id)  # someone else's / another tenant's case: 404
+    try:
+        set_choice(db, ctx, case.id, body.option)
+    except ChoiceClosed as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
+    except InvalidChoice as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     return _out(db, case, datetime.now(UTC))
 
 
@@ -292,7 +424,7 @@ def cases_to_handle(
     for proposal in db.scalars(
         select(ActionProposal)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
-        .where(ActionProposal.case_id.in_(ids), Approval.id.is_(None))
+        .where(ActionProposal.case_id.in_(ids), Approval.id.is_(None), not_superseded())
         .order_by(ActionProposal.created_at, ActionProposal.id)
     ):
         pending[proposal.case_id] = proposal
@@ -384,12 +516,140 @@ def get_case(
     now: datetime = Depends(get_clock),
 ) -> CaseDetailOut:
     case = visible_case(db, ctx, case_id)
+    staff_msgs = (
+        []
+        if ctx.role == "customer"
+        else [
+            StaffMessageOut(
+                at=m.sent_at,
+                kind=m.kind or "template",
+                template_id=m.template_id,
+                text=m.body,
+                sender_user_id=m.sender_user_id,
+            )
+            for m in staff_messages(db, case.id)
+        ]
+    )
     return CaseDetailOut(
         **_out(db, case, now).model_dump(),
         customer_messages=[
             CustomerMessageOut(at=at, text=text) for at, text in customer_messages(db, case.id)
         ],
+        can_rerun_ai=ctx.is_staff and ai_rerun.can_rerun(db, case),
+        staff_messages=staff_msgs,
+        closed=case.status == "closed",
+        close_reason=case.close_reason,
     )
+
+
+class TemplateOut(BaseModel):
+    id: str
+    label: str
+    preview: str  # the text as the customer will read it, in the case language
+
+
+class CloseReasonOut(BaseModel):
+    id: str
+    label: str
+
+
+class ReplyTemplatesOut(BaseModel):
+    language: str
+    templates: list[TemplateOut]
+    close_reasons: list[CloseReasonOut]
+    note_max_length: int
+    closed: bool
+
+
+@router.get("/cases/{case_id}/reply-templates")
+def reply_templates(
+    case_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> ReplyTemplatesOut:
+    """The replies staff may send on this case, previewed in the case language. A template
+    that would state a fact the case does not have (a refund being processed) is absent."""
+    case = visible_case(db, ctx, case_id)
+    return ReplyTemplatesOut(
+        language=case_language(db, case),
+        templates=[
+            TemplateOut(id=o.id, label=o.label, preview=o.preview)
+            for o in available_templates(db, case, now)
+        ],
+        close_reasons=[CloseReasonOut(id=k, label=v) for k, v in CLOSE_REASONS.items()],
+        note_max_length=NOTE_MAX_LENGTH,
+        closed=case.status == "closed",
+    )
+
+
+class StaffReplyIn(BaseModel):
+    template_id: str = Field(min_length=1, max_length=48)
+    note: str | None = Field(default=None, max_length=1000)
+    # One per form submit; a double click or retry with the same key stores one message.
+    idempotency_key: str | None = Field(default=None, min_length=8, max_length=64)
+
+
+class StaffReplyOut(BaseModel):
+    sent: bool  # False: this submit was already stored
+
+
+def _staff_error(exc: StaffActionError) -> HTTPException:
+    if isinstance(exc, (CaseClosed, PayoutInFlight, ReplayMismatch)):
+        return HTTPException(status.HTTP_409_CONFLICT, str(exc))
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc))
+
+
+@router.post("/cases/{case_id}/staff-reply")
+def staff_reply(
+    case_id: uuid.UUID,
+    body: StaffReplyIn,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    clock: datetime = Depends(get_clock),
+) -> StaffReplyOut:
+    case = visible_case(db, ctx, case_id)  # out of scope / other tenant: 404
+    try:
+        sent = send_reply(
+            db,
+            ctx,
+            case,
+            template_id=body.template_id,
+            note=body.note,
+            idempotency_key=body.idempotency_key,
+            now=datetime.now(UTC),  # a write: real time, never the dev clock
+            clock=clock,  # status checks use the same clock as the template list
+        )
+    except StaffActionError as exc:
+        raise _staff_error(exc) from None
+    return StaffReplyOut(sent=sent)
+
+
+class CloseIn(BaseModel):
+    reason: str = Field(min_length=1, max_length=24)
+
+
+class CloseOut(BaseModel):
+    case_id: uuid.UUID
+    status: str
+    close_reason: str
+
+
+@router.post("/cases/{case_id}/close")
+def close(
+    case_id: uuid.UUID,
+    body: CloseIn,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> CloseOut:
+    """Close a case with a reason. 409 if already closed or a remedy is still undecided or
+    unfinished (closing must not strand a payout)."""
+    case = visible_case(db, ctx, case_id)
+    try:
+        close_case(db, ctx, case, reason=body.reason, now=datetime.now(UTC))
+    except StaffActionError as exc:
+        raise _staff_error(exc) from None
+    return CloseOut(case_id=case.id, status=case.status, close_reason=body.reason)
 
 
 class TimelineStepOut(BaseModel):
@@ -441,3 +701,29 @@ def case_events(
         )
         for r in rows
     ]
+
+
+class RerunOut(BaseModel):
+    status: str  # "started" | "already_running"
+
+
+@router.post("/cases/{case_id}/rerun-ai", status_code=status.HTTP_202_ACCEPTED)
+def rerun_ai(
+    case_id: uuid.UUID,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> RerunOut:
+    """Staff re-run the AI on a case that escalated because the AI was unavailable. The case
+    is claimed under a row lock (a double click starts one run); the run itself is a
+    background task, after this request is done, so no model call happens in a transaction."""
+    case = visible_case(db, ctx, case_id)  # out of scope / other tenant: 404
+    outcome = ai_rerun.request_rerun(
+        engine, ctx.tenant_id, case.id, trigger="staff", actor_id=ctx.user_id
+    )
+    if outcome == ai_rerun.NOT_ELIGIBLE:
+        raise HTTPException(status.HTTP_409_CONFLICT, "the case did not escalate for an AI failure")
+    if outcome == ai_rerun.STARTED:
+        background.add_task(ai_rerun.run_requested, engine, ctx.tenant_id, case.id, "staff")
+    return RerunOut(status=outcome)

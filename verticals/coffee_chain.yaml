@@ -15,7 +15,10 @@ issue_categories:
   - privacy_request
 actions: [refund, free_item_voucher, loyalty_credit, send_status_update]
 # Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
-remedies: {wrong_order: voucher, missing_items: refund_missing, quality: voucher}
+# `{options: [...]}` lets the customer choose between remedies (S7.9). A refund option is only a
+# request: a team member decides on it (the manager-decides policy for a wrong item), and it is
+# never auto-approved. OWNER TO CONFIRM that this option fits the business's policy.
+remedies: {wrong_order: {options: [voucher, {refund_percent: 50}]}, missing_items: refund_missing, quality: voucher}
 metrics: [wrong_order_rate, repeat_rate, ticket_rate, avg_ticket_paise]
 features:
   growth: false

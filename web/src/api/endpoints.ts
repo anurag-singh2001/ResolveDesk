@@ -9,9 +9,12 @@ import type {
   Case,
   GrowthSignal,
   LocationRef,
+  RerunAiResult,
   OutletInsight,
   Categories,
+  Alternatives,
   DecisionResponse,
+  SwitchResponse,
   DemoAccount,
   LoginResponse,
   Me,
@@ -26,6 +29,8 @@ import type {
   TimelineEntry,
   Language,
   Preferences,
+  ReplyTemplates,
+  RemedyOptions,
 } from "./types";
 
 const enc = encodeURIComponent;
@@ -76,10 +81,24 @@ export const api = {
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
   cases: (limit = 100) => request<Case[]>(`/cases?limit=${limit}`),
   case: (id: string) => request<Case>(`/cases/${enc(id)}`),
-  createCase: (body: { transaction_id: string; category: string | null; message: string }) =>
+  replyTemplates: (id: string) => request<ReplyTemplates>(`/cases/${enc(id)}/reply-templates`),
+  staffReply: (id: string, body: { template_id: string; note?: string; idempotency_key: string }) =>
+    request<{ sent: boolean }>(`/cases/${enc(id)}/staff-reply`, { method: "POST", body }),
+  closeCase: (id: string, reason: string) =>
+    request<{ case_id: string; status: string; close_reason: string }>(`/cases/${enc(id)}/close`, {
+      method: "POST",
+      body: { reason },
+    }),
+  orderRemedyOptions: (orderId: string, category: string) =>
+    request<RemedyOptions>(`/orders/${enc(orderId)}/remedy-options?category=${enc(category)}`),
+  caseRemedyOptions: (id: string) => request<RemedyOptions>(`/cases/${enc(id)}/remedy-options`),
+  setRemedyChoice: (id: string, option: string) =>
+    request<Case>(`/cases/${enc(id)}/remedy-choice`, { method: "PUT", body: { option } }),
+  createCase: (body: { transaction_id: string; category: string | null; message: string; remedy_choice?: string | null }) =>
     request<Case>("/cases", { method: "POST", body }),
   replyToCase: (id: string, message: string) =>
     request<Case>(`/cases/${enc(id)}/messages`, { method: "POST", body: { message } }),
+  rerunAi: (id: string) => request<RerunAiResult>(`/cases/${enc(id)}/rerun-ai`, { method: "POST" }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
   approvals: (limit = 200, filters: ApprovalFilters = {}) => {
@@ -107,6 +126,9 @@ export const api = {
   decideCampaign: (id: string, decision: "approved" | "rejected") =>
     request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
   campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
+  alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),
+  switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string }) =>
+    request<SwitchResponse>(`/approvals/${enc(proposalId)}/switch`, { method: "POST", body }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {
       method: "POST",

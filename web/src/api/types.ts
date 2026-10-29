@@ -127,6 +127,30 @@ export interface Case {
   proposal_id: string | null;
   created_at?: string | null; // NEW
   customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
+  can_rerun_ai?: boolean; // staff, GET /cases/{id}: escalated because the AI was unavailable
+  staff_messages?: StaffMessage[]; // GET /cases/{id}, staff only (S7.6)
+  closed?: boolean;
+  close_reason?: string | null;
+}
+
+export interface RerunAiResult {
+  status: "started" | "already_running" | string;
+}
+
+export interface StaffMessage {
+  at: string;
+  kind: "template" | "note";
+  template_id: string | null;
+  text: string;
+  sender_user_id: string | null;
+}
+
+export interface ReplyTemplates {
+  language: string;
+  templates: Array<{ id: string; label: string; preview: string }>;
+  close_reasons: Array<{ id: string; label: string }>;
+  note_max_length: number;
+  closed: boolean;
 }
 
 export interface TimelineEntry {
@@ -264,6 +288,33 @@ export interface DecisionResponse {
   execution: string;
 }
 
+export interface SwitchAlternative {
+  action: string;
+  min_paise: number;
+  max_paise: number;
+  step_paise: number;
+  needs_hq_above_paise: number | null;
+  you_can_approve_up_to_paise: number;
+}
+
+export interface Alternatives {
+  proposal_id: string;
+  current_action: string;
+  current_amount_paise: number | null;
+  alternatives: SwitchAlternative[];
+}
+
+export interface SwitchResponse {
+  old_proposal_id: string;
+  proposal_id: string;
+  action: string;
+  amount_paise: number | null;
+  decision: "approved" | null;
+  waiting_for: string | null;
+  expires_at: string | null;
+  execution: string;
+}
+
 export interface ClockState {
   now: string;
   offset_seconds: number;
@@ -299,4 +350,19 @@ export interface ErasureRequest {
   deferred_until: string | null;
   requested_at: string;
   completed_at: string | null;
+}
+
+export interface RemedyOption {
+  code: string;
+  kind: "voucher" | "refund" | string;
+  title: string;
+  summary: string; // amount computed by the server
+  amount_paise: number;
+  approval: "instant" | "team" | string;
+  timing: string;
+}
+
+export interface RemedyOptions {
+  options: RemedyOption[];
+  choice_required: boolean;
 }
