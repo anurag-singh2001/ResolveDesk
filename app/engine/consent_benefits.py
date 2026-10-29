@@ -7,7 +7,10 @@ switch because support is not consent-based (app/engine/data_rights.py). Nothing
 tenant; copy lives in app/core/i18n.py.
 """
 
+from datetime import datetime
 from typing import Any
+
+from pydantic import BaseModel
 
 from app.core.i18n import normalize, t
 from app.engine import data_rights as privacy
@@ -17,6 +20,46 @@ HEADINGS = ("title", "intro", "history", "note", "on", "off", "notice")
 
 # Every purpose needs benefit copy; fail loudly at import if one is added without it.
 assert privacy.PURPOSES == ("marketing",), "add copy for every consent purpose in i18n"
+
+
+class PurposeCopy(BaseModel):
+    purpose: str
+    channel: str
+    granted: bool
+    title: str
+    benefit: str
+    sent: str
+    cap: str
+    cap_days: int
+    channel_label: str
+    switch_label: str
+    state_label: str
+
+
+class HistoryCopy(BaseModel):
+    purpose: str
+    channel: str
+    granted: bool
+    source: str
+    notice_version: str
+    at: datetime
+    purpose_label: str
+    channel_label: str
+    action_label: str
+
+
+class AlwaysOn(BaseModel):
+    title: str
+    body: str
+    badge: str
+
+
+class Benefits(BaseModel):
+    language: str
+    headings: dict[str, str]
+    always_on: AlwaysOn
+    purposes: list[PurposeCopy]
+    history_labelled: list[HistoryCopy]
 
 
 def _hist(e: Any, lang: str) -> dict[str, Any]:
@@ -33,7 +76,7 @@ def _hist(e: Any, lang: str) -> dict[str, Any]:
     }
 
 
-def build(language: object, current: list[Any], events: list[Any]) -> dict[str, Any]:
+def build(language: object, current: list[Any], events: list[Any]) -> Benefits:
     """`current` are rows with purpose, channel, granted; `events` are ConsentEvent rows.
     Returns the copy block the page renders."""
     lang = normalize(language)
@@ -54,14 +97,16 @@ def build(language: object, current: list[Any], events: list[Any]) -> dict[str, 
                 "state_label": t("consent.state.on" if c.granted else "consent.state.off", lang),
             }
         )
-    return {
-        "language": lang,
-        "headings": {k: t(f"consent.h.{k}", lang) for k in HEADINGS},
-        "always_on": {
-            "title": t("consent.help.title", lang),
-            "body": t("consent.help.body", lang),
-            "badge": t("consent.help.badge", lang),
-        },
-        "purposes": purposes,
-        "history_labelled": [_hist(e, lang) for e in events],
-    }
+    return Benefits.model_validate(
+        {
+            "language": lang,
+            "headings": {k: t(f"consent.h.{k}", lang) for k in HEADINGS},
+            "always_on": {
+                "title": t("consent.help.title", lang),
+                "body": t("consent.help.body", lang),
+                "badge": t("consent.help.badge", lang),
+            },
+            "purposes": purposes,
+            "history_labelled": [_hist(e, lang) for e in events],
+        }
+    )

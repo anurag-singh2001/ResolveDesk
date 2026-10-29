@@ -9,7 +9,7 @@ cannot change another's choice. Fixtures are reused from the data-rights tests.
 from sqlalchemy import select
 
 from app.core.db import tenant_session
-from app.core.i18n import LANGUAGES, TEMPLATES
+from app.core.i18n import LANGUAGES, TEMPLATES, t
 from app.core.models import Consent, Customer
 from app.engine import consent_benefits
 from app.engine import data_rights as privacy
@@ -33,7 +33,7 @@ def test_each_purpose_has_benefit_sent_cap_and_channel_and_starts_off(api, peopl
         )
         # The cap shown is the constant the audience selection enforces, not a setting.
         assert p["cap_days"] == FREQUENCY_CAP_DAYS
-        assert str(FREQUENCY_CAP_DAYS) in p["cap"]
+        assert p["cap"] == t("consent.cap", "en", days=FREQUENCY_CAP_DAYS)
         assert p["state_label"] == b["headings"]["off"]
     assert {p["channel"] for p in b["purposes"]} == set(privacy.CHANNELS)
 
@@ -42,8 +42,8 @@ def test_help_messages_are_always_on_with_no_switch_and_the_note_is_present(api,
     _, auth = people()
     b = api.get("/me/consents", headers=auth).json()["benefits"]
     assert b["always_on"]["title"] and b["always_on"]["badge"]
-    assert "always on" in b["always_on"]["body"].lower()
-    assert "help" in b["headings"]["note"].lower()
+    assert b["always_on"]["body"] == t("consent.help.body", "en")
+    assert b["headings"]["note"] == t("consent.h.note", "en")
     # No consent purpose exists for help: the endpoint refuses to record one.
     assert (
         api.post("/me/consents/support", json={"granted": False}, headers=auth).status_code == 404
@@ -109,6 +109,14 @@ def test_every_consent_string_exists_in_all_languages_without_em_dashes():
             assert f"consent.{purpose}.{part}" in TEMPLATES
     for h in consent_benefits.HEADINGS:
         assert f"consent.h.{h}" in TEMPLATES
+
+
+def test_reading_the_page_never_creates_a_consent_row(api, app_engine, tid, people):
+    cid, auth = people()
+    for _ in range(2):
+        assert api.get("/me/consents", headers=auth).status_code == 200
+    with tenant_session(tid, app_engine) as s:
+        assert s.scalar(select(Consent).where(Consent.customer_id == cid)) is None
 
 
 def test_the_data_export_carries_the_plain_state_without_page_copy(api, people):

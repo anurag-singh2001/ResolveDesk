@@ -18,9 +18,9 @@ Holdout members are never contacted.
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import select, text, update
 from sqlalchemy.engine import Engine
 
 from app.connectors.base import connector_for
@@ -30,6 +30,7 @@ from app.core.models import Campaign, CampaignMember, Consent, Customer, Locatio
 from app.core.settings_resolver import effective_settings
 from app.engine.dispatch import system_context
 from app.modules.growth.campaigns import (
+    FREQUENCY_CAP_DAYS,
     approvals_of,
     dual_approved,
     hash_is_intact,
@@ -46,7 +47,9 @@ STATUS_MAP = {
     "processing": "processing",
     "unknown": "unknown",
 }
-TERMINAL = ("succeeded", "failed")
+TERMINAL = ("succeeded", "failed", "skipped")
+# A send that may have reached the customer counts against the frequency cap.
+CAP_COUNTED = ("submitted", "processing", "succeeded", "unknown")
 OPEN_STATUSES = ("pending", "submitted", "processing", "unknown")
 
 
@@ -96,7 +99,7 @@ def execute_campaign(
             )
             .exists()
         )
-        todo = []
+        candidates = []
         for m, phone, ok in s.execute(
             select(CampaignMember, Customer.phone, consented)
             .join(Customer, Customer.id == CampaignMember.customer_id)
@@ -108,11 +111,12 @@ def execute_campaign(
             .order_by(CampaignMember.customer_id)
         ):
             if ok and phone:
-                todo.append((m.id, m.idempotency_key, phone))
+                candidates.append((m, phone))
             else:
                 # Consent withdrawn (or phone gone) since approval: never send. `failed` is
                 # terminal, so it is not retried.
                 m.send_status = "failed"
+        todo = _claim_within_cap(s, tenant_id, candidates, now)
         if campaign.status == "approved":
             campaign.status = "executing"
             audit.record(
@@ -144,6 +148,62 @@ def execute_campaign(
                 .values(send_status=status, provider_reference=reference)
             )
     return _finish(engine, tenant_id, campaign_id, now)
+
+
+def _phone_key(phone: str) -> str:
+    """Digits only, last ten: the same line written two ways is one phone."""
+    return "".join(ch for ch in phone if ch.isdigit())[-10:]
+
+
+def _claim_within_cap(s, tenant_id: uuid.UUID, candidates, now: datetime):
+    """The promise on the privacy page: at most one offer message in FREQUENCY_CAP_DAYS.
+
+    Audience selection applies the cap when a campaign is proposed, but approval can come
+    later, two campaigns can be approved together, and two customer rows can share a phone. So
+    the cap is enforced again here, per phone, at the moment of sending. Each member is claimed
+    (`claimed_at`, status `submitted`) in this same transaction, under a per-phone advisory lock
+    held until commit, so a concurrent run on the same phone waits and then sees the claim.
+    Locks are taken in phone order so two runs cannot deadlock. A member that was claimed by an
+    earlier run of this campaign is a retry (same key, the provider de-duplicates), so it is not
+    counted against itself. Skipped members get status `skipped`, never `failed`."""
+    cutoff = now - timedelta(days=FREQUENCY_CAP_DAYS)
+    todo = []
+    for m, phone in sorted(candidates, key=lambda c: (_phone_key(c[1]), str(c[0].customer_id))):
+        key = _phone_key(phone)
+        s.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:k, 0))"),
+            {"k": f"{tenant_id}:{key}"},
+        )
+        if m.claimed_at is None:
+            blocked = s.execute(
+                text(
+                    """
+                    SELECT 1 FROM campaign_members o JOIN customers c ON c.id = o.customer_id
+                    WHERE o.tenant_id = :tid AND o.id <> :me AND o.claimed_at >= :cut
+                      AND o.send_status = ANY(:counted)
+                      AND (o.customer_id = :cust
+                           OR (c.phone IS NOT NULL AND :key <> ''
+                               AND right(regexp_replace(c.phone, '[^0-9]', '', 'g'), 10) = :key))
+                    LIMIT 1
+                    """
+                ),
+                {
+                    "tid": tenant_id,
+                    "me": m.id,
+                    "cut": cutoff,
+                    "counted": list(CAP_COUNTED),
+                    "cust": m.customer_id,
+                    "key": key,
+                },
+            ).first()
+            if blocked:
+                m.send_status = "skipped"
+                m.skip_reason = "frequency_cap"
+                continue
+            m.claimed_at = now
+            m.send_status = "submitted"
+        todo.append((m.id, m.idempotency_key, phone))
+    return todo
 
 
 def _finish(engine: Engine, tenant_id: uuid.UUID, campaign_id: uuid.UUID, now: datetime):
