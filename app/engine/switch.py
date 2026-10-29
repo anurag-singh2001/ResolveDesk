@@ -172,8 +172,9 @@ def switch_remedy(
     nested = session.begin_nested()
     try:
         new = create_proposal(
-            session, ctx.tenant_id, case_id=case.id, action=action, params=params, reason=reason
-        )
+            session, ctx.tenant_id, case_id=case.id, action=action, params=params, reason=reason,
+            basis=[{"code": "approver_set", "params": {}}],
+        )  # fmt: skip
         _, _, _, result = evaluate_proposal(session, ctx, new, now)
         if not result.ok:
             raise NotEligible(result.errors)

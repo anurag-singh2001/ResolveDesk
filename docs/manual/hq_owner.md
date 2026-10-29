@@ -33,8 +33,7 @@ Click **Review**. The page shows:
 
 1. **Customer's message**: the customer's own words. A claim, not a fact.
 2. **Why this was proposed**: the reason, based on the order's records.
-3. **Policy cited**: chips naming the policy sections and versions. Policy text never sets the
-   amount; your configured rules do.
+3. **Policy cited**: links to the exact policy section (document title and section number, with the version in force at the decision). Under "Why this was proposed", plain lines say which rule set the amount. Policy text never sets the amount; your configured rules do. If a section has changed since, the link opens the document and says so.
 4. **Checks**: ✓ passed, ✗ failed, and any problems.
 5. **Proposal**: action, amount, order total, when proposed, and **Open the case**.
 

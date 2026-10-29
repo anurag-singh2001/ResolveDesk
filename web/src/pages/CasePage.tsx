@@ -9,6 +9,7 @@ import { StageBadge } from "../components/badges";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
 import { CaseRemedyChoice } from "../components/RemedyChoice";
+import { RemedyBasis, SourceLinks } from "../components/DecisionSources";
 import { StaffReplyPanel } from "../components/StaffReplyPanel";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
@@ -39,7 +40,7 @@ function remedyHeading(stage: string): string {
   return "Proposed remedy";
 }
 
-function Remedy({ c }: { c: Case }) {
+function Remedy({ c, staff }: { c: Case; staff: boolean }) {
   if (!c.action) return null;
   return (
     <Card className="p-4">
@@ -48,6 +49,13 @@ function Remedy({ c }: { c: Case }) {
         <span className="text-sm text-foreground">{humanize(c.action)}</span>
         {c.amount_paise != null && <span className="font-mono text-xl font-semibold tabular-nums text-foreground">{formatPaise(c.amount_paise)}</span>}
       </div>
+      <RemedyBasis lines={c.basis} />
+      {c.sources && c.sources.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <h3 className="text-xs font-medium text-muted-foreground">Based on our policy</h3>
+          <SourceLinks sources={c.sources} showVersion={staff} />
+        </div>
+      )}
       {c.stage === "awaiting_approval" && (
         <p className="mt-2 text-xs text-muted-foreground">A person reviews this before anything is paid. Nothing is final until it's confirmed.</p>
       )}
@@ -316,7 +324,7 @@ export function CasePage() {
             {staff && <AuditTrail caseId={c.id} />}
           </div>
           <div className="space-y-6">
-            <Remedy c={c} />
+            <Remedy c={c} staff={staff} />
             {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
             {staff && c.can_rerun_ai && (
               <RerunAi

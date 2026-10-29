@@ -9,6 +9,7 @@ from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
 from app.actions.base import registered_actions
+from app.api.decision_sources import SourceOut, decision_sources
 from app.api.deps import get_clock, get_db_engine, not_found, require_staff, tenant_db
 from app.core.models import (
     ActionProposal,
@@ -56,6 +57,9 @@ class PendingOut(BaseModel):
     customer_message: str | None
     location_name: str | None
     citations: list[CitationOut]
+    # S8.3: the rule that set the amount (plain lines) and the cited sections as links.
+    basis: list[str] = []
+    sources: list[SourceOut] = []
 
 
 def _citations(raw: object) -> list[CitationOut]:
@@ -124,6 +128,7 @@ def pending_approvals(
     out = []
     for proposal, case, order, location_name in db.execute(query).all():
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
+        why = decision_sources(db, ctx, proposal, "en")  # staff read English
         out.append(
             PendingOut(
                 proposal_id=proposal.id,
@@ -142,6 +147,8 @@ def pending_approvals(
                 customer_message=first_customer_message(db, case.id),
                 location_name=location_name,
                 citations=_citations(proposal.citations),
+                basis=why.basis,
+                sources=why.sources,
             )
         )
     return out

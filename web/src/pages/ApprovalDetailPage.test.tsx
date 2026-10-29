@@ -52,6 +52,26 @@ describe("approval detail", () => {
     expect(screen.getByText("₹640.00")).toBeInTheDocument();
   });
 
+  it("links each citation to its policy section and says which rule set the amount", async () => {
+    setup(
+      { body: {} },
+      {
+        ...proposal,
+        basis: ["The voucher is sized to the order total.", "The voucher is capped at ₹150.00 by the voucher limit."],
+        sources: [
+          { doc_key: "late_delivery_v3", version: 3, document_title: "Late delivery policy", section_id: "2.1", href: "/policies#late_delivery_v3-2.1", section_changed: false, note: null },
+          { doc_key: "refunds_v1", version: 1, document_title: "Refund policy", section_id: null, href: "/policies#refunds_v1", section_changed: true, note: "This section has changed since the decision; the document is linked instead." },
+        ],
+      },
+    );
+    await screen.findByText("My fries never came.");
+    expect(screen.getByTestId("remedy-basis")).toHaveTextContent("capped at ₹150.00");
+    const link = screen.getByRole("link", { name: "Late delivery policy, section 2.1" });
+    expect(link).toHaveAttribute("href", "/policies#late_delivery_v3-2.1");
+    expect(screen.getByRole("link", { name: "Refund policy" })).toHaveAttribute("href", "/policies#refunds_v1");
+    expect(screen.getByText(/section has changed since the decision/)).toBeInTheDocument();
+  });
+
   it("approves after confirmation and sends the note", async () => {
     const { calls } = setup({
       body: { proposal_id: "p-1", decision: "approved", expires_at: "2999-01-01T00:00:00Z", execution: "queued" },

@@ -9,6 +9,31 @@ import { humanize } from "../lib/format";
 import { isStaff } from "../lib/roles";
 import { useApi } from "../lib/useApi";
 
+const ANCHOR = /^(.+)-(\d[\d.]*)$/;
+
+/** A decision made under an earlier version links to its section here: the in-force list does not
+ *  hold that anchor, so the section is fetched by document and number and shown as it was. */
+function OlderSection({ anchor }: { anchor: string }) {
+  const m = ANCHOR.exec(anchor);
+  const { data, error, loading } = useApi(() => (m ? api.policySection(m[1], m[2]) : Promise.reject(new Error("bad anchor"))), [anchor]);
+  if (!m || loading || error || !data) return null;
+  return (
+    <div data-testid="older-section" className="mb-6"><Card className="p-5 sm:p-6">
+      <p className="text-xs text-muted-foreground">
+        An earlier version of this policy, which applied when the decision was made. Version {data.version}, in force from {data.in_force_from}
+        {data.in_force_to ? ` until ${data.in_force_to}` : ""}.
+      </p>
+      <h2 className="mt-2 font-montserrat text-lg font-semibold text-foreground">{data.document_title}</h2>
+      <h3 className="mt-3 font-montserrat text-sm font-semibold text-foreground">
+        {data.id} {data.title}
+      </h3>
+      <div className="mt-1.5">
+        <PlainPolicyText text={data.text} />
+      </div>
+    </Card></div>
+  );
+}
+
 /** Anchor ids come from the API (`<doc>-<section>`), so /policies#<anchor> deep links work. */
 export function PoliciesPage() {
   const { me } = useAuth();
@@ -24,6 +49,7 @@ export function PoliciesPage() {
   if (loading) return <Loading />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
   const docs = data ?? [];
+  const known = docs.some((d) => d.id === decodeURIComponent(hash) || d.sections.some((s) => s.anchor === decodeURIComponent(hash)));
 
   return (
     <>
@@ -36,6 +62,7 @@ export function PoliciesPage() {
         }
       />
       <RulesSummarySection staff={staff} />
+      {hash && !known && <OlderSection anchor={decodeURIComponent(hash)} />}
       {docs.length === 0 ? (
         <EmptyState title="No policies are published yet" />
       ) : (

@@ -107,6 +107,23 @@ describe("policies page", () => {
     expect(screen.getAllByText(/\*\*bold\*\*/).length).toBeGreaterThan(0);
   });
 
+  it("shows an older version's section when a decision links to it", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /policies": { body: docs },
+      "GET /policies/late_delivery_v2/1.4": {
+        body: { id: "1.4", anchor: "late_delivery_v2-1.4", title: "Old rule", text: "Older wording.", document_id: "late_delivery_v2", document_title: "Late delivery policy", version: 2, in_force_from: "2026-01-01", in_force_to: "2026-09-01" },
+      },
+      "GET /orders": { body: [] },
+      "GET /meta/privacy": { body: { name: "", email: "" } },
+    });
+    renderApp("/policies#late_delivery_v2-1.4");
+    const card = await screen.findByTestId("older-section");
+    expect(card).toHaveTextContent("Version 2, in force from 2026-01-01 until 2026-09-01");
+    expect(card).toHaveTextContent("Older wording.");
+  });
+
   it("shows an empty state when nothing is published", async () => {
     seedSession();
     mockFetch({ "GET /me": { body: makeMe("customer") }, "GET /policies": { body: [] }, "GET /orders": { body: [] } });

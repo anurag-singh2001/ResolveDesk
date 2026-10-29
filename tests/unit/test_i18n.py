@@ -26,6 +26,8 @@ _SAMPLE = {
     "percent": 50,
     "minutes": 20,
     "count": 3,
+    "cap": "₹150.00",
+    "tier": 30,
 }
 
 

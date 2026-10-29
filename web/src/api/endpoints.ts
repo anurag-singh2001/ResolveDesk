@@ -25,6 +25,7 @@ import type {
   PrivacyContact,
   PolicyDoc,
   RulesSummary,
+  PolicySectionDetail,
   SweepReport,
   Consents,
   DataHeld,
@@ -82,6 +83,8 @@ export const api = {
     request<Preferences>("/me/preferences", { method: "PUT", body: { language } }),
   policies: () => request<PolicyDoc[]>("/policies"),
   rulesSummary: () => request<RulesSummary>("/policies/rules-summary"),
+  policySection: (docKey: string, section: string) =>
+    request<PolicySectionDetail>(`/policies/${enc(docKey)}/${enc(section)}`),
   privacyContact: () => request<PrivacyContact>("/meta/privacy"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),

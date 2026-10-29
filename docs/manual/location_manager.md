@@ -42,8 +42,7 @@ The review page shows everything you need to decide:
 1. **Customer's message**: what the customer wrote, in their own words. Treat it as a claim, not a
    fact.
 2. **Why this was proposed**: the reason, in plain words, based on the order's records.
-3. **Policy cited**: chips like `missing_items_v2#1.2 · v2` naming the policy sections used. Policy
-   text is reference only: the amount always comes from your business's configured rules.
+3. **Policy cited**: links to the exact policy section (document title and section number, with the version in force at the decision). Under "Why this was proposed", plain lines say which rule set the amount. Policy text never sets the amount; your configured rules do. If a section has changed since, the link opens the document and says so.
 4. **Checks**: a list with ✓ (passed) or ✗ (failed), for example that the amount is within the
    limit and the order belongs to the customer. Any problems are listed under the checks.
 5. **Proposal**: the action, the amount, the order total, and when it was proposed. **Open the
