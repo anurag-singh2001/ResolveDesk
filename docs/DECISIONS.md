@@ -457,3 +457,8 @@ Format:
 - Why: a web reset would have to delete payment, refund and voucher rows or clear mock provider records, which could turn a real "unknown" or "processing" state into a clean-looking one (hard rules 5, 7), and no existing service resets one tenant's data safely. A disabled control with the reason is more honest than a guarded button that does a risky thing.
 - Alternative rejected: a confirm-dialog reset that calls seed for the caller's tenant (destructive, hides ledger states, untestable without touching money); keeping the `/dev` route name only (the owner found the old name unclear).
 - Open: a real tenant-scoped reset needs a design that keeps the money ledgers append-only; owner to say if wanted.
+
+## 2026-10-29: the eval harness records per-scenario bookkeeping failures instead of aborting
+- Decision: a scenario whose setup (order pick, open_case) or read-back fails (case gone, FK violation) becomes an outcome=error result and the run continues; open_case also filters Transaction by tenant_id.
+- Why: the Sprint 7 eval crashed twice on a database shared with other processes (a reseed or cleanup deleted the cases/customers mid-run); one bad scenario should not discard minutes of LLM calls, and the run still exits 1 because of the error.
+- Alternative rejected: retrying the scenario silently (hides that the database is shared; the fix is one eval per database).
