@@ -407,11 +407,24 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Offers, sirf aapki sahmati se",
         "hi": "ऑफ़र, केवल आपकी सहमति से",
     },
-    "held.ret.support": {
-        "en": "Removed {days} days after your case closes, or sooner if you ask us to erase it.",
-        "hi-Latn": "Aapka case band hone ke {days} din baad hata diya jaata hai, ya aap "
-        "kahein to pehle.",
-        "hi": "आपका मामला बंद होने के {days} दिन बाद हटा दिया जाता है, या आप कहें तो पहले।",
+    "held.ret.messages": {
+        "en": "Message text may be removed {days} days after a case closes, if nothing is "
+        "still being settled and it is not on hold.",
+        "hi-Latn": "Case band hone ke {days} din baad message text hata diya ja sakta hai, "
+        "agar kuch settle hona baaki na ho aur case hold par na ho.",
+        "hi": "मामला बंद होने के {days} दिन बाद संदेश का पाठ हटाया जा सकता है, यदि कुछ भी "
+        "निपटना बाकी न हो और मामला रोका न गया हो।",
+    },
+    "held.ret.contact": {
+        "en": "Kept while you have an account, until you ask us to erase it.",
+        "hi-Latn": "Jab tak aapka account hai tab tak rakha jaata hai, "
+        "jab tak aap hatane ko na kahein.",
+        "hi": "जब तक आपका खाता है तब तक रखा जाता है, जब तक आप हटाने को न कहें।",
+    },
+    "held.contact.unset": {
+        "en": "Not set yet.",
+        "hi-Latn": "Abhi tay nahin hua.",
+        "hi": "अभी तय नहीं हुआ।",
     },
     "held.ret.records": {
         "en": "Kept {years} years, as business records.",

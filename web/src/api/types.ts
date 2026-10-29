@@ -375,6 +375,7 @@ export interface HeldItem {
 
 export interface PrivacyContact {
   label: string;
+  configured: boolean;
   name: string;
   email: string;
   response_target_days: number;

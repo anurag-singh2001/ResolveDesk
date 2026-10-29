@@ -10,7 +10,7 @@ nothing here names a tenant. Nothing in this module logs or audits personal cont
 from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.orm import Session
 
 from app.core.i18n import normalize, t
@@ -19,15 +19,25 @@ from app.core.models import (
     Case,
     ConsentEvent,
     Customer,
+    Execution,
     Payment,
     Ticket,
     TicketMessage,
     Transaction,
 )
+from app.engine.retention import retention_days
 
-# Claims the page may make under "what we do not keep". A claim shows only when the tenant
-# setting `data_not_kept` lists its key AND the key is one of these (an unknown key is dropped).
+# Facts the page states are decided in CODE, never by a tenant override (safety review B1).
+# Claims under "what we do not keep" show only when the key is in CONFIRMED_NOT_KEPT (empty
+# until the owner has checked each claim against the payment mock) AND the tenant setting
+# `data_not_kept` lists it; the setting alone never enables a claim.
 KNOWN_NOT_KEPT = ("card_numbers", "upi_details")
+CONFIRMED_NOT_KEPT: frozenset[str] = frozenset()
+# Retention figures stay labelled provisional until counsel confirms them; flip in code only.
+RETENTION_CONFIRMED = False
+# The statutory outer limit for answering a request; the internal target is a setting.
+LEGAL_CEILING_DAYS = 90
+DEFAULT_RECORD_YEARS = 7
 HEADINGS = ("title", "item", "yours", "purpose", "keep", "use", "processors", "not_kept", "contact")
 RETENTION_FLOOR_DAYS = 365  # same one-year floor the retention job applies
 
@@ -36,15 +46,15 @@ RETENTION_FLOOR_DAYS = 365  # same one-year floor the retention job applies
 class Item:
     key: str
     use: str  # help | marketing
-    retention: str  # support | records | consents
+    retention: str  # contact | messages | records | consents
 
 
 ITEMS = (
-    Item("name", "help", "support"),
-    Item("phone", "help", "support"),
-    Item("email", "help", "support"),
+    Item("name", "help", "contact"),
+    Item("phone", "help", "contact"),
+    Item("email", "help", "contact"),
     Item("orders", "help", "records"),
-    Item("messages", "help", "support"),
+    Item("messages", "help", "messages"),
     Item("payments", "help", "records"),
     Item("remedies", "help", "records"),
     Item("consents", "marketing", "consents"),
@@ -91,7 +101,12 @@ def _counts(db: Session, customer: Customer) -> dict[str, int]:
             select(func.count())
             .select_from(ActionProposal)
             .join(Case, Case.id == ActionProposal.case_id)
-            .where(Case.customer_id == cid, ActionProposal.amount_paise.is_not(None)),
+            .where(
+                Case.customer_id == cid,
+                ActionProposal.amount_paise.is_not(None),
+                # Only remedies that were approved and run, not proposals still waiting.
+                exists().where(Execution.proposal_id == ActionProposal.id),
+            ),
         ),
         "consents": _count(
             db,
@@ -100,25 +115,54 @@ def _counts(db: Session, customer: Customer) -> dict[str, int]:
     }
 
 
+def _years(settings: dict[str, Any]) -> int:
+    value = settings.get("payment_retention_years")
+    return (
+        value
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0
+        else DEFAULT_RECORD_YEARS
+    )
+
+
 def _retention(kind: str, settings: dict[str, Any], lang: str) -> str:
-    if kind == "support":
-        days = max(int(settings.get("support_retention_days") or 0), RETENTION_FLOOR_DAYS)
-        return t("held.ret.support", lang, days=days)
+    # Mirrors app/engine/retention.py: message text goes only after the retention period for
+    # closed cases with nothing unsettled; contact data of a signed-in customer is not removed
+    # by that job at all (only by an erasure request).
+    if kind == "messages":
+        return t("held.ret.messages", lang, days=retention_days(settings))
+    if kind == "contact":
+        return t("held.ret.contact", lang)
     if kind == "records":
-        return t("held.ret.records", lang, years=int(settings["payment_retention_years"]))
+        return t("held.ret.records", lang, years=_years(settings))
     return t("held.ret.consents", lang)
 
 
+def _processors(settings: dict[str, Any]) -> list[dict[str, str]]:
+    out = []
+    for p in settings.get("data_processors") or []:
+        if isinstance(p, dict) and all(
+            isinstance(p.get(k), str) and p[k] for k in ("name", "role", "data")
+        ):
+            out.append({"name": p["name"], "role": p["role"], "data": p["data"]})
+    return out
+
+
 def contact(settings: dict[str, Any], lang: str) -> dict[str, Any]:
-    days = int(settings["grievance_target_days"])
-    ceiling = int(settings["privacy_legal_ceiling_days"])
+    days = settings.get("grievance_target_days")
+    days = days if isinstance(days, int) and 0 < days <= LEGAL_CEILING_DAYS else 30
+    name = str(settings.get("privacy_contact_name") or "")
+    email = str(settings.get("privacy_contact_email") or "")
+    configured = bool(email)
     return {
         "label": t("held.contact.label", lang),
-        "name": settings.get("privacy_contact_name") or "",
-        "email": settings.get("privacy_contact_email") or "",
+        "configured": configured,
+        "name": name if configured else "",
+        "email": email,
         "response_target_days": days,
-        "legal_ceiling_days": ceiling,
-        "response_text": t("held.contact.target", lang, days=days, ceiling=ceiling),
+        "legal_ceiling_days": LEGAL_CEILING_DAYS,
+        "response_text": t("held.contact.target", lang, days=days, ceiling=LEGAL_CEILING_DAYS)
+        if configured
+        else t("held.contact.unset", lang),
     }
 
 
@@ -130,7 +174,7 @@ def what_we_hold(db: Session, customer: Customer, settings: dict[str, Any]) -> d
         "phone": mask_phone(customer.phone) if customer.phone else None,
         "email": mask_email(customer.email) if customer.email else None,
     }
-    provisional = bool(settings.get("retention_provisional"))
+    provisional = not RETENTION_CONFIRMED
     items = []
     for item in ITEMS:
         if item.key in values and values[item.key] is None:
@@ -158,13 +202,13 @@ def what_we_hold(db: Session, customer: Customer, settings: dict[str, Any]) -> d
     claims = [
         t(f"held.not_kept.{k}", lang)
         for k in (settings.get("data_not_kept") or [])
-        if k in KNOWN_NOT_KEPT
+        if k in KNOWN_NOT_KEPT and k in CONFIRMED_NOT_KEPT
     ]
     return {
         "language": lang,
         "headings": {k: t(f"held.h.{k}", lang) for k in HEADINGS},
         "items": items,
-        "processors": settings.get("data_processors", []),
+        "processors": _processors(settings),
         "not_kept": claims,  # empty (hidden) unless the tenant setting backs a claim
         "provisional_label": t("held.provisional", lang) if provisional else None,
         "contact": contact(settings, lang),

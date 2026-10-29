@@ -120,8 +120,9 @@ Open **Privacy & data** in the menu.
 - **What we hold about you.** A table at the top lists each kind of data we hold (your name,
   masked phone number, orders, support messages, payment references, refund and voucher records
   and your offer choices), your own count for each, why we keep it, how long, and whether it is
-  used to help with orders or for offers. The retention periods are marked **provisional** until
-  the business confirms them. Below the table, **Who else sees it** names the companies that
+  used to help with orders or for offers. Message text may be removed some time after a case
+  closes; your name and contact details are kept while you have an account, until you ask us to
+  erase them. The retention periods are marked **provisional** until the business confirms them. Below the table, **Who else sees it** names the companies that
   process data for us. A **What we do not keep** line appears only when the business has
   confirmed the claim. The **Privacy contact** (name, email and how fast we aim to reply, with
   the 90-day legal limit) shows at the top and bottom of the page. The page uses your chosen

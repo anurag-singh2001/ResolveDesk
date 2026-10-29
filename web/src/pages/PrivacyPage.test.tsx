@@ -54,6 +54,7 @@ function held(notKept: string[] = []): DataHeld {
     provisional_label: "provisional",
     contact: {
       label: "Privacy contact",
+      configured: true,
       name: "Privacy desk",
       email: "privacy@example.test",
       response_target_days: 30,

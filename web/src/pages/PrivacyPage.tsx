@@ -185,7 +185,12 @@ function HeldCard({ data }: { data: DataHeld }) {
       </div>
       {data.processors.length > 0 && (
         <div className="mt-4">
-          <h3 className="text-sm font-semibold text-foreground">{h.processors}</h3>
+          <h3 className="text-sm font-semibold text-foreground">
+            {h.processors}
+            {data.provisional_label && (
+              <Badge tone="warning" className="ml-2">{data.provisional_label}</Badge>
+            )}
+          </h3>
           <ul className="mt-1 space-y-1 text-sm text-muted-foreground" data-testid="held-processors">
             {data.processors.map((p) => (
               <li key={p.name}>

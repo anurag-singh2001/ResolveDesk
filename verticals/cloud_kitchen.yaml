@@ -37,14 +37,11 @@ settings:
   # text and the customer's contact data are redacted. The job never goes below 365 (the
   # one-year floor), so a lower value is ignored.
   support_retention_days: {kind: value, default: 365}
-  # "What we hold" page (S8.5a, provisional, awaiting owner/counsel confirmation): years that
-  # payment, order and refund records are kept; whether the page labels retention provisional;
-  # the 90-day legal ceiling shown beside the internal response target (grievance_target_days);
-  # and the "what we do not keep" claims the page may make (keys: card_numbers, upi_details).
-  # The claims list is EMPTY until the owner confirms each claim against the payment mock.
-  payment_retention_years: {kind: value, default: 7}
-  retention_provisional: {kind: value, default: true}
-  privacy_legal_ceiling_days: {kind: value, default: 90}
+  # "What we hold" page (S8.5a, provisional). Years that payment, order and refund records are
+  # kept (a tenant may only lower it). The legal ceiling, the "provisional" label and the
+  # confirmed "we do not keep" claims live in code (app/engine/data_held.py) so a tenant
+  # override cannot change them. data_not_kept only NARROWS what code has confirmed.
+  payment_retention_years: {kind: limit, default: 7}
   data_not_kept: {kind: value, default: []}
   # DPDP s.11 access (S5.2, provisional): who else processes a customer's data. Shown in the
   # customer data export. A tenant can replace the list if its provider set differs.
