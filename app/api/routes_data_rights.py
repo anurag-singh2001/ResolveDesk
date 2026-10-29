@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant_context, not_found, tenant_db
+from app.core import audit
 from app.core.models import (
     Brand,
     Case,
@@ -24,7 +25,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import data_held
+from app.engine import data_export, data_held
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -189,6 +190,28 @@ def my_data_export(
         "consents": consent.model_dump(mode="json"),
         "processors": effective_settings(db).get("data_processors", []),
     }
+
+
+@router.get("/me/data-export/readable")
+def my_readable_export(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """The same customer's data as print-friendly sections in their language (S8.5c). The
+    customer comes from the token; there is no id to pass. The audit row carries no personal
+    content, only that an export happened."""
+    customer = own_customer(ctx, db)
+    body = data_export.readable_export(db, customer, effective_settings(db), datetime.now(UTC))
+    audit.record(
+        db,
+        ctx.tenant_id,
+        actor_type="user",
+        actor_id=ctx.user_id,
+        event="data.exported",
+        entity_type="customer",
+        entity_id=customer.id,
+        payload={"format": "readable"},
+    )
+    return body
 
 
 @router.get("/me/data-held")

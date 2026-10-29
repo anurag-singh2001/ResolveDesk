@@ -18,6 +18,7 @@ import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { OrdersPage } from "./pages/OrdersPage";
 import { PoliciesPage } from "./pages/PoliciesPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
+import { ReadableExportPage } from "./pages/ReadableExportPage";
 import { ReportProblemPage } from "./pages/ReportProblemPage";
 
 /** Hides screens a role has no use for. Access itself is enforced by the API on every call. */
@@ -59,6 +60,7 @@ export function App() {
         <Route path="/orders/:orderId" element={<Only when={customer}><OrderDetailPage /></Only>} />
         <Route path="/orders/:orderId/report" element={<Only when={customer}><ReportProblemPage /></Only>} />
         <Route path="/privacy" element={<Only when={customer}><PrivacyPage /></Only>} />
+        <Route path="/privacy/export" element={<Only when={customer}><ReadableExportPage /></Only>} />
         <Route path="/queue" element={<Only when={staff}><QueuePage /></Only>} />
         <Route path="/cases" element={<CasesPage />} />
         <Route path="/cases/:caseId" element={<CasePage />} />

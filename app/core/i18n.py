@@ -764,6 +764,232 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Faisle ke baad yeh section badal gaya hai; uski jagah document ka link hai.",
         "hi": "निर्णय के बाद यह भाग बदल गया है; इसकी जगह दस्तावेज़ का लिंक दिया गया है।",
     },
+    # ---- readable data export (S8.5c). Hindi copy awaits native review (docs/DECISIONS.md).
+    "export.title": {
+        "en": "Your data, in a readable form",
+        "hi-Latn": "Aapka data, padhne laayak roop mein",
+        "hi": "आपका डेटा, पढ़ने योग्य रूप में",
+    },
+    "export.generated": {
+        "en": "Prepared on {date}",
+        "hi-Latn": "{date} ko taiyaar kiya gaya",
+        "hi": "{date} को तैयार किया गया",
+    },
+    "export.tz_note": {
+        "en": "Dates and times are in Indian Standard Time.",
+        "hi-Latn": "Tareekh aur samay Bharatiya Manak Samay mein hain.",
+        "hi": "तारीख़ और समय भारतीय मानक समय में हैं।",
+    },
+    "export.why": {
+        "en": "Why we hold it",
+        "hi-Latn": "Hum ise kyon rakhte hain",
+        "hi": "हम इसे क्यों रखते हैं",
+    },
+    "export.howlong": {
+        "en": "How long we keep it",
+        "hi-Latn": "Hum ise kitne samay tak rakhte hain",
+        "hi": "हम इसे कितने समय तक रखते हैं",
+    },
+    "export.empty": {
+        "en": "Nothing on record.",
+        "hi-Latn": "Kuch record mein nahin hai.",
+        "hi": "रिकॉर्ड में कुछ नहीं है।",
+    },
+    "export.s.details": {
+        "en": "Your details",
+        "hi-Latn": "Aapki jaankari",
+        "hi": "आपकी जानकारी",
+    },
+    "export.s.orders": {
+        "en": "Your orders",
+        "hi-Latn": "Aapke orders",
+        "hi": "आपके ऑर्डर",
+    },
+    "export.s.cases": {
+        "en": "Your help requests",
+        "hi-Latn": "Aapke madad ke anurodh",
+        "hi": "आपके सहायता अनुरोध",
+    },
+    "export.s.remedies": {
+        "en": "Refunds and vouchers",
+        "hi-Latn": "Refund aur voucher",
+        "hi": "रिफ़ंड और वाउचर",
+    },
+    "export.s.choices": {
+        "en": "Your choices about offers",
+        "hi-Latn": "Offers ke bare mein aapke choices",
+        "hi": "ऑफ़र के बारे में आपकी पसंद",
+    },
+    "export.s.processors": {
+        "en": "Companies that handle data for us",
+        "hi-Latn": "Hamare liye data sanbhalne wali companies",
+        "hi": "हमारे लिए डेटा संभालने वाली कंपनियाँ",
+    },
+    "export.f.name": {
+        "en": "Name",
+        "hi-Latn": "Naam",
+        "hi": "नाम",
+    },
+    "export.f.phone": {
+        "en": "Phone",
+        "hi-Latn": "Phone",
+        "hi": "फ़ोन",
+    },
+    "export.f.email": {
+        "en": "Email",
+        "hi-Latn": "Email",
+        "hi": "ईमेल",
+    },
+    "export.f.reference": {
+        "en": "Your customer reference",
+        "hi-Latn": "Aapka customer reference",
+        "hi": "आपका ग्राहक संदर्भ",
+    },
+    "export.f.order": {
+        "en": "Order",
+        "hi-Latn": "Order",
+        "hi": "ऑर्डर",
+    },
+    "export.f.placed": {
+        "en": "Placed on",
+        "hi-Latn": "Kab diya gaya",
+        "hi": "कब दिया गया",
+    },
+    "export.f.brand": {
+        "en": "Brand",
+        "hi-Latn": "Brand",
+        "hi": "ब्रांड",
+    },
+    "export.f.place": {
+        "en": "Outlet",
+        "hi-Latn": "Outlet",
+        "hi": "आउटलेट",
+    },
+    "export.f.total": {
+        "en": "Total",
+        "hi-Latn": "Kul",
+        "hi": "कुल",
+    },
+    "export.f.status": {
+        "en": "Status",
+        "hi-Latn": "Sthiti",
+        "hi": "स्थिति",
+    },
+    "export.f.topic": {
+        "en": "About",
+        "hi-Latn": "Vishay",
+        "hi": "विषय",
+    },
+    "export.f.opened": {
+        "en": "Opened on",
+        "hi-Latn": "Kab shuru hua",
+        "hi": "कब शुरू हुआ",
+    },
+    "export.f.update": {
+        "en": "Latest update",
+        "hi-Latn": "Taaza update",
+        "hi": "ताज़ा अपडेट",
+    },
+    "export.f.remedy": {
+        "en": "Type",
+        "hi-Latn": "Prakar",
+        "hi": "प्रकार",
+    },
+    "export.f.amount": {
+        "en": "Amount",
+        "hi-Latn": "Raashi",
+        "hi": "राशि",
+    },
+    "export.f.choice": {
+        "en": "Choice",
+        "hi-Latn": "Choice",
+        "hi": "पसंद",
+    },
+    "export.f.channel": {
+        "en": "Channel",
+        "hi-Latn": "Channel",
+        "hi": "माध्यम",
+    },
+    "export.f.on": {
+        "en": "Agreed to offers",
+        "hi-Latn": "Offers ke liye haan kaha",
+        "hi": "ऑफ़र के लिए हाँ कहा",
+    },
+    "export.f.off": {
+        "en": "Not agreed (no offers)",
+        "hi-Latn": "Sahmati nahin (koi offers nahin)",
+        "hi": "सहमति नहीं (कोई ऑफ़र नहीं)",
+    },
+    "export.f.history": {
+        "en": "Changes you made",
+        "hi-Latn": "Aapke kiye badlav",
+        "hi": "आपके किए बदलाव",
+    },
+    "export.f.agreed": {
+        "en": "Agreed",
+        "hi-Latn": "Sahmat hue",
+        "hi": "सहमत हुए",
+    },
+    "export.f.stopped": {
+        "en": "Stopped",
+        "hi-Latn": "Band kiya",
+        "hi": "बंद किया",
+    },
+    "export.f.role": {
+        "en": "What they do",
+        "hi-Latn": "Woh kya karte hain",
+        "hi": "वे क्या करते हैं",
+    },
+    "export.f.data": {
+        "en": "Data they see",
+        "hi-Latn": "Woh kaun sa data dekhte hain",
+        "hi": "वे कौन सा डेटा देखते हैं",
+    },
+    "export.o.placed": {
+        "en": "Placed",
+        "hi-Latn": "Diya gaya",
+        "hi": "दिया गया",
+    },
+    "export.o.completed": {
+        "en": "Completed",
+        "hi-Latn": "Poora hua",
+        "hi": "पूरा हुआ",
+    },
+    "export.o.cancelled": {
+        "en": "Cancelled",
+        "hi-Latn": "Cancel hua",
+        "hi": "रद्द हुआ",
+    },
+    "export.r.refund": {
+        "en": "Refund",
+        "hi-Latn": "Refund",
+        "hi": "रिफ़ंड",
+    },
+    "export.r.free_item_voucher": {
+        "en": "Voucher",
+        "hi-Latn": "Voucher",
+        "hi": "वाउचर",
+    },
+    "export.c.marketing": {
+        "en": "Offers and promotions",
+        "hi-Latn": "Offers aur promotions",
+        "hi": "ऑफ़र और प्रचार",
+    },
+    "export.print": {
+        "en": "Print or save as PDF",
+        "hi-Latn": "Print karein ya PDF mein save karein",
+        "hi": "प्रिंट करें या PDF में सहेजें",
+    },
+    "export.back": {
+        "en": "Back to Privacy & data",
+        "hi-Latn": "Privacy aur data par wapas",
+        "hi": "गोपनीयता और डेटा पर वापस",
+    },
+    "export.open": {
+        "en": "Open readable version",
+        "hi-Latn": "Padhne laayak roop kholein",
+        "hi": "पढ़ने योग्य रूप खोलें",
+    },
 }
 
 # The five money states a customer can be told, each mapped to its own template (hard rule 7:

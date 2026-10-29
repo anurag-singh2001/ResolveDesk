@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { Consents, DataHeld, ErasureRequest, PrivacyContact } from "../api/types";
@@ -267,13 +268,19 @@ export function PrivacyPage() {
         <Card className="p-5">
           <h2 className="font-montserrat text-base font-semibold text-foreground">Download my data</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            A copy of your details, orders, cases and choices, and the companies that process data for us.
+            A copy of your details, orders, cases and choices, and the companies that process data for us. The file is for other software; the readable version is for you.
           </p>
           {dlError && <Alert>{dlError}</Alert>}
           <div className="mt-3">
             <Button variant="outline" loading={downloading} onClick={() => void download()}>
               Download my data
             </Button>
+            <Link
+              to="/privacy/export"
+              className="ml-4 text-sm font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand"
+            >
+              Open readable version
+            </Link>
           </div>
         </Card>
         <ErasureCard />

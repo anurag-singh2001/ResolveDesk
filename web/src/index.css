@@ -176,3 +176,21 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Print: the readable data export prints as a plain document (no navigation, no dark theme). */
+@media print {
+  header,
+  aside,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+  html,
+  body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .print-section {
+    break-inside: avoid;
+  }
+}
