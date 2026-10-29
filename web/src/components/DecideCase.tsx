@@ -22,7 +22,7 @@ export function DecideCase({ caseId, stage, onChanged }: { caseId: string; stage
     if (sent) return;
     let live = true;
     api
-      .remedyOptions(caseId)
+      .staffRemedyOptions(caseId)
       .then((o) => live && setOpts(o))
       .catch(() => live && setOpts(null));
     return () => {
