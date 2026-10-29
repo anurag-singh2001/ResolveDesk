@@ -53,14 +53,14 @@ export function AppShell() {
   const { me, businessName, signOut } = useAuth();
   const scrolled = useScrolled();
   if (!me) return null;
-  // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
+  // The demo controls exist only where the API mounts /admin (dev/test): a 404 hides it.
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
   const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
   // Count of cases waiting for a person, shown on the "Cases to handle" item (staff only).
   const { data: queue } = useApi(() => (isStaff(me.role) ? api.caseQueue() : Promise.reject(new Error("n/a"))), [me.role]);
   const waiting = queue?.length ?? 0;
   const base = navFor(me.role, me.growth_enabled === true);
-  const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
+  const nav = chaos ? [...base.slice(0, -1), { to: "/demo", label: "Demo controls", icon: "dev" as const }, base[base.length - 1]] : base;
 
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cx(

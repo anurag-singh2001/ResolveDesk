@@ -64,6 +64,9 @@ function ServiceCard({ service, current, onSaved }: { service: string; current: 
     <Card className="p-4">
       <form onSubmit={submit} aria-label={`Chaos settings for ${service}`}>
         <h2 className="font-montserrat text-sm font-semibold capitalize text-foreground">{service}</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Sets how often the pretend {service} provider fails. Changes the mock only; no real money or message moves. Reset turns the failures off.
+        </p>
         <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
           {RATE_FIELDS.map(([key, label, hint]) => (
             <Field key={key} label={label} htmlFor={`${service}-${key}`} hint={hint}>
@@ -133,7 +136,7 @@ function ClockCard() {
     <Card className="p-4">
       <h2 className="font-montserrat text-sm font-semibold text-foreground">Simulated clock</h2>
       <p className="mt-1 text-sm text-muted-foreground">
-        Moves the time shown, not when approvals expire. It affects what screens report (up to 60 days ahead, for every business on
+        Moves the time shown, not when approvals expire. It changes no money and sends no messages. It affects what screens report (up to 60 days ahead, for every business on
         this server); approvals and payments still run on real time. Reset puts it back.
       </p>
       {loading ? (
@@ -205,15 +208,18 @@ export function DevPage() {
 
   return (
     <>
-      <PageHeader title="Dev panel" subtitle="Demo only. Break the mock providers on purpose and see the system recover. Affects your business only." />
+      <PageHeader title="Demo controls" subtitle="For demos only. Break the pretend providers on purpose and watch the system recover. Each control says what it changes. Affects your business only." />
       {loading ? (
-        <Loading label="Loading dev controls…" />
+        <Loading label="Loading demo controls…" />
       ) : error ? (
         <ErrorState error={error} onRetry={reload} />
       ) : (
         <div className="space-y-6">
           <Card className="p-4">
             <h2 className="font-montserrat text-sm font-semibold text-foreground">Presets</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Makes a pretend provider fail in one chosen way. Changes the mock providers only; no real money or message moves.
+            </p>
             <div className="mt-3 flex flex-wrap gap-2">
               {PRESETS.filter((p) => data && p.service in data).map((p) => (
                 <Button key={p.label} variant="outline" onClick={() => void preset(p.service, p.settings)}>
@@ -231,7 +237,7 @@ export function DevPage() {
             <h2 className="font-montserrat text-sm font-semibold text-foreground">Recovery sweep</h2>
             <p className="mt-1 text-sm text-muted-foreground">
               Finishes approved work that never ran, checks unfinished payments with the provider, and hands stuck cases to a person.
-              Safe to run any time.
+              It can complete pending refunds and vouchers and send the messages that go with them. Safe to run any time.
             </p>
             <div className="mt-3">
               <Button onClick={() => void runSweep()} loading={sweeping}>
@@ -247,12 +253,23 @@ export function DevPage() {
           <ClockCard />
 
           <Card className="p-4 text-sm text-muted-foreground">
-            <h2 className="font-montserrat text-sm font-semibold text-foreground">Reseed</h2>
+            <h2 className="font-montserrat text-sm font-semibold text-foreground">Reset demo</h2>
             <p className="mt-1">
-              There is no reseed button here: it is too destructive for a web button. From a terminal, run{" "}
-              <code className="rounded bg-muted px-1 font-mono">make seed TENANT=all</code> to reload the demo data and{" "}
-              <code className="rounded bg-muted px-1 font-mono">make sweep</code> to run the sweeper for every business.
+              Not available yet. Wiping demo data would also erase payment and refund records, which could hide a real state such as
+              "unknown" or "processing". Until a reset can keep those honest, use a terminal:{" "}
+              <code className="rounded bg-muted px-1 font-mono">make seed TENANT=all</code> reloads the demo data and{" "}
+              <code className="rounded bg-muted px-1 font-mono">make sweep</code> runs the sweeper for every business.
             </p>
+            <div className="mt-3">
+              <Button variant="outline" disabled aria-label="Reset demo (not available yet)">
+                Reset demo
+              </Button>
+            </div>
+          </Card>
+
+          <Card className="p-4 text-sm text-muted-foreground">
+            <h2 className="font-montserrat text-sm font-semibold text-foreground">Platform portal</h2>
+            <p className="mt-1" data-testid="platform-portal">Platform portal (coming in Sprint 9). Not built yet, so there is nothing to open.</p>
           </Card>
         </div>
       )}

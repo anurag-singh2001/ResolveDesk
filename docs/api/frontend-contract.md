@@ -94,9 +94,9 @@ null when nothing was decided; `repeat_rate_bp` (basis points, 3125 = 31.2%) is 
 Sending needs two different approvers, at least one `hq_owner`; the server enforces it. The UI
 shows `diagnosis.findings` (facts) and `hypotheses` (labelled unconfirmed), never model reasoning.
 
-## Dev panel (demo only)
+## Demo controls (demo only; formerly "Dev panel")
 Mounted only when `APP_ENV` is `dev` or `test`; **404 in prod**. `hq_owner` only (403 otherwise), and
-always the caller's own tenant, taken from the token. The frontend shows the "Dev panel" nav item
+always the caller's own tenant, taken from the token. The frontend shows the "Demo controls" nav item (route `/demo`; `/dev` redirects)
 only for an hq_owner whose `GET /admin/chaos` succeeds; a 404 hides it.
 | GET | `/admin/chaos` | hq_owner | – | `{service: {timeout_rate, transient_error_rate, accept_then_timeout_rate, error_rate, processing_rate, settle_after_polls, delay_ms, seed}}` |
 | POST | `/admin/chaos` | hq_owner | `{service, timeout_rate?, accept_then_timeout_rate?, transient_error_rate?, error_rate?, processing_rate?, settle_after_polls?, delay_ms?, seed?}` (rates 0..1; omitted = default, so `{service}` alone resets it) | the full chaos state, as GET. 422 for an unknown service or a rate outside 0..1 |

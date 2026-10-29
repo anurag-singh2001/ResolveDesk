@@ -141,14 +141,14 @@ With `DEMO_AUTH=true`, the login page lists the demo accounts; pick one, no typi
    **Inconclusive** ("too few people to tell"). Reset the clock afterwards.
 
 Steps 4 and 5 are covered by the chaos and fair-use test suites; walk through them once
-before showing them live. As HQ, the **Dev panel** (left menu, dev only) has the chaos presets
+before showing them live. As HQ, the **Demo controls** page (left menu, dev only; formerly Dev panel) has the chaos presets
 and a **Run sweeper** button, so step 4 needs no terminal.
 
 By default the mock providers keep their records in memory. Restarting the API forgets them, so
 a refund approved before a restart and checked after it is reported as "provider has no record"
 and handed to a person (the honest answer, since nothing can confirm it). To keep them across
 restarts, set `MOCK_STATE_FILE=var/mock_state.json` in `.env` (dev only): the mocks reload that
-file at startup and rewrite it after every change. Chaos settings are not saved. The Dev panel
+file at startup and rewrite it after every change. Chaos settings are not saved. The Demo controls page
 also has a **Simulated clock** (+1h to +15 days, reset) to see approvals expire without waiting.
 
 ## Evals
