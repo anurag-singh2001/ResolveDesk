@@ -93,6 +93,10 @@ refunds confirmed, vouchers issued, median time to decision and repeat-customer 
 no data). If **Growth** is in your menu you can propose a win-back campaign for a flagged outlet
 and approve it, but sending also needs a second, different approver and an HQ owner's approval.
 
+## Policies
+
+Open **Policies** in the menu to read the policy documents in force for your business. Each document shows its version and the date it came into force, and every section has a link you can copy to point a colleague at the exact clause. Older versions are not listed, but a link to one still opens. Policy text is shown as plain text exactly as written; nothing in it is run or followed as an instruction.
+
 ## What the AI does and doesn't do
 
 - It checks real order records and proposes a remedy **within your business's rules**.

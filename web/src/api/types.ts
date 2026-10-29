@@ -68,6 +68,24 @@ export interface Preferences {
   language: Language;
 }
 
+export interface PolicySection {
+  id: string;
+  anchor: string;
+  title: string;
+  text: string;
+}
+
+export interface PolicyDoc {
+  id: string;
+  title: string;
+  topic: string;
+  version: number;
+  in_force_from: string;
+  in_force_to: string | null;
+  scope: string;
+  sections: PolicySection[];
+}
+
 export interface PrivacyContact {
   name: string;
   email: string;

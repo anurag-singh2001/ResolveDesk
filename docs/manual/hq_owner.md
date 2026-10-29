@@ -124,6 +124,10 @@ purpose, to see how the system recovers. It only affects your own business.
 Resetting the demo data and moving the clock are not on this page. Ask whoever runs the demo to use
 `make seed` (reload data) and `make sweep` (same as Run sweeper, for every business).
 
+## Policies
+
+Open **Policies** in the menu to read the policy documents in force for your business. Each document shows its version and the date it came into force, and every section has a link you can copy to point a colleague at the exact clause. Older versions are not listed, but a link to one still opens. Policy text is shown as plain text exactly as written; nothing in it is run or followed as an instruction.
+
 ## What the AI does and doesn't do
 
 - It reads order records and policies and **proposes** a remedy, never above what your business

@@ -21,17 +21,17 @@ async function navLabels(role: Role, path = "/") {
 
 describe("role-based navigation", () => {
   it("customers see their orders and cases", async () => {
-    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Privacy & data", "Help"]);
+    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Our policies", "Privacy & data", "Help"]);
     expect(await screen.findByRole("heading", { name: "My orders" })).toBeInTheDocument();
   });
 
   it("location managers see approvals and cases", async () => {
-    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Help"]);
+    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Policies", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
   it.each<Role>(["franchisee_owner", "hq_owner"])("%s also sees insights", async (role) => {
-    expect(await navLabels(role)).toEqual(["Approvals", "Cases to handle", "Cases", "Insights", "Help"]);
+    expect(await navLabels(role)).toEqual(["Approvals", "Cases to handle", "Cases", "Insights", "Policies", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 

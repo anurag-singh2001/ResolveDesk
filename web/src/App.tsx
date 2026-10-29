@@ -16,6 +16,7 @@ import { QueuePage } from "./pages/QueuePage";
 import { LoginPage } from "./pages/LoginPage";
 import { OrderDetailPage } from "./pages/OrderDetailPage";
 import { OrdersPage } from "./pages/OrdersPage";
+import { PoliciesPage } from "./pages/PoliciesPage";
 import { PrivacyPage } from "./pages/PrivacyPage";
 import { ReportProblemPage } from "./pages/ReportProblemPage";
 
@@ -66,6 +67,7 @@ export function App() {
         <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
         <Route path="/growth" element={<Only when={canSeeGrowth(me.role, me.growth_enabled)}><GrowthPage /></Only>} />
         <Route path="/dev"element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
+        <Route path="/policies" element={<PoliciesPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFound />} />
       </Route>

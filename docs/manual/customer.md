@@ -109,6 +109,10 @@ timeline shows "You replied".
   *Processing*, the refund is on its way but not yet confirmed.
 - It only ever looks at **your** orders.
 
+## Our policies
+
+Open **Our policies** in the menu to read the rules we follow. Each policy shows the date it came into force, and each section has its own link, so you can share or bookmark the exact part you mean. The text is shown exactly as written. You only see your own business's policies.
+
 ## Privacy and data
 
 Open **Privacy & data** in the menu.
