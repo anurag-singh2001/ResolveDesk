@@ -86,6 +86,47 @@ export interface PolicyDoc {
   sections: PolicySection[];
 }
 
+export interface RuleLine {
+  code: string;
+  kind: "voucher" | "refund" | "refund_missing" | "apology";
+  text: string;
+  approval: "instant" | "team" | null;
+  approval_text: string | null;
+  max_paise: number | null;
+  percent: number | null;
+  min_minutes_late: number | null;
+  label: string | null;
+}
+
+export interface CategoryRule {
+  category: string;
+  title: string;
+  options: RuleLine[];
+  tiers: RuleLine[];
+  notes: string[];
+  decided_by: "instant" | "team" | "mixed";
+  setting_keys: string[];
+}
+
+/** One setting behind the rules; only staff receive these. */
+export interface RuleSetting {
+  key: string;
+  value: unknown;
+  source: "pack_default" | "tenant_override";
+}
+
+export interface RulesSummary {
+  language: Language;
+  pack_name: string;
+  pack_version: number;
+  pack_updated: string;
+  settings_updated: string | null;
+  in_force_since: string;
+  in_force_text: string;
+  categories: CategoryRule[];
+  settings: RuleSetting[];
+}
+
 export interface PrivacyContact {
   name: string;
   email: string;

@@ -162,13 +162,21 @@ def _refund(order_ref: str, amount: int, why: str) -> Remedy:
 _RUPEE = 100
 
 
+def voucher_ceiling_paise(settings: dict) -> int:
+    """The most a voucher can be before the order's own total is applied: the lower of the
+    tenant's hard cap and its auto-approve cap, in whole rupees. Shared with the plain-language
+    rules summary (S8.2) so the words cannot drift from what `_voucher` allows."""
+    value = min(settings["voucher_auto_approve_max_paise"], settings["voucher_max_paise"])
+    return value - value % _RUPEE
+
+
 def _voucher(order_ref: str, order_total_paise: int, settings: dict, why: str) -> Remedy:
     # Never more than the customer paid (voucher_percent of the order total, default 100),
     # never above the tenant's hard cap or its auto-approve cap. The order total is used, not a
     # line total: decide_remedy has no per-item link from the case, so we don't guess one.
     # .get: a pack stored in the DB before voucher_percent existed lacks the key (100 = default).
     scaled = percent_of(order_total_paise, settings.get("voucher_percent", 100))
-    value = min(settings["voucher_auto_approve_max_paise"], settings["voucher_max_paise"], scaled)
+    value = min(voucher_ceiling_paise(settings), scaled)
     value -= value % _RUPEE  # whole rupees, rounded down
     if value < MIN_VOUCHER_PAISE:
         return Remedy(None, {}, "order too small for a voucher; a person decides", "escalate")

@@ -381,6 +381,128 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "हम आपसे संपर्क नहीं कर पाए, इसलिए हमने यह केस बंद कर दिया है। "
         "आप कभी भी समस्या दोबारा बता सकते हैं।",
     },
+    # ---- plain-language rules summary (app/engine/rules_summary.py, S8.2) ----
+    # Hindi lines (hi) are drafts: OWNER TO CONFIRM with a native reviewer before launch.
+    "rules.voucher.order": {
+        "en": "A voucher up to the value of your order, at most {amount}.",
+        "hi-Latn": "Aapke order ki value tak ka voucher, adhiktam {amount}.",
+        "hi": "आपके ऑर्डर की क़ीमत तक का वाउचर, अधिकतम {amount}।",
+    },
+    "rules.voucher.percent": {
+        "en": "A voucher up to {percent}% of your order, at most {amount}.",
+        "hi-Latn": "Aapke order ke {percent}% tak ka voucher, adhiktam {amount}.",
+        "hi": "आपके ऑर्डर के {percent}% तक का वाउचर, अधिकतम {amount}।",
+    },
+    "rules.refund.percent": {
+        "en": "A refund of up to {percent}% of your order, never more than you paid.",
+        "hi-Latn": (
+            "Aapke order ke {percent}% tak ka refund, aapke diye hue paise se zyada kabhi nahi."
+        ),
+        "hi": "आपके ऑर्डर के {percent}% तक का रिफ़ंड, आपके चुकाए पैसों से ज़्यादा कभी नहीं।",
+    },
+    "rules.refund.missing": {
+        "en": "A refund for the items that did not arrive, up to {percent}% of your order.",
+        "hi-Latn": "Jo items nahi pahunche unka refund, aapke order ke {percent}% tak.",
+        "hi": "जो आइटम नहीं पहुँचे उनका रिफ़ंड, आपके ऑर्डर के {percent}% तक।",
+    },
+    "rules.apology": {
+        "en": "We apologise and note it with the team.",
+        "hi-Latn": "Hum maafi chahte hain aur team ko bata dete hain.",
+        "hi": "हम क्षमा चाहते हैं और टीम को बता देते हैं।",
+    },
+    "rules.tier.label": {
+        "en": "{minutes} minutes late or more",
+        "hi-Latn": "{minutes} minute ya usse zyada late",
+        "hi": "{minutes} मिनट या उससे ज़्यादा देरी",
+    },
+    "rules.late.excluded": {
+        "en": (
+            "No remedy applies when the delay was caused on your side, for example a wrong address."
+        ),
+        "hi-Latn": "Agar deri aapki taraf se hui, jaise galat pata, to koi remedy nahi milta.",
+        "hi": "यदि देरी आपकी तरफ़ से हुई, जैसे ग़लत पता, तो कोई उपाय लागू नहीं होता।",
+    },
+    "rules.escalate": {
+        "en": "A team member looks at your case and decides what is fair.",
+        "hi-Latn": "Team ka ek sadasya aapka case dekhta hai aur tay karta hai ki kya uchit hai.",
+        "hi": "टीम का एक सदस्य आपका केस देखता है और तय करता है कि क्या उचित है।",
+    },
+    "rules.privacy": {
+        "en": "A team member handles privacy requests. They are never settled with a payout.",
+        "hi-Latn": (
+            "Privacy requests team ka ek sadasya sambhalta hai. Inka hal kabhi payout se nahi hota."
+        ),
+        "hi": "गोपनीयता अनुरोध टीम का एक सदस्य संभालता है। इनका समाधान कभी भुगतान से नहीं होता।",
+    },
+    "rules.fair_use": {
+        "en": (
+            "If you already had {count} refunds or vouchers in the last 30 days, "
+            "a team member decides instead."
+        ),
+        "hi-Latn": (
+            "Agar pichhle 30 din mein aapko pehle se {count} refund ya voucher mil chuke hain, "
+            "to team ka ek sadasya faisla karta hai."
+        ),
+        "hi": (
+            "यदि पिछले 30 दिनों में आपको पहले से {count} रिफ़ंड या वाउचर मिल चुके हैं, "
+            "तो टीम का एक सदस्य निर्णय लेता है।"
+        ),
+    },
+    "rules.in_force": {
+        "en": "These rules have been in force since {date}.",
+        "hi-Latn": "Ye niyam {date} se lagu hain.",
+        "hi": "ये नियम {date} से लागू हैं।",
+    },
+    "rules.category.late_delivery": {
+        "en": "Your order is late",
+        "hi-Latn": "Aapka order late hai",
+        "hi": "आपका ऑर्डर देर से आया",
+    },
+    "rules.category.missing_items": {
+        "en": "Items are missing",
+        "hi-Latn": "Items kam hain",
+        "hi": "आइटम कम हैं",
+    },
+    "rules.category.wrong_item": {
+        "en": "You got the wrong item",
+        "hi-Latn": "Galat item mila",
+        "hi": "ग़लत आइटम मिला",
+    },
+    "rules.category.wrong_order": {
+        "en": "You got the wrong order",
+        "hi-Latn": "Galat order mila",
+        "hi": "ग़लत ऑर्डर मिला",
+    },
+    "rules.category.food_quality": {
+        "en": "The food quality was poor",
+        "hi-Latn": "Khane ki quality achhi nahi thi",
+        "hi": "खाने की गुणवत्ता ठीक नहीं थी",
+    },
+    "rules.category.quality": {
+        "en": "The quality was poor",
+        "hi-Latn": "Quality achhi nahi thi",
+        "hi": "गुणवत्ता ठीक नहीं थी",
+    },
+    "rules.category.payment_issue": {
+        "en": "There is a payment problem",
+        "hi-Latn": "Payment mein problem hai",
+        "hi": "भुगतान में समस्या है",
+    },
+    "rules.category.status_question": {
+        "en": "You want to know where your order is",
+        "hi-Latn": "Aap jaanna chahte hain ki order kahan hai",
+        "hi": "आप जानना चाहते हैं कि ऑर्डर कहाँ है",
+    },
+    "rules.category.privacy_request": {
+        "en": "You have a privacy request",
+        "hi-Latn": "Aapki privacy request hai",
+        "hi": "आपका गोपनीयता अनुरोध है",
+    },
+    "rules.category.loyalty": {
+        "en": "A loyalty question",
+        "hi-Latn": "Loyalty ka sawaal",
+        "hi": "लॉयल्टी से जुड़ा सवाल",
+    },
 }
 
 # The five money states a customer can be told, each mapped to its own template (hard rule 7:

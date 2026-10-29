@@ -113,6 +113,8 @@ timeline shows "You replied".
 
 Open **Our policies** in the menu to read the rules we follow. Each policy shows the date it came into force, and each section has its own link, so you can share or bookmark the exact part you mean. The text is shown exactly as written. You only see your own business's policies.
 
+Above the policies, **Rules in plain words** says what you get for each kind of problem, for example a voucher up to the value of your order and at most a stated amount, or a refund of up to a share of your order after a team member approves it. The figures come straight from your business's current rules, so they change when the rules change, and the date they have been in force is shown at the top. It also says when a team member decides instead of the system.
+
 ## Privacy and data
 
 Open **Privacy & data** in the menu.

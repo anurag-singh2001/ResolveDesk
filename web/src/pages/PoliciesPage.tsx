@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { useAuth } from "../auth/session";
 import { PlainPolicyText } from "../components/PlainPolicyText";
+import { RulesSummarySection } from "../components/RulesSummary";
 import { Badge, Card, EmptyState, ErrorState, Loading, PageHeader } from "../components/ui";
 import { humanize } from "../lib/format";
 import { isStaff } from "../lib/roles";
@@ -34,6 +35,7 @@ export function PoliciesPage() {
             : "The rules we follow when we look into a problem with your order."
         }
       />
+      <RulesSummarySection staff={staff} />
       {docs.length === 0 ? (
         <EmptyState title="No policies are published yet" />
       ) : (

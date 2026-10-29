@@ -133,6 +133,8 @@ an HQ owner; the screen shows who has approved so far and any reason the system 
 
 Open **Policies** in the menu to read the policy documents in force for your business. Each document shows its version and the date it came into force, and every section has a link you can copy to point a colleague at the exact clause. Older versions are not listed, but a link to one still opens. Policy text is shown as plain text exactly as written; nothing in it is run or followed as an instruction.
 
+**Rules in plain words** at the top of the page lists, for each issue category, what a customer gets and who decides (instant or a team member). As staff you also see the pack version, the date the settings last changed, and a table of the settings behind the rules, showing whether each value is the pack default or a tenant override. Change a setting and this summary changes with it; it is generated from the same rules the system applies.
+
 ## What the AI does and doesn't do
 
 - It **reads** the order's records and your policies, and **proposes** a remedy within your

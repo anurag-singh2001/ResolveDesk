@@ -19,6 +19,9 @@ _SAMPLE = {
     "contact": "Asha (a@example.com)",
     "label": "thing",
     "remedy": "x",
+    "percent": 50,
+    "minutes": 20,
+    "count": 3,
 }
 
 
