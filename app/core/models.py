@@ -522,7 +522,7 @@ class DataRequest(TenantOwned, Base):
         ),
         CheckConstraint("kind IN ('erasure')", name="ck_data_requests_kind"),
         CheckConstraint(
-            "status IN ('pending_approval', 'deferred', 'completed')",
+            "status IN ('pending_approval', 'deferred', 'completed', 'withdrawn')",
             name="ck_data_requests_status",
         ),
     )

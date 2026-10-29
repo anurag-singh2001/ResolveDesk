@@ -31,6 +31,7 @@ import type {
   SweepReport,
   Consents,
   DataHeld,
+  ErasureInfo,
   ErasureRequest,
   TimelineEntry,
   Language,
@@ -79,6 +80,8 @@ export const api = {
   dataExport: () => request<unknown>("/me/data-export"),
   myErasureRequest: () => request<ErasureRequest | null>("/me/erasure-request"),
   requestErasure: () => request<ErasureRequest>("/me/erasure-request", { method: "POST" }),
+  erasureInfo: () => request<ErasureInfo>("/me/erasure-info"),
+  withdrawErasure: () => request<ErasureRequest>("/me/erasure-request/cancel", { method: "POST" }),
   categories: () => request<Categories>("/meta/categories"),
   preferences: () => request<Preferences>("/me/preferences"),
   setPreferences: (language: Language) =>

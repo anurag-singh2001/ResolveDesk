@@ -458,14 +458,44 @@ export interface DataHeld {
   contact: PrivacyContact;
 }
 
+export type ErasureStage = "received" | "deferred" | "done" | "withdrawn";
+
 export interface ErasureRequest {
   id: string;
   kind: string;
-  status: "pending_approval" | "deferred" | "completed";
+  status: "pending_approval" | "deferred" | "completed" | "withdrawn";
+  stage: ErasureStage;
+  stage_label: string;
+  stage_text: string;
+  reason_code: string | null;
   reason: string | null;
   deferred_until: string | null;
-  requested_at: string;
+  received_at: string;
+  received_text: string;
+  expected_by: string | null;
+  legal_ceiling_by: string | null;
+  expected_text: string | null;
   completed_at: string | null;
+  can_withdraw: boolean;
+  contact: PrivacyContact;
+}
+
+export interface ErasureInfo {
+  language: string;
+  title: string;
+  intro: string;
+  headings: Record<"remove" | "keep" | "wait", string>;
+  remove: string[];
+  keep: { key: string; label: string; reason: string; provisional: boolean }[];
+  wait: string[];
+  provisional_label: string | null;
+  timing: string;
+  target_days: number;
+  legal_ceiling_days: number;
+  contact: PrivacyContact;
+  buttons: Record<"request" | "confirm" | "back" | "withdraw", string>;
+  confirm: { title: string; body: string };
+  status_title: string;
 }
 
 export interface RemedyOption {

@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
-import type { Consents, DataHeld, ErasureRequest, PrivacyContact } from "../api/types";
+import type { Consents, DataHeld, ErasureInfo, ErasureRequest, ErasureStage, PrivacyContact } from "../api/types";
 import {
   Alert,
   Badge,
@@ -19,12 +19,6 @@ import {
 import { useApi } from "../lib/useApi";
 
 const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp" };
-
-const STATUS: Record<ErasureRequest["status"], { label: string; tone: "warning" | "info" | "success" }> = {
-  pending_approval: { label: "Waiting for review", tone: "info" },
-  deferred: { label: "Deferred", tone: "warning" },
-  completed: { label: "Completed", tone: "success" },
-};
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -90,21 +84,75 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
   );
 }
 
+function List({ items, testId }: { items: ReactNode[]; testId: string }) {
+  return (
+    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground" data-testid={testId}>
+      {items.map((item, i) => (
+        <li key={i}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function ErasureExplained({ info }: { info: ErasureInfo }) {
+  const h = info.headings;
+  return (
+    <div className="mt-3 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.remove}</h3>
+        <List testId="erase-remove" items={info.remove} />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.keep}</h3>
+        <List
+          testId="erase-keep"
+          items={info.keep.map((k) => (
+            <span key={k.key}>
+              <span className="text-foreground">{k.label}.</span> {k.reason}
+              {k.provisional && info.provisional_label && (
+                <Badge tone="warning" className="ml-1">{info.provisional_label}</Badge>
+              )}
+            </span>
+          ))}
+        />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.wait}</h3>
+        <List testId="erase-wait" items={info.wait} />
+      </div>
+      <p className="text-sm text-muted-foreground" data-testid="erase-timing">{info.timing}</p>
+    </div>
+  );
+}
+
+const STAGE_TONE: Record<ErasureStage, "info" | "warning" | "success" | "neutral"> = {
+  received: "info",
+  deferred: "warning",
+  done: "success",
+  withdrawn: "neutral",
+};
+
 function ErasureCard() {
-  const { data, error, loading, reload } = useApi(() => api.myErasureRequest(), []);
+  const info = useApi(() => api.erasureInfo(), []);
+  const current = useApi(() => api.myErasureRequest(), []);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [latest, setLatest] = useState<ErasureRequest | null>(null);
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorState error={error} onRetry={reload} />;
-  const active = data && data.status !== "completed" ? data : null;
+  if (info.loading || current.loading) return <Loading />;
+  if (info.error || !info.data) return <ErrorState error={info.error} onRetry={info.reload} />;
+  if (current.error) return <ErrorState error={current.error} onRetry={current.reload} />;
+  const text = info.data;
+  const req = latest ?? current.data;
+  const open = req?.can_withdraw ?? false;
 
-  async function request() {
+  async function act(call: () => Promise<ErasureRequest>) {
     setBusy(true);
     setFailure(null);
     try {
-      await api.requestErasure();
-      await reload();
+      setLatest(await call());
+      setConfirming(false);
     } catch (err) {
       setFailure(errorMessage(err));
     } finally {
@@ -114,24 +162,50 @@ function ErasureCard() {
 
   return (
     <Card className="p-5">
-      <h2 className="font-montserrat text-base font-semibold text-foreground">Erase my data</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        We remove your name, contact details and message text. Records of payments and refunds are kept, and the
-        request waits while any case or refund of yours is still open.
-      </p>
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{text.title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{text.intro}</p>
+      <ErasureExplained info={text} />
       {failure && <Alert>{failure}</Alert>}
-      {data && (
-        <div className="mt-3 text-sm" data-testid="erasure-status">
-          <Badge tone={STATUS[data.status].tone}>{STATUS[data.status].label}</Badge>
-          <span className="ml-2 text-muted-foreground">asked on {when(data.requested_at)}</span>
-          {data.reason && <p className="mt-2 text-foreground">{data.reason}</p>}
+      {req && (
+        <div className="mt-4 border-t border-border pt-3 text-sm" data-testid="erasure-status">
+          <h3 className="font-semibold text-foreground">{text.status_title}</h3>
+          <p className="mt-2">
+            <Badge tone={STAGE_TONE[req.stage]}>{req.stage_label}</Badge>
+          </p>
+          <p className="mt-2 text-foreground">{req.stage_text}</p>
+          <p className="mt-1 text-muted-foreground">{req.received_text}</p>
+          {req.expected_text && <p className="text-muted-foreground">{req.expected_text}</p>}
+          <div className="mt-2">
+            <ContactLine contact={req.contact} />
+          </div>
         </div>
       )}
-      {!active && (
+      {open && (
         <div className="mt-3">
-          <Button variant="danger" loading={busy} onClick={() => void request()}>
-            Request erasure
+          <Button variant="outline" loading={busy} onClick={() => void act(() => api.withdrawErasure())}>
+            {text.buttons.withdraw}
           </Button>
+        </div>
+      )}
+      {!open && !confirming && (
+        <div className="mt-3">
+          <Button variant="danger" onClick={() => setConfirming(true)}>
+            {text.buttons.request}
+          </Button>
+        </div>
+      )}
+      {!open && confirming && (
+        <div role="alertdialog" aria-labelledby="erase-confirm-title" className="mt-3 rounded-md border border-border p-4" data-testid="erase-confirm">
+          <h3 id="erase-confirm-title" className="text-sm font-semibold text-foreground">{text.confirm.title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{text.confirm.body}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="outline" autoFocus disabled={busy} onClick={() => setConfirming(false)}>
+              {text.buttons.back}
+            </Button>
+            <Button variant="danger" loading={busy} onClick={() => void act(() => api.requestErasure())}>
+              {text.buttons.confirm}
+            </Button>
+          </div>
         </div>
       )}
     </Card>
