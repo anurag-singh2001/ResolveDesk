@@ -659,6 +659,9 @@ class ActionProposal(TenantOwned, Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # The staff user who proposed it (S7.5); NULL for engine/agent proposals. No FK: this table
+    # is immutable, and an erased user must not trigger an UPDATE (migration 0022).
+    proposed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class ProposalSupersession(TenantOwned, Base):

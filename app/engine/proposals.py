@@ -71,6 +71,7 @@ def create_proposal(
     citations: list[dict] | None = None,
     run_id: uuid.UUID | None = None,
     basis: list[dict] | None = None,
+    proposed_by: uuid.UUID | None = None,
 ) -> ActionProposal:
     """Store an immutable proposal in the caller's tenant (session must be scoped to it)."""
     enabled = enabled_actions(tenant_pack(session).actions)
@@ -85,6 +86,8 @@ def create_proposal(
         tenant_id=tenant_id,
         case_id=case_id,
         run_id=run_id,
+        # Only ever the authenticated staff user's id (from the token), never a request value.
+        proposed_by=proposed_by,  # a staff user (S7.5); None for the engine
         action=action,
         params=normalised,
         payload_hash=payload_hash(action, case_id, normalised),

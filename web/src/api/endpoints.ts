@@ -22,6 +22,8 @@ import type {
   OrderDetail,
   PendingApproval,
   QueueItem,
+  StaffRemedyOptions,
+  ProposedRemedy,
   PrivacyContact,
   PolicyDoc,
   RulesSummary,
@@ -110,6 +112,12 @@ export const api = {
   rerunAi: (id: string) => request<RerunAiResult>(`/cases/${enc(id)}/rerun-ai`, { method: "POST" }),
   timeline: (id: string) => request<TimelineEntry[]>(`/cases/${enc(id)}/timeline`),
   events: (id: string) => request<AuditEvent[]>(`/cases/${enc(id)}/events`),
+  staffRemedyOptions: (id: string) =>
+    request<StaffRemedyOptions>(`/cases/${enc(id)}/staff-remedy-options`),
+  categorise: (id: string, category: string) =>
+    request<StaffRemedyOptions>(`/cases/${enc(id)}/categorise`, { method: "POST", body: { category } }),
+  proposeRemedy: (id: string, action: string, amount_paise: number) =>
+    request<ProposedRemedy>(`/cases/${enc(id)}/propose`, { method: "POST", body: { action, amount_paise } }),
   approvals: (limit = 200, filters: ApprovalFilters = {}) => {
     const q = new URLSearchParams({ limit: String(limit) });
     if (filters.location_id) q.set("location_id", filters.location_id);
