@@ -171,7 +171,7 @@ export function ApprovalDetailPage() {
             <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{p.reason || "-"}</p>
             {p.citations && p.citations.length > 0 && (
               <div className="mt-4">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Policy cited</h3>
+                <h3 className="text-xs font-medium text-muted-foreground">Policy cited</h3>
                 <ul className="mt-2 flex flex-wrap gap-2" aria-label="Policy citations">
                   {p.citations.map((ct) => (
                     <li key={`${ct.doc_key}-${ct.section_ref}-${ct.version}`}>
@@ -256,7 +256,7 @@ export function ApprovalDetailPage() {
           <Card className="p-4 sm:p-5">
             <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Your decision</h2>
             <DecisionPanel proposal={p} />
-            <div className="mt-4 border-t border-slate-200 pt-4">
+            <div className="mt-4 border-t border-border pt-4">
               <SwitchRemedy proposal={p} />
             </div>
           </Card>

@@ -32,8 +32,8 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
   if (kase.closed) {
     return (
       <Card className="p-4">
-        <h2 className="text-sm font-semibold text-slate-900">Closed</h2>
-        <p className="mt-1 text-sm text-slate-600">
+        <h2 className="font-montserrat text-sm font-semibold text-foreground">Closed</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
           {data?.close_reasons.find((r) => r.id === kase.close_reason)?.label ?? humanize(kase.close_reason ?? "closed")}. No further replies can be sent.
         </p>
         <Sent kase={kase} />
@@ -81,7 +81,7 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
 
   return (
     <Card className="p-4 sm:p-6">
-      <h2 className="text-sm font-semibold text-slate-900">Reply to the customer</h2>
+      <h2 className="font-montserrat text-sm font-semibold text-foreground">Reply to the customer</h2>
       <form onSubmit={send} className="mt-3 space-y-3">
         <Field label="Message" htmlFor="staff-template" hint={`Sent in the customer's language (${data.language}). Figures are filled in by the system.`}>
           <select id="staff-template" className={inputClass} value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
@@ -94,7 +94,7 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
           </select>
         </Field>
         {chosen && (
-          <p className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-700" aria-label="Preview">
+          <p className="rounded-lg border border-border px-3 py-2 text-sm text-foreground" aria-label="Preview">
             {chosen.preview}
           </p>
         )}
@@ -105,7 +105,7 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
         >
           <textarea id="staff-note" rows={2} maxLength={data.note_max_length} className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
-        <p className="text-xs text-slate-500">
+        <p className="text-xs text-muted-foreground">
           {note.length}/{data.note_max_length}
         </p>
         {error && <Alert>{error}</Alert>}
@@ -115,8 +115,8 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
         </Button>
       </form>
 
-      <div className="mt-6 border-t border-slate-200 pt-4">
-        <h3 className="text-sm font-semibold text-slate-900">Close this case</h3>
+      <div className="mt-6 border-t border-border pt-4">
+        <h3 className="text-sm font-semibold text-foreground">Close this case</h3>
         <div className="mt-2">
           <Field label="Reason" htmlFor="close-reason">
             <select id="close-reason" className={inputClass} value={reason} onChange={(e) => setReason(e.target.value)} disabled={confirming}>
@@ -130,12 +130,12 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
           </Field>
         </div>
         {confirming ? (
-          <div role="group" aria-label="Confirm close" className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm text-slate-800">
+          <div role="group" aria-label="Confirm close" className="mt-3 rounded-lg border border-border p-3">
+            <p className="text-sm text-foreground">
               Close this case as “{data.close_reasons.find((r) => r.id === reason)?.label}”? The customer is told, and it cannot be reopened.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button variant="ghost" autoFocus onClick={() => setConfirming(false)} disabled={busy}>
+              <Button variant="quiet" autoFocus onClick={() => setConfirming(false)} disabled={busy}>
                 Cancel
               </Button>
               <Button variant="danger" onClick={close} loading={busy}>
@@ -144,7 +144,7 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
             </div>
           </div>
         ) : (
-          <Button variant="secondary" className="mt-3" disabled={!reason} onClick={() => setConfirming(true)}>
+          <Button variant="outline" className="mt-3" disabled={!reason} onClick={() => setConfirming(true)}>
             Close case…
           </Button>
         )}
@@ -158,12 +158,12 @@ function Sent({ kase }: { kase: Case }) {
   const msgs = kase.staff_messages ?? [];
   if (msgs.length === 0) return null;
   return (
-    <div className="mt-6 border-t border-slate-200 pt-4">
-      <h3 className="text-sm font-semibold text-slate-900">Sent to the customer</h3>
+    <div className="mt-6 border-t border-border pt-4">
+      <h3 className="text-sm font-semibold text-foreground">Sent to the customer</h3>
       <ul className="mt-2 space-y-2">
         {msgs.map((m, i) => (
-          <li key={`${m.at}-${i}`} className="text-sm text-slate-700">
-            <span className="text-xs text-slate-500">
+          <li key={`${m.at}-${i}`} className="text-sm text-foreground">
+            <span className="text-xs text-muted-foreground">
               {formatDateTime(m.at)} · {m.kind === "note" ? "Note from our team" : "Message"}
             </span>
             <p>{m.text}</p>

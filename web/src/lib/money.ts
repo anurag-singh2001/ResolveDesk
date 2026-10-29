@@ -4,7 +4,7 @@
 const groupIN = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });
 
 export function formatPaise(paise: number | null | undefined): string {
-  if (paise === null || paise === undefined || !Number.isFinite(paise)) return "—";
+  if (paise === null || paise === undefined || !Number.isFinite(paise)) return "n/a";
   const p = Math.trunc(paise);
   const negative = p < 0;
   const abs = Math.abs(p);

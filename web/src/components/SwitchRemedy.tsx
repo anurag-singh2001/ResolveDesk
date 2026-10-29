@@ -113,7 +113,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
 
   if (!open) {
     return (
-      <Button variant="secondary" onClick={openPanel}>
+      <Button variant="outline" onClick={openPanel}>
         Switch remedy
       </Button>
     );
@@ -122,22 +122,22 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
   const none = alts !== null && alts.alternatives.length === 0;
 
   return (
-    <section aria-label="Switch remedy" className="space-y-3 rounded-lg border border-slate-200 p-3">
-      <h3 className="text-sm font-semibold text-slate-900">Switch remedy</h3>
+    <section aria-label="Switch remedy" className="space-y-3 rounded-lg border border-border p-3">
+      <h3 className="font-montserrat text-sm font-semibold text-foreground">Switch remedy</h3>
       {error && <Alert tone={locked ? "warning" : "danger"}>{error}</Alert>}
-      {loading && <p className="text-sm text-slate-500">Loading the remedies you can switch to…</p>}
-      {none && !locked && <p className="text-sm text-slate-600">No other remedy is allowed for this case.</p>}
+      {loading && <p className="text-sm text-muted-foreground">Loading the remedies you can switch to…</p>}
+      {none && !locked && <p className="text-sm text-muted-foreground">No other remedy is allowed for this case.</p>}
       {alts && !none && !locked && (
         <>
           <fieldset>
-            <legend className="text-sm font-medium text-slate-700">Remedy</legend>
+            <legend className="text-sm font-medium text-foreground">Remedy</legend>
             <div className="mt-1.5 space-y-1.5">
               {alts.alternatives.map((a) => (
-                <label key={a.action} className="flex items-start gap-2 text-sm text-slate-800">
+                <label key={a.action} className="flex items-start gap-2 text-sm text-foreground">
                   <input
                     type="radio"
                     name="switch-action"
-                    className="mt-0.5"
+                    className="mt-0.5 accent-current"
                     checked={action === a.action}
                     onChange={() => {
                       setAction(a.action);
@@ -146,7 +146,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
                   />
                   <span>
                     {humanize(a.action)}
-                    <span className="block text-xs text-slate-500">
+                    <span className="block text-xs text-muted-foreground">
                       Between {formatPaise(a.min_paise)} and {formatPaise(a.max_paise)}
                       {a.needs_hq_above_paise !== null && `; above ${formatPaise(a.needs_hq_above_paise)} needs HQ`}
                     </span>
@@ -170,25 +170,25 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
           <Field label="Why are you switching?" htmlFor="switch-note" hint="Saved with the change in the audit trail.">
             <textarea id="switch-note" rows={2} maxLength={500} className={inputClass} value={note} onChange={(e) => setNote(e.target.value)} />
           </Field>
-          <label className="flex items-start gap-2 text-sm text-slate-800">
-            <input type="checkbox" className="mt-0.5" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
+          <label className="flex items-start gap-2 text-sm text-foreground">
+            <input type="checkbox" className="mt-0.5 accent-current" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
             <span>Approve it now as well</span>
           </label>
           {approve && overYourLimit && (
             <Alert tone="warning">That amount is over your approval limit, so it will be created and wait for a senior approver.</Alert>
           )}
           {confirming && choice && amount !== null ? (
-            <div ref={confirmRef} role="group" aria-label="Confirm switch" className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-              <p className="text-sm text-slate-800">
+            <div ref={confirmRef} role="group" aria-label="Confirm switch" className="rounded-lg border border-border p-3">
+              <p className="text-sm text-foreground">
                 Replace {humanize(alts.current_action).toLowerCase()} of {formatPaise(alts.current_amount_paise)} with{" "}
                 {humanize(choice.action).toLowerCase()} of {formatPaise(amount)}
                 {approve && !overYourLimit ? " and approve it" : ""}? The old proposal can no longer be approved.
               </p>
               <div className="mt-3 flex flex-wrap gap-2">
-                <Button variant="ghost" onClick={() => setConfirming(false)} disabled={busy}>
+                <Button variant="quiet" onClick={() => setConfirming(false)} disabled={busy}>
                   Cancel
                 </Button>
-                <Button onClick={submit} loading={busy}>
+                <Button variant="soft" onClick={submit} loading={busy}>
                   Yes, switch
                 </Button>
               </div>
@@ -196,7 +196,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
           ) : (
             <div className="flex flex-wrap items-center gap-2">
               <Button
-                variant="secondary"
+                variant="outline"
                 onClick={() => {
                   const p = problem();
                   setError(p);
@@ -206,7 +206,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
               >
                 Review switch
               </Button>
-              <Button variant="ghost" onClick={() => setOpen(false)}>
+              <Button variant="quiet" onClick={() => setOpen(false)}>
                 Cancel
               </Button>
             </div>
@@ -214,7 +214,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
         </>
       )}
       {(locked || none) && (
-        <Button variant="ghost" onClick={() => setOpen(false)}>
+        <Button variant="quiet" onClick={() => setOpen(false)}>
           Close
         </Button>
       )}

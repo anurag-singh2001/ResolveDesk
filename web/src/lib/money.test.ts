@@ -16,7 +16,7 @@ describe("formatPaise", () => {
   });
 
   it("shows a dash when there is no amount", () => {
-    expect(formatPaise(null)).toBe("—");
-    expect(formatPaise(undefined)).toBe("—");
+    expect(formatPaise(null)).toBe("n/a");
+    expect(formatPaise(undefined)).toBe("n/a");
   });
 });
