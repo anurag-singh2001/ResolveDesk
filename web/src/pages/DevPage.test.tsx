@@ -26,17 +26,17 @@ function setup(role: Role, extra: Parameters<typeof mockFetch>[0] = {}) {
   });
 }
 
-describe("dev panel", () => {
+describe("demo controls", () => {
   it("is hidden from the nav when the API has no admin routes (404)", async () => {
     setup("hq_owner");
     renderApp("/approvals");
     await screen.findByTestId("side-nav");
-    expect(within(screen.getByTestId("side-nav")).queryByText("Dev panel")).not.toBeInTheDocument();
+    expect(within(screen.getByTestId("side-nav")).queryByText("Demo controls")).not.toBeInTheDocument();
   });
 
   it("is hidden from other roles and never asks the API", async () => {
     const { calls } = setup("location_manager", { "GET /admin/chaos": { body: chaos } });
-    renderApp("/dev");
+    renderApp("/demo");
     expect(await screen.findByText("Page not found")).toBeInTheDocument();
     expect(calls.some((c) => c.path === "/admin/chaos")).toBe(false);
   });
@@ -44,12 +44,12 @@ describe("dev panel", () => {
   it("shows in the nav for hq_owner when the API exposes it", async () => {
     setup("hq_owner", { "GET /admin/chaos": { body: chaos } });
     renderApp("/approvals");
-    expect(await within(await screen.findByTestId("side-nav")).findByText("Dev panel")).toBeInTheDocument();
+    expect(await within(await screen.findByTestId("side-nav")).findByText("Demo controls")).toBeInTheDocument();
   });
 
   it("posts chaos settings for one service", async () => {
     const { calls } = setup("hq_owner", { "GET /admin/chaos": { body: chaos }, "POST /admin/chaos": { body: chaos } });
-    renderApp("/dev");
+    renderApp("/demo");
     const form = await screen.findByRole("form", { name: "Chaos settings for payment" });
     const input = within(form).getByLabelText("Timeout rate");
     await userEvent.clear(input);
@@ -61,7 +61,7 @@ describe("dev panel", () => {
 
   it("applies a preset and resets a service", async () => {
     const { calls } = setup("hq_owner", { "GET /admin/chaos": { body: chaos }, "POST /admin/chaos": { body: chaos } });
-    renderApp("/dev");
+    renderApp("/demo");
     await userEvent.click(await screen.findByRole("button", { name: "Payment times out after accepting" }));
     await userEvent.click(screen.getByRole("button", { name: "Reset vouchers" }));
     const posts = calls.filter((c) => c.method === "POST").map((c) => c.body);
@@ -70,7 +70,7 @@ describe("dev panel", () => {
 
   it("runs the sweeper and shows the result", async () => {
     const { calls } = setup("hq_owner", { "GET /admin/chaos": { body: chaos }, "POST /admin/sweep": { body: report } });
-    renderApp("/dev");
+    renderApp("/demo");
     await userEvent.click(await screen.findByRole("button", { name: "Run sweeper" }));
     expect(await screen.findByTestId("sweep-result")).toHaveTextContent("Executed 1, reconciled 2, verified 0, escalated 0 case(s).");
     expect(calls.some((c) => c.method === "POST" && c.path === "/admin/sweep")).toBe(true);
@@ -88,7 +88,7 @@ describe("dev panel", () => {
         return { body: at(offset) };
       },
     });
-    renderApp("/dev");
+    renderApp("/demo");
     expect(await screen.findByTestId("clock-offset")).toHaveTextContent("offset 0s");
     await userEvent.click(screen.getByRole("button", { name: "+1h" }));
     await userEvent.click(screen.getByRole("button", { name: "+4h" }));
@@ -105,5 +105,23 @@ describe("dev panel", () => {
       { advance_seconds: 1296000 },
       { reset: true },
     ]);
+  });
+
+  it("is titled Demo controls with help text and old /dev redirects", async () => {
+    setup("hq_owner", { "GET /admin/chaos": { body: chaos }, "GET /admin/clock": { body: { now: "2026-10-27T10:00:00Z", offset_seconds: 0 } } });
+    renderApp("/dev");
+    expect(await screen.findByRole("heading", { name: "Demo controls" })).toBeInTheDocument();
+    expect(screen.getAllByText(/no real money or message moves/).length).toBeGreaterThanOrEqual(3);
+    expect(screen.getByText(/changes no money and sends no messages/)).toBeInTheDocument();
+  });
+
+  it("shows reset demo as not available (disabled) and a platform portal placeholder", async () => {
+    const { calls } = setup("hq_owner", { "GET /admin/chaos": { body: chaos } });
+    renderApp("/demo");
+    const btn = await screen.findByRole("button", { name: "Reset demo (not available yet)" });
+    expect(btn).toBeDisabled();
+    await userEvent.click(btn);
+    expect(calls.some((c) => c.method === "POST")).toBe(false);
+    expect(screen.getByTestId("platform-portal")).toHaveTextContent("Platform portal (coming in Sprint 9)");
   });
 });

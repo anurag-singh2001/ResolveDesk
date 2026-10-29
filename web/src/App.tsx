@@ -66,7 +66,8 @@ export function App() {
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
         <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
         <Route path="/growth" element={<Only when={canSeeGrowth(me.role, me.growth_enabled)}><GrowthPage /></Only>} />
-        <Route path="/dev"element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
+        <Route path="/dev" element={<Navigate to="/demo" replace />} />
+        <Route path="/demo" element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />
         <Route path="/policies" element={<PoliciesPage />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="*" element={<NotFound />} />

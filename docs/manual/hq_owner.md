@@ -107,22 +107,22 @@ can't approve twice. If the system refuses, its reason is shown. After the campa
 **Measure result** shows the verdict (worked, did not work, or inconclusive) and the lesson
 saved to the playbook. "Possible causes" are hints, not confirmed facts.
 
-## Dev panel (demo only)
+## Demo controls (demo only)
 
-In a demo or test setup, a **Dev panel** link appears in the menu. It is not there in a real
+In a demo or test setup, a **Demo controls** link (it was called Dev panel before) appears in the menu. It is not there in a real
 (production) setup. It lets you break the pretend payment, voucher and messaging services on
 purpose, to see how the system recovers. It only affects your own business.
 
-1. Click **Dev panel**.
+1. Click **Demo controls**. Every control has a one-line note saying what it changes. None of them moves real money or sends real messages.
 2. Pick a preset such as **Payment times out after accepting**, or set the rates for one service
    (0 means never, 1 means always) and click **Apply**. **Reset** puts that service back to normal.
 3. Report a problem as a customer and approve the refund. It shows as processing, never as paid,
    until the provider confirms.
-4. Back on the Dev panel, click **Run sweeper**. It finishes or re-checks anything left
+4. Back on Demo controls, click **Run sweeper**. It finishes or re-checks anything left
    unfinished and shows how many items it handled.
 
-Resetting the demo data and moving the clock are not on this page. Ask whoever runs the demo to use
-`make seed` (reload data) and `make sweep` (same as Run sweeper, for every business).
+The page also has a **Simulated clock** card. **Reset demo** is shown but switched off ("not available yet"): wiping demo data would also erase payment records and could hide a real state. Ask whoever runs the demo to use
+`make seed` (reload data) and `make sweep` (same as Run sweeper, for every business). A **Platform portal** line is a placeholder until Sprint 9.
 
 ## Policies
 

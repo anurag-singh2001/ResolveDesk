@@ -51,7 +51,7 @@ export interface QueueFilters {
 }
 
 export const api = {
-  // Dev panel (APP_ENV dev/test only; 404 elsewhere).
+  // Demo controls (APP_ENV dev/test only; 404 elsewhere).
   chaos: () => request<ChaosState>("/admin/chaos"),
   setChaos: (service: string, settings: Partial<ChaosSettings>) =>
     request<ChaosState>("/admin/chaos", { method: "POST", body: { service, ...settings } }),

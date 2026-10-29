@@ -30,18 +30,18 @@ outlet scope; payment timeout shown honestly; repeat complainer; the AI asks and
 answers; insights and a win-back campaign. Extra Sprint 5 screens: customer **Privacy & data**
 (consent switch, download, erasure request) and the reply language (it follows what the customer writes).
 
-Before showing step 4 (timeout) or the growth verdict, rehearse once. Reset the Dev panel clock
+Before showing step 4 (timeout) or the growth verdict, rehearse once. Reset the Demo controls clock
 afterwards.
 
 ## Reset
 
 | Goal | Command |
 | --- | --- |
-| Finish or reconcile interrupted payouts | `make sweep` (or Dev panel → Run sweeper) |
+| Finish or reconcile interrupted payouts | `make sweep` (or Demo controls → Run sweeper) |
 | Clear mock provider records | delete `var/mock_state.json` and restart the API |
 | Reload tenant settings/policies only | `make refresh` (dev) |
 | Reload all demo data (destructive) | `make seed TENANT=all` |
-| Simulated clock back to now | Dev panel → Reset clock |
+| Simulated clock back to now | Demo controls → Reset clock (Reset demo there is disabled on purpose; use `make seed`) |
 | Retention job | `make retention` (dry run, counts only); `make retention APPLY=1` redacts |
 
 ## Tests
