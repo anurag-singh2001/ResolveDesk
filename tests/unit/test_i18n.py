@@ -23,6 +23,9 @@ _SAMPLE = {
     "years": 7,
     "ceiling": 90,
     "n": 3,
+    "percent": 50,
+    "minutes": 20,
+    "count": 3,
 }
 
 

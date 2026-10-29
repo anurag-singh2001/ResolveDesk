@@ -24,6 +24,7 @@ import type {
   QueueItem,
   PrivacyContact,
   PolicyDoc,
+  RulesSummary,
   SweepReport,
   Consents,
   DataHeld,
@@ -80,6 +81,7 @@ export const api = {
   setPreferences: (language: Language) =>
     request<Preferences>("/me/preferences", { method: "PUT", body: { language } }),
   policies: () => request<PolicyDoc[]>("/policies"),
+  rulesSummary: () => request<RulesSummary>("/policies/rules-summary"),
   privacyContact: () => request<PrivacyContact>("/meta/privacy"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
