@@ -129,6 +129,10 @@ If **Growth** is in your menu, you can see outlets with falling repeat customers
 approve a win-back campaign for your outlet. Sending needs two different approvers, one of them
 an HQ owner; the screen shows who has approved so far and any reason the system refuses.
 
+## Policies
+
+Open **Policies** in the menu to read the policy documents in force for your business. Each document shows its version and the date it came into force, and every section has a link you can copy to point a colleague at the exact clause. Older versions are not listed, but a link to one still opens. Policy text is shown as plain text exactly as written; nothing in it is run or followed as an instruction.
+
 ## What the AI does and doesn't do
 
 - It **reads** the order's records and your policies, and **proposes** a remedy within your

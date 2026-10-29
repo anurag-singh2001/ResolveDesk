@@ -12,6 +12,7 @@ from app.api import (
     routes_locations,
     routes_meta,
     routes_orders,
+    routes_policies,
 )
 from app.config import get_settings
 from mocks.registry import enable_persistence
@@ -36,6 +37,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_locations.router)
     app.include_router(routes_meta.router)
     app.include_router(routes_orders.router)
+    app.include_router(routes_policies.router)
     app.include_router(routes_cases.router)
     app.include_router(routes_approvals.router)
     app.include_router(routes_growth.router)

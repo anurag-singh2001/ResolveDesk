@@ -23,6 +23,7 @@ import type {
   PendingApproval,
   QueueItem,
   PrivacyContact,
+  PolicyDoc,
   SweepReport,
   Consents,
   ErasureRequest,
@@ -76,6 +77,7 @@ export const api = {
   preferences: () => request<Preferences>("/me/preferences"),
   setPreferences: (language: Language) =>
     request<Preferences>("/me/preferences", { method: "PUT", body: { language } }),
+  policies: () => request<PolicyDoc[]>("/policies"),
   privacyContact: () => request<PrivacyContact>("/meta/privacy"),
   orders: (limit = 50) => request<Order[]>(`/orders?limit=${limit}`),
   order: (id: string) => request<OrderDetail>(`/orders/${enc(id)}`),
