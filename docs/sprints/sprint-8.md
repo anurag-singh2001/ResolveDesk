@@ -186,5 +186,45 @@ S8.1 before S8.2 and S8.3; S7.9 before S8.2 (options); S8.5a before S8.5b, S8.5c
 - S8.7 depends on an owner action (design approval) and a large merge; hold it until Sprint 7 case-page stories have landed.
 - Neon free-tier flakiness and the 2-heavy-process cap limit parallel test runs.
 
-## Daily Scrum, Retro, Review
-(To be added when the sprint starts.)
+## Daily Scrum 2026-10-31 (live, called by the owner)
+
+Evidence checked in git at the time of writing: local `test` head 4a462df; `origin/test` ef33ab8 (S8.3); local is 4 commits ahead (S7.5 merge db1768b, migration 0025; eval harness fix ef4dbb8; Sprint 9 plan 4a462df; plus 3006e74). Ready branches exist: feature/S8.5d-erasure bb61f94, feature/S8.5c-readable-export dbb4885, feature/S8.5b-consent-benefits df3a697. Test counts below are as reported by the coordinator; I did not run them.
+
+| Participant | Done (evidence) | Next | Blocked |
+| --- | --- | --- | --- |
+| Main session / Opus coordinator | Merged and pushed Sprint 8: UI revamp f11eaca, S8.1, S8.2 a0f1f61, S8.3 ef33ab8, S8.5a d71ff3b, S8.6 ee6cfce. Merged locally S7.5 db1768b and eval harness fix ef4dbb8. Wrote Sprint 9 plan 4a462df. Mistake owned: put an eval run and a builder on the same DB (s8a), so the first eval crashed | Finish S7.5 merged-head tests, push; merge S8.5d, then S8.5c, then S8.5b (needs 0026 first), targeted tests after each | Machine memory 1.6-2.2 GB free; background runs killed twice |
+| Builders S8.5d / S8.5c / S8.5b (Sonnet) | S8.5d bb61f94 (migration 0026; 40+40+26 passed); S8.5c dbb4885 (28+40+20 passed, vitest 150); S8.5b df3a697 (migration 0027, renumbered after 0026) | Wait for merge order; S8.5b re-test after 0026 lands | Merge order; usage limits interrupted builders several times |
+| Builders S7.5 / S8.1-S8.6 / S8.7 (Sonnet) | All merged (see coordinator row) | no activity until Sprint 9 | none |
+| safety-reviewer (Sonnet) | Reviews of S7.5, S8.5a, S8.5b-d, S8.3 each found real bugs fixed before merge (e.g. a44f65a four eyes and no staff auto-approve; 0ba2fe4 legal ceiling and provisional label) | Re-review S8.5b after rebase if the migration or consent logic changed | none |
+| test-runner (Haiku) | S7.5 merged-head run in progress, 10+ min, restarted after a low-memory kill. No full suite on test head yet | Report S7.5 result; targeted runs per merge | Memory; max 2 heavy processes |
+| eval-runner (Haiku) | No completed eval this sprint or Sprint 7: run 1 crashed (shared DB), run 2 on resolvedesk_eval killed for memory | Re-run on dedicated resolvedesk_eval once memory is free and no builder test is running | Memory |
+| business-analyst (Sonnet) | S8.4 privacy research fecf31c (earlier). No activity since | No activity; owner benchmark paste optional | none |
+| scrum-master | This stand-up; Sprint 9 planning was done earlier; no ticks | Sprint 8 Review when DoD evidence exists | none |
+| Owner (human) | Gave `.env` access verbally; deferred Neon password rotation (keep current DB) | Lift the `.env` deny rule in .claude/settings.json or paste values; answer decisions below; do browser walkthroughs or approve them being run | `.env` still denied by settings; decisions pending |
+
+### Honest status
+Zero stories meet the full Definition of Done today, so nothing is ticked in EPICS.md. Missing for every merged story: browser walkthrough (none done), completed eval run (none), full suite on the test head (not run), CI on the pushed branch for the unpushed commits. S7.7 (O0005779) is not cleared. Sprint 7 and Sprint 8 dates have both passed (7 ended 2026-10-29, 8 planned to end today 2026-10-31); everything unticked is at risk and carries over.
+
+### Burndown (SP; "done" means ticked, which needs full DoD)
+| Sprint | Planned | Merged (code) | Ready, not merged | Not merged / not started | Ticked (done) |
+| --- | --- | --- | --- | --- | --- |
+| 7 | 60 (47 code + 13 design) | 47 code (39 + S7.5 8, merged locally; S7.5 not pushed) | 0 | Design S7.D1 + S7.D2 13: no repo evidence | 0 |
+| 8 | 42 (39 core + 3 stretch; includes S7.9 5 carry-over) | 31 = S7.9 5 + S8.7 5 + S8.1 5 + S8.2 5 + S8.3 3 + S8.5a 5 + S8.6 3 | 11 = S8.5d 5 + S8.5c 3 + S8.5b 3 | 0 | 0 |
+Note: S7.9 is counted in both Sprint 7 (47) and Sprint 8 (carry-over); the true unique code total is lower by 5.
+
+### Today's plan (in order)
+1. Finish S7.5 merged-head tests, then push test (S7.5, harness fix, Sprint 9 plan).
+2. Merge S8.5d (0026), targeted tests; then S8.5c; then S8.5b with a re-test; one merge at a time.
+3. When memory allows: eval run on resolvedesk_eval (nothing else heavy), then one full suite on the test head.
+4. Browser walkthroughs (light, dark, 375px, both tenants) for UI stories; clear O0005779 via S7.4 and verify in the UI.
+5. Then Sprint 7 and Sprint 8 Reviews and ticks, only for verified stories. Sprint 9 does not start until Sprint 8 is merged.
+6. Proposed re-scope if the day runs out: nothing new started; carry unticked stories forward; never drop tests, evals or safety review.
+
+### Owner decisions pending (the three that matter most)
+1. Refund option fit to policy, "no remedy is due" wording, and the second-person rule on the S7.10 switch: all change money behaviour in shipped code.
+2. Privacy figures and labels: retention (12 months messages, 7 years payments), 30-day target, "privacy contact" label, the "not kept" claims, and the completion message after erasure.
+3. Lifting the `.env` deny rule (or pasting values) so the portal and evals can run for real; also needed for the real walkthrough.
+Others: highlight case (default sentence case), S7.5 defaults (four eyes, no staff auto-approve), campaign dual approval, Sprint 8 dates, customers seeing other brands' policies, real Reset demo, JSON export case ids, Hindi/Hinglish native review.
+
+## Retro, Review
+(To be added at Sprint 8 close.)
