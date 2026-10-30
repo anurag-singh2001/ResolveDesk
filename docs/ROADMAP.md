@@ -49,7 +49,7 @@ v1 is complete (Sprints 0-6 closed, merged to main at cf6a861, CI green). The ow
 | 6 | not estimated in SP | not estimated in SP | S/M/L estimates only |
 | 7 | 60 | (filled at Sprint Review) | |
 | 8 | 42 (39 core + 3 stretch S8.5c; incl. 5 carry-over S7.9) | | Re-estimated at planning: S8.5 split 5 -> 16, S8.7 8 -> 5; S8.5e (8) moved to Sprint 9 |
-| 9 | 31 | | |
+| 9 | 39 (31 core S9.1-S9.5 + 8 S8.5e if capacity allows) | | Planned 2026-10-31, see sprint-9.md; starts only after Sprint 8 stories are merged; migrations from 0028 |
 | 10 | 24 | | |
 | 11 | 24 | | |
 | 12 | ~30 | | |
