@@ -52,6 +52,7 @@ from app.core.models import (
     WorkflowRun,
 )
 from app.core.settings_resolver import tenant_pack
+from app.core.telemetry import record_llm_usage
 from app.engine import lifecycle
 from app.engine.approvals import head_proposal_id
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
@@ -701,6 +702,8 @@ def _record(deps: Deps, tenant_id, run_id: uuid.UUID, final: dict, paused: bool,
                 run.error = (final.get("reason") or "")[:500]
     except Exception:
         log.exception("could not record the result of run %s", run_id)
+    # After the transaction above is closed; best effort, never raises (S9.2).
+    record_llm_usage(deps.engine, tenant_id, budget, run_id)
     return snapshot
 
 

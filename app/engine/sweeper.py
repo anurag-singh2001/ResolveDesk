@@ -37,6 +37,7 @@ from app.core.models import (
     Verification,
     WorkflowRun,
 )
+from app.core.telemetry import run_job
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from app.engine.agent_runner import resume_after_decision, resume_info
@@ -310,6 +311,10 @@ def _escalate_stuck_cases(engine, tenant_id, now, run_ttl) -> list[str]:
     return escalated
 
 
+def _sweep_counts(r: SweepReport) -> dict[str, int]:
+    return {k: len(v) if isinstance(v, list) else v for k, v in vars(r).items()}
+
+
 def sweep_all(engine: Engine, now: datetime | None = None) -> dict[str, SweepReport]:
     """Every tenant folder, each in its own RLS scope. One tenant's failure doesn't stop the
     others."""
@@ -317,7 +322,10 @@ def sweep_all(engine: Engine, now: datetime | None = None) -> dict[str, SweepRep
     for folder in tenant_dirs():
         slug = load_tenant(folder).slug
         try:
-            reports[slug] = sweep_tenant(engine, tenant_id_for(slug), now)
+            tid = tenant_id_for(slug)
+            reports[slug] = run_job(
+                engine, tid, "sweep", lambda t=tid: sweep_tenant(engine, t, now), _sweep_counts
+            )
         except Exception:
             log.exception("sweep failed for tenant %s", slug)
     return reports

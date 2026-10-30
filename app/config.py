@@ -2,7 +2,7 @@ import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, SecretStr, model_validator
+from pydantic import Field, NonNegativeInt, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["gemini", "groq", "ollama"]
@@ -55,6 +55,10 @@ class Settings(BaseSettings):
     # Actual provider requests: every request sent, retries and fallbacks included
     # (cache hits send none). Bounds the worst case of retry * fallback per logical call.
     llm_max_provider_requests_per_run: int = Field(default=24, ge=1)
+    # ESTIMATE price table for the usage records (S9.2): "provider/model" -> [input, output]
+    # paise per million tokens, integers (hard rule 3). Unlisted models cost 0 (free tiers).
+    # Not a bill: check the provider's invoice. Env: LLM_PRICES_PAISE_PER_MILLION='{"a/b":[1,2]}'.
+    llm_prices_paise_per_million: dict[str, tuple[NonNegativeInt, NonNegativeInt]] = {}
 
     # Dev only: JSON file the mock providers keep their records in, so they survive an API
     # restart. Unset = in memory (tests, default).

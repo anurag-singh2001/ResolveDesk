@@ -832,6 +832,55 @@ class DomainEvent(TenantOwned, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class LlmUsage(TenantOwned, Base):
+    """One row per (agent run, role, provider, model): counters from the run's RunBudget (S9.2).
+    Numbers and labels only: never a prompt, a reply or a message. Money is integer
+    micro-paise (1 paise = 1,000,000), an ESTIMATE from the settings price table."""
+
+    __tablename__ = "llm_usage"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('ok', 'error', 'fallback_used')", name="ck_llm_usage_outcome"),
+        CheckConstraint(
+            "calls >= 0 AND input_tokens >= 0 AND output_tokens >= 0 AND failures >= 0 "
+            "AND latency_ms >= 0 AND estimated_cost_micro_paise >= 0",
+            name="ck_llm_usage_counters",
+        ),
+    )
+
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # workflow run, no FK
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # main | classifier
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False)  # provider requests sent
+    input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    estimated_cost_micro_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    failures: Mapped[int] = mapped_column(Integer, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)  # summed over calls
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_class: Mapped[str | None] = mapped_column(String(80))  # exception class name only
+
+
+class JobRun(TenantOwned, Base):
+    """One background job execution for one tenant (S9.2). Counts are integers only and the
+    error is the exception class name: no personal content."""
+
+    __tablename__ = "job_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'ok', 'failed', 'skipped')", name="ck_job_runs_status"
+        ),
+        Index("ix_job_runs_tenant_job_started", "tenant_id", "job", "started_at"),
+    )
+
+    job: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    error_class: Mapped[str | None] = mapped_column(String(80))
+
+
 # --- Policies (PROJECT.md section 11) ----------------------------------------------------
 
 
@@ -1071,6 +1120,8 @@ ENGINE_MODELS = [
     Verification,
     RefundOperation,
     DomainEvent,
+    LlmUsage,
+    JobRun,
 ]
 # Auth bookkeeping (lockout counters); not config, not history.
 AUTH_MODELS = [LoginFailure]
