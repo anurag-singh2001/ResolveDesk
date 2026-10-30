@@ -174,3 +174,17 @@ def test_each_tenant_shows_only_its_own_rules(api, seeded_history, tenant):
     for slug, (name, _) in pack_of.items():
         if slug != cfg.slug:
             assert name != own_name or len(pack_of) == 1
+
+
+def test_a_pack_stored_before_a_setting_existed_still_loads(api, sample, monkeypatch):
+    """A database whose stored pack predates a setting must not break the page for staff."""
+    cfg, _, _ = sample
+    hq = next(u for u in cfg.users if u.role == "hq_owner")
+
+    def older_pack(session):
+        return {k: v for k, v in effective_settings(session).items() if k != "voucher_percent"}
+
+    monkeypatch.setattr("app.engine.rules_summary.effective_settings", older_pack)
+    r = api.get("/policies/rules-summary", headers=login(api, cfg.slug, hq.email))
+    assert r.status_code == 200, r.text
+    assert "voucher_percent" not in {row["key"] for row in r.json()["settings"]}

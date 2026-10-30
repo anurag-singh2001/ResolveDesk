@@ -249,6 +249,7 @@ def build_rules_summary(
                 "source": "tenant_override" if k in overrides else "pack_default",
             }
             for k in used
+            if k in settings  # a pack stored before this key existed must not break the page
         ]
     return RulesSummary(
         language=lang,
