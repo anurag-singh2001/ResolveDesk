@@ -12,6 +12,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_tenant_context, not_found, tenant_db
+from app.core.i18n import normalize
 from app.core.models import (
     Brand,
     Case,
@@ -24,7 +25,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import data_held
+from app.engine import data_held, erasure_info
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -208,7 +209,7 @@ def my_data_held(
 class DataRequestOut(BaseModel):
     id: uuid.UUID
     kind: str
-    status: str  # pending_approval | deferred | completed
+    status: str  # pending_approval | deferred | completed | withdrawn
     reason: str | None  # template text, set when deferred
     deferred_until: datetime | None
     requested_at: datetime
@@ -227,21 +228,39 @@ def _request_out(r: DataRequest) -> DataRequestOut:
     )
 
 
+def _my_request(req: DataRequest, db: Session, customer: Customer) -> dict:
+    """The customer's view of a request: the plain fields plus stage, dates and the contact,
+    in the customer's language. The text of a stage never says more than the row proves."""
+    lang = normalize(customer.preferred_language)
+    body = _request_out(req).model_dump(mode="json")
+    return body | erasure_info.view(req, effective_settings(db), lang) | {"id": str(req.id)}
+
+
+@router.get("/me/erasure-info")
+def my_erasure_info(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """What erasure removes, keeps and may wait for, in the customer's language."""
+    customer = own_customer(ctx, db)
+    return erasure_info.info(effective_settings(db), normalize(customer.preferred_language))
+
+
 @router.post("/me/erasure-request", status_code=status.HTTP_201_CREATED)
 def request_erasure(
     ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
-) -> DataRequestOut:
+) -> dict:
+    """File a request. If one is already open the same request comes back (not a second one)."""
     customer = own_customer(ctx, db)
     req = privacy.request_erasure(
         db, ctx.tenant_id, customer.id, datetime.now(UTC), actor_id=ctx.user_id
     )
-    return _request_out(req)
+    return _my_request(req, db, customer)
 
 
 @router.get("/me/erasure-request")
 def my_erasure_request(
     ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
-) -> DataRequestOut | None:
+) -> dict | None:
     """The latest request, or null when there is none."""
     customer = own_customer(ctx, db)
     req = db.scalar(
@@ -250,7 +269,22 @@ def my_erasure_request(
         .order_by(DataRequest.created_at.desc(), DataRequest.id)
         .limit(1)
     )
-    return _request_out(req) if req else None
+    return _my_request(req, db, customer) if req else None
+
+
+@router.post("/me/erasure-request/cancel")
+def withdraw_my_erasure_request(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """Withdraw the open request. 404 when there is none; 409 once it has been carried out
+    (it cannot be undone, and we do not pretend otherwise)."""
+    customer = own_customer(ctx, db)
+    req = privacy.withdraw_erasure(db, ctx.tenant_id, customer.id, actor_id=ctx.user_id)
+    if req is None:
+        raise not_found()
+    if req.status == "completed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request has already been carried out")
+    return _my_request(req, db, customer)
 
 
 class StaffRequestOut(DataRequestOut):
@@ -288,4 +322,8 @@ def approve_data_request(
     req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, datetime.now(UTC))
     if req is None:
         raise not_found()
+    if req.status == "withdrawn":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
+        )
     return _request_out(req)

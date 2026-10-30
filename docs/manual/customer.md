@@ -137,12 +137,21 @@ Open **Privacy & data** in the menu.
   change with its date.
 - **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
   companies that process data for us (such as the AI providers and the database host).
-- **Erase my data.** Click **Request erasure**. A person reviews it, and then your name, contact
-  details and message text are removed. Records of payments and refunds are kept. The page shows
-  the request's status: **Waiting for review**, **Completed**, or **Deferred** with the reason
-  (for example a case or refund of yours is still open, or we must keep records for one year after
-  your last activity). A deferred request is not dropped; ask the business to review it again
-  once the reason has passed.
+- **Erase my data.** The card first lists **We will remove** (your name, phone and email, the text of
+  your support messages, extra details on your profile, your sign-in, and your offers choice),
+  **We will keep** with a reason for each (orders, payments and refunds for the record period,
+  case records, a log of actions without your name, your record of offer choices, your customer
+  reference code) and **We may wait** (a person approves first; an open case; a refund or
+  payment still being processed; a record on hold; one year since your last order or case).
+  Click **Request erasure**, read the confirmation (**Cancel** is selected first, and nothing is
+  sent until you press **Yes, request erasure**). Then the card shows your request: **Received**,
+  **Could not complete yet** with the reason, **Done**, or **Withdrawn**, the date we received
+  it, the date we aim to finish by (the business's target, 30 days unless it set another) and
+  the legal limit (90 days), and the privacy contact. It says **Done** only after the erasure has
+  really been carried out. A request that could not complete is not dropped: it stays open and a
+  person re-checks it. Until it is carried out, press **Withdraw my request** to take it back;
+  you can ask again later. Asking again while a request is open shows that same request. After
+  it is done you can no longer sign in, because your sign-in is one of the things removed.
 
 ## Language for our messages
 

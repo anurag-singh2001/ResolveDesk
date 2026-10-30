@@ -269,6 +269,40 @@ def request_erasure(
     return req
 
 
+def withdraw_erasure(
+    s: Session,
+    tenant_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> DataRequest | None:
+    """The customer takes back their open request. Returns the request (already withdrawn
+    counts as success), or None when they have no request. A completed request cannot be
+    withdrawn: the caller gets it back unchanged and must say so. The row is locked like
+    run_erasure locks it, so a withdrawal and an approval cannot both win: whichever commits
+    second sees the other's final state."""
+    req = s.scalar(
+        select(DataRequest)
+        .where(DataRequest.tenant_id == tenant_id, DataRequest.customer_id == customer_id)
+        .order_by(DataRequest.created_at.desc(), DataRequest.id)
+        .limit(1)
+        .with_for_update()
+    )
+    if req is None or req.status in ("completed", "withdrawn"):
+        return req
+    req.status, req.reason_code, req.deferred_until = "withdrawn", None, None
+    audit.record(
+        s,
+        tenant_id,
+        actor_type="user",
+        actor_id=actor_id,
+        event="privacy.erasure_withdrawn",
+        entity_type="data_request",
+        entity_id=req.id,
+        payload={},
+    )
+    return req
+
+
 def run_erasure(
     s: Session,
     tenant_id: uuid.UUID,
@@ -283,8 +317,8 @@ def run_erasure(
         .where(DataRequest.tenant_id == tenant_id, DataRequest.id == request_id)
         .with_for_update()
     )
-    if req is None or req.status == "completed":
-        return req
+    if req is None or req.status in ("completed", "withdrawn"):
+        return req  # a withdrawn request never runs, even if a person approves it later
     # Lock the customer before checking the guards and keep it until commit: case writes take
     # a share lock on the same row (engine/cases.lock_customer), so nothing new can start
     # between the check and the redaction.

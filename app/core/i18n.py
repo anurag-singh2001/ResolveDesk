@@ -512,6 +512,275 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Aapke data ke bare mein sawal",
         "hi": "आपके डेटा के बारे में सवाल",
     },
+    # ---- erasure explained and tracked (S8.5d, app/engine/erasure_info.py). Hindi copy awaits
+    # native review (docs/DECISIONS.md). The lists must match what data_rights._redact and
+    # erasure_block really do; tests/integration/test_erasure_info.py checks that.
+    "erase.title": {
+        "en": "Erase my data",
+        "hi-Latn": "Mera data mitaiye",
+        "hi": "मेरा डेटा मिटाएं",
+    },
+    "erase.intro": {
+        "en": "Erasing removes your personal details from our records. Some records have to stay. "
+        "Read the lists below, then decide.",
+        "hi-Latn": "Erase karne se aapki nijee jaankari hamare records se hat jaati hai. Kuch "
+        "records rakhne padte hain. Neeche ki soochi padhiye, phir tay kijiye.",
+        "hi": "मिटाने से आपकी निजी जानकारी हमारे रिकॉर्ड से हट जाती है। कुछ रिकॉर्ड रखने पड़ते हैं। "
+        "नीचे की सूची पढ़ें, फिर तय करें।",
+    },
+    "erase.h.remove": {
+        "en": "We will remove",
+        "hi-Latn": "Hum hata denge",
+        "hi": "हम हटा देंगे",
+    },
+    "erase.h.keep": {
+        "en": "We will keep",
+        "hi-Latn": "Hum rakhenge",
+        "hi": "हम रखेंगे",
+    },
+    "erase.h.wait": {
+        "en": "We may wait",
+        "hi-Latn": "Hum intezaar kar sakte hain",
+        "hi": "हम इंतज़ार कर सकते हैं",
+    },
+    "erase.remove.name": {
+        "en": "Your name",
+        "hi-Latn": "Aapka naam",
+        "hi": "आपका नाम",
+    },
+    "erase.remove.contact": {
+        "en": "Your phone number and email",
+        "hi-Latn": "Aapka phone number aur email",
+        "hi": "आपका फ़ोन नंबर और ईमेल",
+    },
+    "erase.remove.messages": {
+        "en": "The text of your support messages",
+        "hi-Latn": "Aapke support messages ka text",
+        "hi": "आपके सपोर्ट संदेशों का टेक्स्ट",
+    },
+    "erase.remove.profile": {
+        "en": "Extra details saved on your profile",
+        "hi-Latn": "Aapki profile par saved anya jaankari",
+        "hi": "आपकी प्रोफ़ाइल पर सहेजी गई अन्य जानकारी",
+    },
+    "erase.remove.login": {
+        "en": "Your sign-in. You will not be able to sign in again.",
+        "hi-Latn": "Aapka sign-in. Aap dobara sign in nahin kar paayenge.",
+        "hi": "आपका साइन-इन। आप दोबारा साइन इन नहीं कर पाएंगे।",
+    },
+    "erase.remove.offers": {
+        "en": "Offers and promotions are turned off for you",
+        "hi-Latn": "Aapke liye offers aur promotions band kar diye jaate hain",
+        "hi": "आपके लिए ऑफ़र और प्रमोशन बंद कर दिए जाते हैं",
+    },
+    "erase.keep.records": {
+        "en": "Orders, payments and refunds: amounts, dates, order references and refund or "
+        "voucher records",
+        "hi-Latn": "Orders, payments aur refunds: raashi, taareekh, order references aur refund "
+        "ya voucher ke records",
+        "hi": "ऑर्डर, भुगतान और रिफ़ंड: राशि, तारीख़, ऑर्डर संदर्भ और रिफ़ंड या वाउचर के रिकॉर्ड",
+    },
+    "erase.keep.records.why": {
+        "en": "Kept {years} years, for our accounts and to show what was paid.",
+        "hi-Latn": "{years} saal rakhe jaate hain, hamare hisaab ke liye aur yeh dikhane ke liye "
+        "ki kya bhugtaan hua.",
+        "hi": "{years} साल रखे जाते हैं, हमारे हिसाब के लिए और यह दिखाने के लिए कि क्या भुगतान हुआ।",
+    },
+    "erase.keep.cases": {
+        "en": "Case records: category, status and dates",
+        "hi-Latn": "Case ke records: category, status aur taareekh",
+        "hi": "केस के रिकॉर्ड: श्रेणी, स्थिति और तारीख़",
+    },
+    "erase.keep.cases.why": {
+        "en": "To show what was decided and paid on each case. Your message text is removed.",
+        "hi-Latn": "Yeh dikhane ke liye ki har case par kya tay hua aur kya diya gaya. Aapke "
+        "messages ka text hata diya jaata hai.",
+        "hi": "यह दिखाने के लिए कि हर केस पर क्या तय हुआ और क्या दिया गया। आपके संदेशों का टेक्स्ट "
+        "हटा दिया जाता है।",
+    },
+    "erase.keep.audit": {
+        "en": "A log of actions taken (who did what, and when)",
+        "hi-Latn": "Kiye gaye kaamon ka log (kisne kya kiya, aur kab)",
+        "hi": "किए गए कामों का लॉग (किसने क्या किया, और कब)",
+    },
+    "erase.keep.audit.why": {
+        "en": "It shows that money and privacy actions were handled properly. It holds codes and "
+        "ids, not your name or message text.",
+        "hi-Latn": "Yeh dikhata hai ki paise aur privacy ke kaam theek se hue. Isme codes aur ids "
+        "hote hain, aapka naam ya messages ka text nahin.",
+        "hi": "यह दिखाता है कि पैसे और प्राइवेसी के काम ठीक से हुए। इसमें कोड और आईडी होते हैं, "
+        "आपका नाम या संदेशों का टेक्स्ट नहीं।",
+    },
+    "erase.keep.consents": {
+        "en": "Your record of agreeing to or stopping offers",
+        "hi-Latn": "Offers ke liye haan ya band karne ka aapka record",
+        "hi": "ऑफ़र के लिए हां या बंद करने का आपका रिकॉर्ड",
+    },
+    "erase.keep.consents.why": {
+        "en": "It is proof of what you chose and when.",
+        "hi-Latn": "Yeh saboot hai ki aapne kya chuna aur kab.",
+        "hi": "यह सबूत है कि आपने क्या चुना और कब।",
+    },
+    "erase.keep.linked": {
+        "en": "Other records linked to you by a reference number, such as offer lists, signals "
+        "and notes on decisions. Your language choice and home outlet also stay.",
+        "hi-Latn": "Reference number se aapse jude anya records, jaise offer ki soochi, signals "
+        "aur faislon par notes. Aapki bhasha ka chunav aur home outlet bhi rehte hain.",
+        "hi": "संदर्भ संख्या से आपसे जुड़े अन्य रिकॉर्ड, जैसे ऑफ़र सूची, सिग्नल और फ़ैसलों पर नोट। "
+        "आपकी भाषा की पसंद और होम आउटलेट भी रहते हैं।",
+    },
+    "erase.keep.linked.why": {
+        "en": "They hold no name or contact details. They show how offers and decisions were made.",
+        "hi-Latn": "Inme naam ya contact details nahin hote. Yeh dikhate hain ki offers aur faisle "
+        "kaise hue.",
+        "hi": "इनमें नाम या संपर्क विवरण नहीं होते। ये दिखाते हैं कि ऑफ़र और फ़ैसले कैसे हुए।",
+    },
+    "erase.keep.reference": {
+        "en": "Your customer reference code",
+        "hi-Latn": "Aapka customer reference code",
+        "hi": "आपका ग्राहक संदर्भ कोड",
+    },
+    "erase.keep.reference.why": {
+        "en": "It is a code, not your name. It links the records above.",
+        "hi-Latn": "Yeh ek code hai, aapka naam nahin. Yeh upar ke records ko jodta hai.",
+        "hi": "यह एक कोड है, आपका नाम नहीं। यह ऊपर के रिकॉर्ड को जोड़ता है।",
+    },
+    "erase.wait.review": {
+        "en": "A member of our team approves each request first.",
+        "hi-Latn": "Hamari team ka ek sadasya pehle har request ko manzoor karta hai.",
+        "hi": "हमारी टीम का एक सदस्य पहले हर अनुरोध को मंज़ूर करता है।",
+    },
+    "erase.wait.retention_floor": {
+        "en": "Less than a year has passed since your last order or case. We must keep some "
+        "records for at least one year, so the request can go ahead after that.",
+        "hi-Latn": "Aapke aakhri order ya case ko ek saal nahin hua hai. Hamein kuch records "
+        "kam se kam ek saal rakhne hote hain, isliye request uske baad aage badh sakti hai.",
+        "hi": "आपके आखिरी ऑर्डर या केस को एक साल नहीं हुआ है। हमें कुछ रिकॉर्ड कम से कम एक साल रखने "
+        "होते हैं, इसलिए अनुरोध उसके बाद आगे बढ़ सकता है।",
+    },
+    "erase.reason.open_case": {
+        "en": "You have a case that is still being handled. We can erase your data once it is "
+        "closed.",
+        "hi-Latn": "Aapka ek case abhi chal raha hai. Wo band hone par hum aapka data mita sakte "
+        "hain.",
+        "hi": "आपका एक केस अभी चल रहा है। वह बंद होने पर हम आपका डेटा मिटा सकते हैं।",
+    },
+    "erase.reason.in_flight": {
+        "en": "A refund or payment linked to your orders is still being processed. We will "
+        "revisit your request once it has settled.",
+        "hi-Latn": "Aapke orders se jura koi refund ya payment abhi process ho raha hai. Wo poora "
+        "hone par hum aapki request dobara dekhenge.",
+        "hi": "आपके ऑर्डर से जुड़ा कोई रिफ़ंड या भुगतान अभी प्रोसेस हो रहा है। वह पूरा होने पर हम "
+        "आपका अनुरोध फिर देखेंगे।",
+    },
+    "erase.reason.legal_hold": {
+        "en": "Some of your records are on hold and must be kept for now. A member of our team "
+        "will follow up.",
+        "hi-Latn": "Aapke kuch records hold par hain aur abhi rakhne padenge. Hamari team ka ek "
+        "sadasya aapse sampark karega.",
+        "hi": "आपके कुछ रिकॉर्ड होल्ड पर हैं और अभी रखने होंगे। हमारी टीम का एक सदस्य आपसे संपर्क करेगा।",
+    },
+    "erase.reason.retention_floor": {
+        "en": "We must keep some records for at least one year after your last activity. Your "
+        "request can go ahead after {date}.",
+        "hi-Latn": "Hamein aapki aakhri gatividhi ke baad kuch records kam se kam ek saal rakhne "
+        "hote hain. Aapki request {date} ke baad aage badh sakti hai.",
+        "hi": "हमें आपकी आखिरी गतिविधि के बाद कुछ रिकॉर्ड कम से कम एक साल रखने होते हैं। आपका "
+        "अनुरोध {date} के बाद आगे बढ़ सकता है।",
+    },
+    "erase.btn.request": {
+        "en": "Request erasure",
+        "hi-Latn": "Erase ki request karein",
+        "hi": "मिटाने का अनुरोध करें",
+    },
+    "erase.confirm.title": {
+        "en": "Ask us to erase your data?",
+        "hi-Latn": "Kya aap apna data mitaane ko kehna chahte hain?",
+        "hi": "क्या आप अपना डेटा मिटाने के लिए कहना चाहते हैं?",
+    },
+    "erase.confirm.body": {
+        "en": "Once it is done it cannot be undone. The lists above apply: what we remove, what we "
+        "keep, and what may make us wait. Until it is done you can withdraw the request.",
+        "hi-Latn": "Ek baar ho jaane par ise wapas nahin kiya ja sakta. Upar ki soochiyan lagu "
+        "hoti hain: kya hatega, kya rahega, aur kis wajah se intezaar ho sakta hai. Jab tak yeh "
+        "poora nahin hota, aap request wapas le sakte hain.",
+        "hi": "एक बार हो जाने पर इसे वापस नहीं किया जा सकता। ऊपर की सूचियां लागू होती हैं: क्या हटेगा, "
+        "क्या रहेगा, और किस वजह से इंतज़ार हो सकता है। जब तक यह पूरा नहीं होता, आप अनुरोध वापस "
+        "ले सकते हैं।",
+    },
+    "erase.btn.confirm": {
+        "en": "Yes, request erasure",
+        "hi-Latn": "Haan, erase ki request karein",
+        "hi": "हां, मिटाने का अनुरोध करें",
+    },
+    "erase.btn.back": {
+        "en": "Cancel",
+        "hi-Latn": "Raddh karein",
+        "hi": "रद्द करें",
+    },
+    "erase.btn.withdraw": {
+        "en": "Withdraw my request",
+        "hi-Latn": "Meri request wapas lein",
+        "hi": "मेरा अनुरोध वापस लें",
+    },
+    "erase.status.title": {
+        "en": "Your erasure request",
+        "hi-Latn": "Aapki erase request",
+        "hi": "आपका मिटाने का अनुरोध",
+    },
+    "erase.stage.received": {
+        "en": "Received",
+        "hi-Latn": "Mil gayi",
+        "hi": "मिल गया",
+    },
+    "erase.stage.deferred": {
+        "en": "Could not complete yet",
+        "hi-Latn": "Abhi poori nahin ho sakti",
+        "hi": "अभी पूरा नहीं हो सकता",
+    },
+    "erase.stage.done": {
+        "en": "Done",
+        "hi-Latn": "Ho gaya",
+        "hi": "हो गया",
+    },
+    "erase.stage.withdrawn": {
+        "en": "Withdrawn",
+        "hi-Latn": "Wapas li gayi",
+        "hi": "वापस ले लिया गया",
+    },
+    "erase.stage.received.text": {
+        "en": "We have your request. Nothing has been erased yet. A member of our team will "
+        "review it.",
+        "hi-Latn": "Humein aapki request mil gayi hai. Abhi kuch mitaya nahin gaya hai. Hamari "
+        "team ka ek sadasya ise dekhega.",
+        "hi": "हमें आपका अनुरोध मिल गया है। अभी कुछ मिटाया नहीं गया है। हमारी टीम का एक सदस्य इसे देखेगा।",
+    },
+    "erase.stage.deferred.text": {
+        "en": "Nothing has been erased. Reason: ",
+        "hi-Latn": "Kuch mitaya nahin gaya hai. Wajah: ",
+        "hi": "कुछ मिटाया नहीं गया है। वजह: ",
+    },
+    "erase.stage.done.text": {
+        "en": "Your data was erased on {date}.",
+        "hi-Latn": "Aapka data {date} ko mita diya gaya.",
+        "hi": "आपका डेटा {date} को मिटा दिया गया।",
+    },
+    "erase.stage.withdrawn.text": {
+        "en": "You withdrew this request. Nothing was erased.",
+        "hi-Latn": "Aapne yeh request wapas le li. Kuch mitaya nahin gaya.",
+        "hi": "आपने यह अनुरोध वापस ले लिया। कुछ मिटाया नहीं गया।",
+    },
+    "erase.received_on": {
+        "en": "Received on {date}",
+        "hi-Latn": "{date} ko mili",
+        "hi": "{date} को मिला",
+    },
+    "erase.expected_by": {
+        "en": "We aim to finish by {date}. The legal limit is {ceiling}.",
+        "hi-Latn": "Hum {date} tak poora karne ka lakshya rakhte hain. "
+        "Kanooni seema {ceiling} hai.",
+        "hi": "हम {date} तक पूरा करने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} है।",
+    },
     # ---- staff replies and closing (app/engine/staff_actions.py, S7.6) ----
     # Hinglish and Devanagari copy is plain and awaits native review (docs/DECISIONS.md).
     "staff.looking_into": {

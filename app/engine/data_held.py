@@ -147,9 +147,16 @@ def _processors(settings: dict[str, Any]) -> list[dict[str, str]]:
     return out
 
 
-def contact(settings: dict[str, Any], lang: str) -> dict[str, Any]:
+def target_days(settings: dict[str, Any]) -> int:
+    """Our internal answer-by target in days (tenant setting, default 30, never above the legal
+    ceiling). A bool or a bad value falls back to the default."""
     days = settings.get("grievance_target_days")
-    days = days if isinstance(days, int) and 0 < days <= LEGAL_CEILING_DAYS else 30
+    ok = isinstance(days, int) and not isinstance(days, bool) and 0 < days <= LEGAL_CEILING_DAYS
+    return days if ok else 30
+
+
+def contact(settings: dict[str, Any], lang: str) -> dict[str, Any]:
+    days = target_days(settings)
     name = str(settings.get("privacy_contact_name") or "")
     email = str(settings.get("privacy_contact_email") or "")
     configured = bool(email)
