@@ -74,6 +74,26 @@ Point tests at a separate database (`TEST_DATABASE_URL`), never the demo one.
 | `make eval` refuses to run | DATABASE_URL points at the demo DB | point it at a scratch DB |
 | `make retention` exits 2 | APP_ENV not set in the process environment | `APP_ENV=dev make retention` |
 
+## Platform admin (S9.1)
+
+The platform admin is one operator who sees cross-tenant counts and never a customer record. It is OFF until you set all three variables in `.env` (never commit them). With any one missing, blank, or the API restarted without them, every `/platform/...` route answers 404.
+
+| Variable | What it is |
+| --- | --- |
+| `PLATFORM_ADMIN_EMAIL` | the operator's sign-in email |
+| `PLATFORM_ADMIN_PASSWORD_HASH` | a bcrypt hash of the password (not the password) |
+| `PLATFORM_DATABASE_URL` | connection string for the DB role `resolvedesk_platform` (below) |
+
+Optional: `PLATFORM_JWT_TTL_MINUTES` (default 30, token life is the smaller of this and `JWT_TTL_MINUTES`).
+
+1. Make the hash (bcrypt hashes contain `$`; put it in `.env` between single quotes if your shell expands it): `uv run python -c "import getpass; from app.core.passwords import hash_password; print(hash_password(getpass.getpass()))"`.
+2. Migration 0028 creates the role `resolvedesk_platform` as NOLOGIN with no table rights. Give it a login and a strong password as the DB owner (once per database, the password stays out of the repo): `ALTER ROLE resolvedesk_platform LOGIN PASSWORD '<strong password>';`. Build `PLATFORM_DATABASE_URL` from your existing app URL with that user and password (same host and database, pooled endpoint is fine).
+3. Sign in: `POST /platform/auth/login` with `{"email", "password"}`; use the returned bearer token on `GET /platform/tenants`, `/platform/cases`, `/platform/approvals`, `/platform/activity`. A tenant token gets 403 there; a platform token gets 401 on every tenant route.
+4. Five wrong logins in 15 minutes give 429 (counted in memory per API process; a restart clears it).
+5. Every read writes a row to `platform_audit_events` (actor and route only), readable by the DB owner.
+
+The role can read only the `platform_*_v` aggregate views (counts by tenant slug, day and status code; no names, phones, messages or ids). Later stories add their views the same way.
+
 ## Clearing a case the AI could not handle (the stuck demo case O0005779)
 
 A case whose reason reads "AI unavailable: MissingAPIKey" (or `ProviderFailed`) came to a person only because the models could not run. Order O0005779 is such a case in the demo data. Clear it with S7.4:

@@ -84,19 +84,6 @@ def upgrade() -> None:
         """
     )
     op.execute("REVOKE ALL ON platform_audit_events FROM PUBLIC")
-    # Default privileges would hand the app and maintenance roles DML on a new table; this
-    # table is the platform's own, so take it back from both.
-    op.execute(
-        """
-        DO $$ DECLARE r text; BEGIN
-            FOREACH r IN ARRAY ARRAY['resolvedesk_app', 'resolvedesk_maint'] LOOP
-                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
-                    EXECUTE format('REVOKE ALL ON platform_audit_events FROM %I', r);
-                END IF;
-            END LOOP;
-        END $$
-        """
-    )
     op.execute(
         """
         CREATE FUNCTION platform_audit_record(p_actor text, p_route text)
@@ -148,6 +135,22 @@ def upgrade() -> None:
         FROM public.organizations o
         LEFT JOIN public.audit_events e ON e.tenant_id = o.id AND e.actor_type = 'system'
         GROUP BY o.slug
+        """
+    )
+    # Default privileges hand the app and maintenance roles DML on every new table and view.
+    # These objects are the platform's own: take them back from both (cross-tenant totals are
+    # for the platform role only).
+    op.execute(
+        f"""
+        DO $$ DECLARE r text; o text; BEGIN
+            FOREACH r IN ARRAY ARRAY['resolvedesk_app', 'resolvedesk_maint'] LOOP
+                IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = r) THEN
+                    FOREACH o IN ARRAY ARRAY['platform_audit_events', {", ".join(f"'{v}'" for v in VIEWS)}] LOOP
+                        EXECUTE format('REVOKE ALL ON %I FROM %I', o, r);
+                    END LOOP;
+                END IF;
+            END LOOP;
+        END $$
         """
     )
     for view in VIEWS:
