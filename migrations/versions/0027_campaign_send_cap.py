@@ -5,10 +5,10 @@ transaction as the per-phone advisory lock and the cap check), so the cap is cou
 sends, not from when the audience was picked. `skipped` is a new terminal status for a member
 left unsent because the cap would have been broken; `skip_reason` holds the code. Both columns
 are on an existing tenant-owned table, so RLS and grants already cover them.
-Follows 0025 (0026-0028 are held by other stories).
+Follows 0026 (S8.5d).
 
-Revision ID: 0029
-Revises: 0025
+Revision ID: 0027
+Revises: 0026
 Create Date: 2026-10-29
 """
 
@@ -17,8 +17,8 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
-revision: str = "0029"
-down_revision: str | None = "0025"
+revision: str = "0027"
+down_revision: str | None = "0026"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
