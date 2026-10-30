@@ -136,7 +136,12 @@ Open **Privacy & data** in the menu.
   and it applies to the next message we would send. **History of your choices** lists each
   change with its date.
 - **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
-  companies that process data for us (such as the AI providers and the database host).
+  companies that process data for us (such as the AI providers and the database host). The file is
+  for other software. For a copy you can read, click **Open readable version**: one page in your
+  language with a section for your details, orders, help requests, refunds and vouchers, your
+  choices about offers, and the companies that handle data for us. Each section says why we hold
+  it and how long we keep it. Amounts are in rupees and dates show the month name, in Indian time.
+  Click **Print or save as PDF** to keep a copy. It shows only your own data, nothing internal.
 - **Erase my data.** The card first lists **We will remove** (your name, phone and email, the text of
   your support messages, extra details on your profile, your sign-in, and your offers choice),
   **We will keep** with a reason for each (orders, payments and refunds for the record period,

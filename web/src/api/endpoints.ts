@@ -1,5 +1,6 @@
 import { request } from "./client";
 import type {
+  ReadableExport,
   AuditEvent,
   ChaosSettings,
   ChaosState,
@@ -78,6 +79,7 @@ export const api = {
     request<Consents>(`/me/consents/${enc(purpose)}`, { method: "POST", body: { granted } }),
   dataHeld: () => request<DataHeld>("/me/data-held"),
   dataExport: () => request<unknown>("/me/data-export"),
+  readableExport: () => request<ReadableExport>("/me/data-export/readable"),
   myErasureRequest: () => request<ErasureRequest | null>("/me/erasure-request"),
   requestErasure: () => request<ErasureRequest>("/me/erasure-request", { method: "POST" }),
   erasureInfo: () => request<ErasureInfo>("/me/erasure-info"),

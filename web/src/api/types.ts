@@ -459,6 +459,31 @@ export interface DataHeld {
 }
 
 export type ErasureStage = "received" | "deferred" | "done" | "withdrawn";
+export interface ExportField {
+  label: string;
+  value: string;
+}
+
+export interface ExportSection {
+  key: string;
+  title: string;
+  purpose: string | null;
+  retention: string | null;
+  retention_provisional: boolean;
+  records: ExportField[][];
+  history?: ExportField[][];
+}
+
+export interface ReadableExport {
+  language: string;
+  title: string;
+  generated: string;
+  tz_note: string;
+  labels: { why: string; howlong: string; empty: string; history: string; print: string; back: string };
+  provisional_label: string | null;
+  sections: ExportSection[];
+  contact: PrivacyContact;
+}
 
 export interface ErasureRequest {
   id: string;
