@@ -765,6 +765,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "निर्णय के बाद यह भाग बदल गया है; इसकी जगह दस्तावेज़ का लिंक दिया गया है।",
     },
     # ---- readable data export (S8.5c). Hindi copy awaits native review (docs/DECISIONS.md).
+    "export.other": {
+        "en": "Other",
+        "hi-Latn": "Anya",
+        "hi": "अन्य",
+    },
     "export.title": {
         "en": "Your data, in a readable form",
         "hi-Latn": "Aapka data, padhne laayak roop mein",

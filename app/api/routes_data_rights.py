@@ -6,7 +6,7 @@ hq_owner approves it."""
 import uuid
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -137,10 +137,13 @@ def set_my_consent(
 
 @router.get("/me/data-export")
 def my_data_export(
-    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+    response: Response,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
 ) -> dict:
     """A summary of the customer's own personal data and who else processes it (DPDP s.11).
     Case text is the customer-safe status message, not internal notes or model output."""
+    response.headers["Cache-Control"] = "no-store"  # personal data: no shared or disk cache
     customer = own_customer(ctx, db)
     now = datetime.now(UTC)
     orders = db.execute(
@@ -194,11 +197,14 @@ def my_data_export(
 
 @router.get("/me/data-export/readable")
 def my_readable_export(
-    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+    response: Response,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
 ) -> dict:
     """The same customer's data as print-friendly sections in their language (S8.5c). The
     customer comes from the token; there is no id to pass. The audit row carries no personal
     content, only that an export happened."""
+    response.headers["Cache-Control"] = "no-store"
     customer = own_customer(ctx, db)
     body = data_export.readable_export(db, customer, effective_settings(db), datetime.now(UTC))
     audit.record(

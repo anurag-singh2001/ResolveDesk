@@ -41,7 +41,7 @@ def _word(prefix: str, value: str, lang: str) -> str:
     try:
         return t(f"{prefix}.{value}", lang)
     except KeyError:
-        return value.replace("_", " ").capitalize()
+        return t("export.other", lang)  # never the raw stored code
 
 
 def _field(label: str, value: str) -> dict[str, str]:
@@ -102,6 +102,8 @@ def readable_export(
     ):
         st = case_status(db, case, now, lang)
         order = db.get(Transaction, case.transaction_id) if case.transaction_id else None
+        if order is not None and order.customer_id != customer.id:
+            order = None  # a case can point at someone else's order: never print its number
         ref = [_field(f["order"], order.external_ref)] if order else []
         cases.append(
             [
@@ -111,11 +113,16 @@ def readable_export(
                 _field(f["update"], st.message),
             ]
         )
-        if st.amount_paise is not None:  # the status message states the verified stage
+        # Only remedies that were approved (or later); the message states the verified stage.
+        if (
+            st.amount_paise is not None
+            and st.action
+            and st.stage not in ("awaiting_approval", "declined")
+        ):
             remedies.append(
                 [
                     *ref,
-                    _field(f["remedy"], _word("export.r", st.action or "", lang)),
+                    _field(f["remedy"], _word("export.r", st.action, lang)),
                     _field(f["amount"], format_inr(st.amount_paise)),
                     _field(f["status"], st.message),
                 ]
@@ -146,7 +153,7 @@ def readable_export(
     ]
     processors = [
         [_field(f["name"], p["name"]), _field(f["role"], p["role"]), _field(f["data"], p["data"])]
-        for p in data_held._processors(settings)
+        for p in data_held.processors(settings)
     ]
 
     return {

@@ -11,7 +11,7 @@ from sqlalchemy import delete, select
 
 from app.core.db import tenant_session
 from app.core.i18n import LANGUAGES
-from app.core.models import AuditEvent, Customer, Transaction
+from app.core.models import AuditEvent, Case, Customer, Ticket, TicketMessage, Transaction
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from tests.integration import test_retention as ret
@@ -198,3 +198,76 @@ def test_other_tenants_customer_never_appears(api, maint_engine, people, tenant)
     finally:
         with tenant_session(other_tid, maint_engine) as s:
             s.execute(delete(Customer).where(Customer.id == cid))
+
+
+def test_a_case_linked_to_another_customers_order_does_not_print_its_number(
+    api, app_engine, tid, made, people
+):
+    a, auth = people("Alice Anand")
+    b, _ = people("Bruno Bose")
+    with tenant_session(tid, app_engine) as s:
+        order_b = _order(s, tid, made, SimpleId(b), 10)
+        case_a = _case(s, tid, made, SimpleId(a), status="closed", age_days=10)
+        s.get(Case, case_a.id).transaction_id = order_b.id
+        ref_b = s.get(Transaction, order_b.id).external_ref
+    r = api.get("/me/data-export/readable", headers=auth)
+    assert ref_b not in r.text
+    assert len(r.json()["sections"][2]["records"]) == 1  # the case itself is still listed
+
+
+def test_staff_notes_and_other_customers_never_appear(api, app_engine, tid, made, people):
+    a, auth = people("Alice Anand")
+    with tenant_session(tid, app_engine) as s:
+        case = _case(s, tid, made, SimpleId(a), status="open", age_days=3)
+        ticket = s.scalars(select(Ticket).where(Ticket.case_id == case.id)).one()
+        for kind, body in (
+            ("note", "INTERNAL-NOTE-XYZ Bruno Bose called"),
+            ("template", "TPL-BODY"),
+        ):
+            s.add(
+                TicketMessage(
+                    tenant_id=tid,
+                    ticket_id=ticket.id,
+                    author="staff",
+                    body=body,
+                    kind=kind,
+                    sent_at=ret.NOW,
+                )
+            )
+    text = api.get("/me/data-export/readable", headers=auth).text
+    assert "INTERNAL-NOTE" not in text and "Bruno" not in text and "TPL-BODY" not in text
+
+
+def test_money_stages_read_differently_and_unapproved_ones_are_not_listed(
+    api, app_engine, tid, made, people
+):
+    a, auth = people("Alice Anand")
+    stages = [
+        dict(approved=False),  # submitted: waiting for approval, not a remedy yet
+        dict(execution=None),  # approved, not run: processing
+        dict(execution="succeeded", verified=True),  # confirmed
+        dict(execution="failed", verified=True),  # failed
+    ]
+    with tenant_session(tid, app_engine) as s:
+        for kw in stages:
+            case = _case(s, tid, made, SimpleId(a), status="open", age_days=3)
+            _money(s, tid, case, **kw)
+    rows = api.get("/me/data-export/readable", headers=auth).json()["sections"][3]["records"]
+    messages = [next(f["value"] for f in rec if f["label"] == "Status") for rec in rows]
+    assert len(messages) == 3  # the unapproved one is left out
+    assert len(set(messages)) == 3  # processing, confirmed, failed: all different
+
+
+def test_unknown_codes_read_as_a_neutral_label(api, app_engine, tid, made, people):
+    a, auth = people("Alice Anand")
+    with tenant_session(tid, app_engine) as s:
+        case = _case(s, tid, made, SimpleId(a), status="open", age_days=3)
+        s.get(Case, case.id).category = "weird_new_category"
+    text = api.get("/me/data-export/readable", headers=auth).text
+    assert "weird_new_category" not in text and "Weird new" not in text
+
+
+def test_both_exports_are_not_cached(api, people):
+    _, auth = people("Alice Anand")
+    for path in ("/me/data-export/readable", "/me/data-export"):
+        assert api.get(path, headers=auth).headers["cache-control"] == "no-store"

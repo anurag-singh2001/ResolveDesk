@@ -137,7 +137,7 @@ def _retention(kind: str, settings: dict[str, Any], lang: str) -> str:
     return t("held.ret.consents", lang)
 
 
-def _processors(settings: dict[str, Any]) -> list[dict[str, str]]:
+def processors(settings: dict[str, Any]) -> list[dict[str, str]]:
     out = []
     for p in settings.get("data_processors") or []:
         if isinstance(p, dict) and all(
@@ -208,7 +208,7 @@ def what_we_hold(db: Session, customer: Customer, settings: dict[str, Any]) -> d
         "language": lang,
         "headings": {k: t(f"held.h.{k}", lang) for k in HEADINGS},
         "items": items,
-        "processors": _processors(settings),
+        "processors": processors(settings),
         "not_kept": claims,  # empty (hidden) unless the tenant setting backs a claim
         "provisional_label": t("held.provisional", lang) if provisional else None,
         "contact": contact(settings, lang),
