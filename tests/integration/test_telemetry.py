@@ -6,7 +6,8 @@ from datetime import UTC, datetime
 from types import SimpleNamespace
 
 import pytest
-from sqlalchemy import delete, select
+from sqlalchemy import delete, select, text
+from sqlalchemy.exc import DBAPIError
 
 import app.core.telemetry as telemetry
 from app.config import Settings
@@ -144,3 +145,22 @@ def test_sweep_retention_and_growth_nightly_are_recorded(app_engine, tid):
     assert "escalated_cases" in got["sweep"].counts
     assert "messages" in got["retention_dry_run"].counts
     assert "signals" in got["growth_nightly"].counts
+
+
+def test_app_role_cannot_rewrite_usage_or_the_start_of_a_job(app_engine, tid):
+    telemetry.record_llm_usage(app_engine, tid, budget_with_usage())
+    job = telemetry.start_job(app_engine, tid, "sweep")
+    for sql in (
+        "UPDATE llm_usage SET calls = 99",
+        "DELETE FROM llm_usage",
+        "DELETE FROM job_runs",
+        "UPDATE job_runs SET job = 'x'",
+        "UPDATE job_runs SET started_at = now()",
+    ):
+        with (
+            pytest.raises(DBAPIError, match="permission denied"),
+            tenant_session(tid, app_engine) as s,
+        ):
+            s.execute(text(sql))
+    telemetry.finish_job(app_engine, tid, job, "ok", {"n": 1})  # the finish columns are allowed
+    assert [r.status for r in rows(app_engine, tid, JobRun)] == ["ok"]
