@@ -25,7 +25,7 @@ from app.engine import data_held
 from app.engine import data_rights as privacy
 
 REMOVE = ("name", "contact", "messages", "profile", "login", "offers")
-KEEP = ("records", "cases", "audit", "consents", "reference")
+KEEP = ("records", "cases", "audit", "consents", "linked", "reference")
 WAIT_CODES = ("open_case", "in_flight", "legal_hold")  # plus review and the one-year floor
 
 # Request status in the database -> stage the customer sees.
@@ -101,6 +101,9 @@ def view(req: DataRequest, settings: dict[str, Any], lang: str) -> dict:
     elif stage == "done" and req.completed_at:
         text = t("erase.stage.done.text", lang, date=format_date(req.completed_at.date(), lang))
     active = stage in ("received", "deferred")
+    # Never show a date the system will not meet: a deferral that runs past the expected-by
+    # date (for example the one-year floor) states its own date in the reason instead.
+    promise = active and not (req.deferred_until and req.deferred_until > expected)
     return {
         "id": str(req.id),
         "status": req.status,
@@ -114,15 +117,15 @@ def view(req: DataRequest, settings: dict[str, Any], lang: str) -> dict:
             "erase.received_on", lang, date=format_date(req.created_at.date(), lang)
         ),
         # Dates are only promised while the request is open.
-        "expected_by": expected if active else None,
-        "legal_ceiling_by": legal if active else None,
+        "expected_by": expected if promise else None,
+        "legal_ceiling_by": legal if promise else None,
         "expected_text": t(
             "erase.expected_by",
             lang,
             date=format_date(expected.date(), lang),
             ceiling=format_date(legal.date(), lang),
         )
-        if active
+        if promise
         else None,
         "completed_at": req.completed_at,
         "can_withdraw": req.status in CAN_WITHDRAW,

@@ -1,4 +1,4 @@
-# ruff: noqa: F811, F401
+# ruff: noqa: F811, F401, B023
 """S8.5d: erasure explained and tracked.
 
 Runs for every tenant and names none. The wording is tested against what the erasure and
@@ -137,7 +137,7 @@ def test_erasure_does_what_the_lists_say(api, app_engine, tid, made, people, ten
     for table in ("transactions", "payments", "action_proposals", "approvals", "executions"):
         assert after[table] == before[table]
     assert all(row in after["audit"] for row in before["audit"])
-    assert len(erasure_info.REMOVE) == 6 and len(erasure_info.KEEP) == 5  # lists reviewed
+    assert len(erasure_info.REMOVE) == 6 and len(erasure_info.KEEP) == 6  # lists reviewed
 
 
 # -- tracking a request ------------------------------------------------------------------
@@ -247,7 +247,7 @@ def test_customer_can_withdraw_before_it_runs_and_ask_again(
         ).all()
         assert events.count("privacy.erasure_withdrawn") == 1
     # A person approving a withdrawn request changes nothing.
-    assert _approve(api, hq, req["id"])["status"] == "withdrawn"
+    assert api.post(f"/data-requests/{req['id']}/approve", headers=hq).status_code == 409
     with tenant_session(tid, app_engine) as s:
         assert s.get(Customer, cid).name == "Real Person"
     fresh = _request(api, auth)  # asking again is a new request
@@ -348,3 +348,74 @@ def test_copy_has_no_guilt_or_dashes():
             for text in variants.values():
                 assert "—" not in text and "–" not in text, key
                 assert "sorry to see you go" not in text.lower(), key
+
+
+def test_approving_a_withdrawn_request_is_409_and_erases_nothing(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    assert api.post("/me/erasure-request/cancel", headers=auth).status_code == 200
+    r = api.post(f"/data-requests/{req['id']}/approve", headers=hq)
+    assert r.status_code == 409 and "withdrew" in r.json()["detail"]
+    with tenant_session(tid, app_engine) as s:
+        assert s.get(Customer, cid).name == "Real Person"
+
+
+def test_no_date_is_shown_that_a_deferral_will_not_meet():
+    now = datetime.now(UTC)
+    row = DataRequest(
+        id=uuid.uuid4(),
+        tenant_id=uuid.uuid4(),
+        customer_id=uuid.uuid4(),
+        kind="erasure",
+        status="deferred",
+        reason_code="retention_floor",
+        deferred_until=now + timedelta(days=200),
+        created_at=now,
+    )
+    body = erasure_info.view(row, {}, "en")
+    assert body["expected_by"] is None and body["legal_ceiling_by"] is None
+    assert body["expected_text"] is None
+    assert (now + timedelta(days=200)).date().strftime("%Y") in body["stage_text"]
+    row.deferred_until = now + timedelta(days=5)  # inside the target: the dates stay
+    assert erasure_info.view(row, {}, "en")["expected_by"] is not None
+    row.deferred_until = None
+    assert erasure_info.view(row, {}, "en")["expected_by"] is not None
+
+
+def test_withdraw_and_approve_at_the_same_time_never_both_win(app_engine, tid, made, people):
+    import threading
+
+    for _ in range(3):
+        cid, _auth = people()
+        with tenant_session(tid, app_engine) as s:
+            _order(s, tid, made, SimpleId(cid), 400)
+            _case(s, tid, made, SimpleId(cid), status="closed", age_days=400)
+            req_id = privacy.request_erasure(s, tid, cid, datetime.now(UTC)).id
+        out = {}
+        gate = threading.Barrier(2)
+
+        def withdraw():
+            gate.wait()
+            with tenant_session(tid, app_engine) as s:
+                out["w"] = privacy.withdraw_erasure(s, tid, cid).status
+
+        def approve():
+            gate.wait()
+            with tenant_session(tid, app_engine) as s:
+                out["a"] = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC)).status
+
+        ts = [threading.Thread(target=withdraw), threading.Thread(target=approve)]
+        [x.start() for x in ts]
+        [x.join() for x in ts]
+        with tenant_session(tid, app_engine) as s:
+            final = s.get(DataRequest, req_id).status
+            erased = s.get(Customer, cid).name == "[redacted]"
+        assert final in ("withdrawn", "completed")
+        if final == "withdrawn":
+            assert not erased and out["a"] == "withdrawn"
+        else:  # erased first: the withdrawal is told it came too late (route gives 409)
+            assert erased and out["w"] == "completed"

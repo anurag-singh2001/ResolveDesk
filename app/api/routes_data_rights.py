@@ -322,4 +322,8 @@ def approve_data_request(
     req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, datetime.now(UTC))
     if req is None:
         raise not_found()
+    if req.status == "withdrawn":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
+        )
     return _request_out(req)
