@@ -120,6 +120,9 @@ def test_retention_comes_from_tenant_settings(api, app_engine, tid, people):  # 
     items = _by_key(api.get("/me/data-held", headers=auth).json())
     assert str(retention_days(settings)) in items["messages"]["retention"]
     assert str(settings["payment_retention_years"]) in items["orders"]["retention"]
+    assert settings["payment_retention_years"] == data_held.DEFAULT_RECORD_YEARS == 8  # P1
+    assert "financial year" in items["orders"]["retention"]
+    assert retention_days(settings) == 365  # message text stays 12 months
     # The job redacts a signed-in customer's contact data never, so no day count is promised.
     for key in ("name", "phone"):
         assert not any(ch.isdigit() for ch in items[key]["retention"])

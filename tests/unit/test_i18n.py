@@ -152,3 +152,23 @@ def test_a_remedy_always_states_its_amount_in_every_language():
             assert amount in text, (action, lang)
     assert _remedy(SimpleNamespace(action="x_y", amount_paise=34900), "en") == "a x y of ₹349.00"
     assert _remedy(SimpleNamespace(action="x_y", amount_paise=None), "en") == "a x y"
+
+
+_LEGAL_DEADLINE = re.compile(
+    r"legal (limit|ceiling|deadline)|kanooni seema|कानूनी सीमा|\b90 (days|din|दिन)\b", re.I
+)
+
+
+def test_no_text_states_a_legal_response_or_erasure_deadline():
+    """Owner decision P2: our targets are ours; Rule 14(3) is not in force and is not an
+    erasure deadline, so no customer text may call 90 days (or anything) a legal limit."""
+    for key, variants in TEMPLATES.items():
+        for lang, text in variants.items():
+            assert not _LEGAL_DEADLINE.search(text), (key, lang)
+
+
+def test_the_contact_is_labelled_privacy_and_grievance_never_dpo():
+    assert TEMPLATES["held.contact.label"]["en"] == "Privacy and grievance contact"
+    for key, variants in TEMPLATES.items():
+        for text in variants.values():
+            assert "data protection officer" not in text.lower(), key

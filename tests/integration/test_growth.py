@@ -183,6 +183,45 @@ def test_dual_approval_rule():
     assert camp.dual_approved([a(u1, "hq_owner"), a(u2, "location_manager")])
 
 
+def test_every_campaign_needs_two_approvers_unless_the_threshold_is_raised(
+    app_engine, gt, monkeypatch
+):
+    """M4: two approvers for every campaign; `campaign_dual_approval_min_paise` defaults to 0."""
+    from app.core.models import CampaignApproval
+
+    _, tid, _ = gt
+    now = datetime.now(UTC)
+
+    def a(user, role):
+        return CampaignApproval(decided_by=user, role=role, decision="approved", expires_at=now)
+
+    cheap, dear = (
+        Campaign(budget_paise=1, location_id=uuid.uuid4()),
+        Campaign(budget_paise=10_000, location_id=uuid.uuid4()),
+    )
+    with tenant_session(tid, app_engine) as s:
+        assert camp.effective_settings(s)["campaign_dual_approval_min_paise"] == 0
+        assert camp.approvers_needed(s, cheap) == camp.approvers_needed(s, dear) == 2
+        assert camp.approvers_needed(s, Campaign(budget_paise=0, location_id=uuid.uuid4())) == 2
+    # A tenant that raises the threshold: below it one hq_owner is enough, at it two are needed.
+    monkeypatch.setattr(
+        camp, "effective_settings", lambda *_a, **_k: {"campaign_dual_approval_min_paise": 10_000}
+    )
+    assert camp.approvers_needed(None, cheap) == 1
+    assert camp.approvers_needed(None, dear) == 2
+    for bad in (True, -1, "0", None, 1.5):  # a bad value never lowers the bar
+        monkeypatch.setattr(
+            camp,
+            "effective_settings",
+            lambda *_a, _b=bad, **_k: {"campaign_dual_approval_min_paise": _b},
+        )
+        assert camp.approvers_needed(None, cheap) == 2
+    u1 = uuid.uuid4()
+    assert camp.dual_approved([a(u1, "hq_owner")], 1)  # one HQ approver where one is enough
+    assert not camp.dual_approved([a(u1, "franchisee_owner")], 1)  # still needs an hq_owner
+    assert not camp.dual_approved([a(u1, "hq_owner")])  # the default is two
+
+
 def test_audience_is_consented_capped_and_bound_to_a_hash(app_engine, gt):
     cfg, tid, as_of = gt
     signal_id = make_signal(app_engine, tid, as_of)

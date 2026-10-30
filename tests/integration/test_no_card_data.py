@@ -32,7 +32,7 @@ KEY_NAME = re.compile(
 )
 # 13-19 digits, optionally grouped with single spaces or dashes, not part of a longer number
 # or a decimal fraction.
-CANDIDATE = re.compile(r"(?<![\d.])(?:\d[ -]?){12,18}\d(?![\d.])")
+CANDIDATE = re.compile(r"(?<![\w.])(?:\d[ -]?){12,18}\d(?![\w.])")
 # SQL pre-filter: only rows with a long digit run or a grouped one come back to Python.
 SQL_PREFILTER = r"[0-9]{13}|[0-9]{4}[ -][0-9]{4}[ -][0-9]{4}"
 
