@@ -5,12 +5,15 @@ a different type from a tenant token: other audience, `typ=platform_admin`, no `
 tenant route (which requires aud=resolvedesk-api and `tid`) rejects it, and a platform route
 (which requires the platform audience and refuses any `tid`) rejects a tenant token.
 
-Failed logins are rate limited in memory per process: the platform role has no table rights,
-so there is nowhere in the database to keep a lockout row. A restart resets it; bcrypt cost
-and the 429 bound online guessing for a single-operator login.
+Platform tokens are signed with PLATFORM_JWT_SECRET, never the tenant secret.
+Failed logins are rate limited in memory per process (a slot is reserved before bcrypt):
+the platform role has no table rights, so there is nowhere in the database to keep a
+lockout row. A restart resets it; bcrypt cost and the 429 bound online guessing for a
+single-operator login.
 """
 
 import hmac
+import logging
 import threading
 from datetime import UTC, datetime, timedelta
 
@@ -20,6 +23,7 @@ from app.config import get_settings, platform_admin_enabled
 from app.core.auth import ALGORITHM, AuthError, IssuedToken, read_token
 from app.core.passwords import verify_password
 
+log = logging.getLogger(__name__)
 PRINCIPAL = "platform_admin"
 MAX_FAILURES = 5
 WINDOW = timedelta(minutes=15)
@@ -40,6 +44,10 @@ class WrongPrincipal(AuthError):
     """A valid tenant token presented to a platform route (answered 403)."""
 
 
+def _platform_key() -> str:
+    return get_settings().platform_jwt_secret.get_secret_value()  # type: ignore[union-attr]
+
+
 def reset_failures() -> None:
     with _lock:
         _failures.clear()
@@ -56,9 +64,13 @@ def authenticate_platform(email: str, password: str, now: datetime | None = None
     if not platform_admin_enabled(s):
         raise PlatformDisabled()
     now = now or datetime.now(UTC)
+    # Reserve an attempt slot BEFORE the slow bcrypt check, under the lock: parallel guesses
+    # each take a slot, so at most MAX_FAILURES run at all. A success gives its slot back.
     with _lock:
         if len(_recent(now)) >= MAX_FAILURES:
+            log.warning("platform login locked out")
             raise PlatformLocked()
+        _failures.append(now)
     # Always one bcrypt run and a constant-time email compare, so timing doesn't say which
     # part was wrong.
     stored = s.platform_admin_password_hash.get_secret_value().strip()  # type: ignore[union-attr]
@@ -67,8 +79,7 @@ def authenticate_platform(email: str, password: str, now: datetime | None = None
         email.strip().lower().encode(), (s.platform_admin_email or "").strip().lower().encode()
     )
     if not (password_ok and email_ok):
-        with _lock:
-            _failures.append(now)
+        log.warning("platform login failed")  # never the email or password
         raise AuthError("invalid credentials")
     with _lock:
         _failures.clear()
@@ -81,7 +92,7 @@ def authenticate_platform(email: str, password: str, now: datetime | None = None
         "iat": now,
         "exp": expires_at,
     }
-    return IssuedToken(jwt.encode(claims, s.jwt_secret, algorithm=ALGORITHM), expires_at)
+    return IssuedToken(jwt.encode(claims, _platform_key(), algorithm=ALGORITHM), expires_at)
 
 
 def read_platform_token(token: str) -> str:
@@ -93,7 +104,7 @@ def read_platform_token(token: str) -> str:
     try:
         claims = jwt.decode(
             token,
-            s.jwt_secret,
+            _platform_key(),
             algorithms=[ALGORITHM],
             issuer=s.jwt_issuer,
             audience=s.platform_jwt_audience,

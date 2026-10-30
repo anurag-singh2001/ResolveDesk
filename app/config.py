@@ -83,6 +83,9 @@ class Settings(BaseSettings):
     platform_admin_password_hash: SecretStr | None = None
     # Connection for the aggregate-only role resolvedesk_platform (no table rights, no tenant).
     platform_database_url: str | None = None
+    # Signing key for platform tokens: SEPARATE from JWT_SECRET, required (no default), so a
+    # tenant secret, or the public dev secret, can never forge a platform token in any env.
+    platform_jwt_secret: SecretStr | None = None
     platform_jwt_ttl_minutes: int = Field(default=30, ge=1, le=240)
     platform_jwt_audience: str = "resolvedesk-platform"
     # Browser origins allowed by CORS, comma-separated (the React app's dev server by default).
@@ -102,7 +105,11 @@ class Settings(BaseSettings):
 
 
 def platform_admin_enabled(s: Settings) -> bool:
-    """All three pieces present and non-blank. Anything less keeps the platform routes off."""
+    """All four pieces present and non-blank; the platform secret strong and distinct.
+    Anything less keeps the platform routes off."""
+    secret = s.platform_jwt_secret.get_secret_value() if s.platform_jwt_secret else ""
+    if len(secret) < 32 or secret in (DEV_JWT_SECRET, s.jwt_secret):
+        return False
     return bool(
         (s.platform_admin_email or "").strip()
         and s.platform_admin_password_hash is not None

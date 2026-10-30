@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, text
 
-from app.api.deps import _bearer, get_clock, not_found
+from app.api.deps import _bearer, not_found
 from app.config import get_settings, platform_admin_enabled
 from app.core.auth import AuthError
 from app.core.db import get_engine
@@ -30,6 +30,8 @@ def _feature_on() -> None:
     if not platform_admin_enabled(get_settings()):
         raise not_found()
 
+
+PLATFORM_ROLE = "resolvedesk_platform"
 
 router = APIRouter(prefix="/platform", tags=["platform"], dependencies=[Depends(_feature_on)])
 
@@ -94,9 +96,9 @@ def require_platform(
 
 
 @router.post("/auth/login")
-def platform_login(body: PlatformLoginIn, now: datetime = Depends(get_clock)) -> PlatformTokenOut:
+def platform_login(body: PlatformLoginIn) -> PlatformTokenOut:  # real time, not get_clock
     try:
-        issued = authenticate_platform(body.email, body.password, now=now)
+        issued = authenticate_platform(body.email, body.password)
     except PlatformDisabled:
         raise not_found() from None
     except PlatformLocked:
@@ -111,6 +113,9 @@ def platform_login(body: PlatformLoginIn, now: datetime = Depends(get_clock)) ->
 def _read(engine: Engine, actor: str, route: str, sql: str) -> list[dict]:
     """Audit, then read one aggregate view, in one short transaction on the platform role."""
     with engine.begin() as conn:
+        # Fail closed: only ever read as the aggregate-only role, whatever the URL says.
+        if conn.execute(text("SELECT current_user")).scalar() != PLATFORM_ROLE:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "platform data unavailable")
         conn.execute(
             text("SELECT platform_audit_record(:actor, :route)"), {"actor": actor, "route": route}
         )

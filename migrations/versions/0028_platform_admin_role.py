@@ -78,8 +78,8 @@ def upgrade() -> None:
         CREATE TABLE platform_audit_events (
             id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
             occurred_at timestamptz NOT NULL DEFAULT now(),
-            actor varchar(64) NOT NULL,
-            route varchar(200) NOT NULL
+            actor varchar(64) NOT NULL CHECK (actor <> ''),
+            route varchar(200) NOT NULL CHECK (route <> '')
         )
         """
     )
@@ -163,6 +163,20 @@ def downgrade() -> None:
         op.execute(f"DROP VIEW IF EXISTS {view}")
     op.execute("DROP FUNCTION IF EXISTS platform_audit_record(text, text)")
     op.execute("DROP TABLE IF EXISTS platform_audit_events")
+    op.execute(
+        f"""
+        DO $$ BEGIN
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{ROLE}') THEN
+                EXECUTE format('REVOKE CONNECT ON DATABASE %I FROM {ROLE}', current_database());
+                BEGIN
+                    EXECUTE 'REVOKE {ROLE} FROM ' || quote_ident(current_user);
+                EXCEPTION WHEN OTHERS THEN
+                    RAISE NOTICE 'could not revoke {ROLE} from the owner: %', SQLERRM;
+                END;
+            END IF;
+        END $$
+        """
+    )
     # The role stays (it may own a password and a connection); it is left with no rights.
     op.execute(
         f"""

@@ -4,6 +4,11 @@ Tests never name a tenant: the tenants fixture makes two fresh ones, and tenant-
 run over every folder under tenants/.
 """
 
+import logging
+import threading
+from datetime import UTC, datetime, timedelta
+
+import jwt
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, event, text
@@ -11,11 +16,12 @@ from sqlalchemy.exc import ProgrammingError
 
 from app.api.deps import get_db_engine
 from app.api.routes_platform import get_platform_engine
-from app.config import get_settings
+from app.config import DEV_JWT_SECRET, get_settings
+from app.core.auth import AuthError
 from app.core.db import ENGINE_OPTIONS, tenant_session
 from app.core.models import Organization
 from app.core.passwords import hash_password
-from app.core.platform_auth import reset_failures
+from app.core.platform_auth import PlatformLocked, authenticate_platform, reset_failures
 from app.main import create_app
 from tests.helpers import login
 
@@ -23,6 +29,7 @@ pytestmark = pytest.mark.isolation
 
 ROLE = "resolvedesk_platform"
 EMAIL = "operator@example.test"
+PLATFORM_SECRET = "platform-only-secret-platform-only-secret-1"
 PASSWORD = "correct horse battery staple"
 VIEWS = [
     "platform_tenants_v",
@@ -51,6 +58,7 @@ def platform_env(monkeypatch):
     monkeypatch.setenv("PLATFORM_ADMIN_EMAIL", EMAIL)
     monkeypatch.setenv("PLATFORM_ADMIN_PASSWORD_HASH", hash_password(PASSWORD, rounds=4))
     monkeypatch.setenv("PLATFORM_DATABASE_URL", "postgresql://unused.invalid/unused")
+    monkeypatch.setenv("PLATFORM_JWT_SECRET", PLATFORM_SECRET)
     get_settings.cache_clear()
 
 
@@ -106,7 +114,13 @@ def test_routes_are_404_when_not_configured(app_engine, monkeypatch):
 
 
 @pytest.mark.parametrize(
-    "missing", ["PLATFORM_ADMIN_EMAIL", "PLATFORM_ADMIN_PASSWORD_HASH", "PLATFORM_DATABASE_URL"]
+    "missing",
+    [
+        "PLATFORM_JWT_SECRET",
+        "PLATFORM_ADMIN_EMAIL",
+        "PLATFORM_ADMIN_PASSWORD_HASH",
+        "PLATFORM_DATABASE_URL",
+    ],
 )
 def test_any_missing_setting_keeps_it_off(platform_env, monkeypatch, missing):
     monkeypatch.delenv(missing)
@@ -336,3 +350,134 @@ def test_views_are_owned_by_someone_other_than_the_platform_role(platform_engine
         ).scalars().all()  # fmt: skip
     assert len(owners) == len(VIEWS)
     assert ROLE not in owners
+
+
+# ---- review fixes: secret separation, lockout race, role guard --------------------------
+
+
+def _forged(secret: str) -> dict[str, str]:
+    now = datetime.now(UTC)
+    claims = {
+        "sub": "platform_admin",
+        "typ": "platform_admin",
+        "iss": get_settings().jwt_issuer,
+        "aud": get_settings().platform_jwt_audience,
+        "iat": now,
+        "exp": now + timedelta(minutes=5),
+    }
+    return {"Authorization": "Bearer " + jwt.encode(claims, secret, algorithm="HS256")}
+
+
+def test_platform_token_forged_with_tenant_or_dev_secret_is_rejected(papi):
+    for secret in (get_settings().jwt_secret, DEV_JWT_SECRET):
+        assert papi.get("/platform/tenants", headers=_forged(secret)).status_code == 401
+    assert papi.get("/platform/tenants", headers=_forged(PLATFORM_SECRET)).status_code == 200
+
+
+@pytest.mark.parametrize("secret", ["short", DEV_JWT_SECRET, "same-as-tenant"])
+def test_weak_or_shared_platform_secret_keeps_it_off(platform_env, monkeypatch, secret):
+    if secret == "same-as-tenant":
+        secret = "x" * 40
+        monkeypatch.setenv("JWT_SECRET", secret)
+    monkeypatch.setenv("PLATFORM_JWT_SECRET", secret)
+    get_settings.cache_clear()
+    client = TestClient(create_app())
+    resp = client.post("/platform/auth/login", json={"email": EMAIL, "password": PASSWORD})
+    assert resp.status_code == 404
+
+
+def test_parallel_guesses_cannot_outrun_the_lockout(platform_env):
+    outcomes: list[str] = []
+    gate = threading.Barrier(12)
+
+    def guess():
+        gate.wait()
+        try:
+            authenticate_platform(EMAIL, "wrong")
+            outcomes.append("ok")
+        except PlatformLocked:
+            outcomes.append("locked")
+        except AuthError:
+            outcomes.append("bad")
+
+    threads = [threading.Thread(target=guess) for _ in range(12)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert outcomes.count("bad") == 5
+    assert outcomes.count("locked") == 7
+
+
+def test_correct_login_gives_its_slot_back(platform_env):
+    for _ in range(3):
+        assert authenticate_platform(EMAIL, PASSWORD).token
+    for _ in range(5):
+        with pytest.raises(AuthError):
+            authenticate_platform(EMAIL, "wrong")
+
+
+def test_failed_login_is_logged_without_the_credentials(papi, caplog):
+    # alembic's fileConfig (run by the app_engine fixture) disables existing loggers.
+    logging.getLogger("app.core.platform_auth").disabled = False
+    with caplog.at_level("WARNING"):
+        papi.post("/platform/auth/login", json={"email": EMAIL, "password": "secret-guess"})
+    text_ = " ".join(r.getMessage() for r in caplog.records)
+    assert "platform login failed" in text_
+    assert "secret-guess" not in text_
+    assert EMAIL not in text_
+
+
+def test_connection_not_on_the_platform_role_fails_closed(app_engine, platform_env, owner_engine):
+    application = create_app()
+    application.dependency_overrides[get_platform_engine] = lambda: app_engine
+    client = TestClient(application)
+    resp = client.get("/platform/tenants", headers=_platform_headers(client))
+    assert resp.status_code == 503
+
+
+def test_app_role_cannot_call_the_audit_function(app_engine):
+    with app_engine.connect() as c, pytest.raises(ProgrammingError, match="permission denied"):
+        c.execute(text("SELECT platform_audit_record('a', 'b')"))
+
+
+def test_audit_table_rejects_empty_actor_or_route(owner_engine):
+    for actor, route in (("", "r"), ("a", "")):
+        with owner_engine.begin() as c, pytest.raises(Exception, match="check"):  # noqa: B017
+            c.execute(
+                text("INSERT INTO platform_audit_events (actor, route) VALUES (:a, :r)"),
+                {"a": actor, "r": route},
+            )
+
+
+def test_downgrade_then_upgrade_restores_exactly_the_same_rights(app_engine):
+    """Run last: it drops and recreates the platform objects on the test database."""
+    from alembic import command
+    from alembic.config import Config
+
+    cfg = Config("alembic.ini")
+    cfg.attributes["url"] = get_settings().test_migration_database_url
+    command.downgrade(cfg, "0027")
+    with app_engine.connect() as c:
+        assert not c.execute(
+            text("SELECT to_regclass('platform_audit_events') IS NOT NULL")
+        ).scalar()
+    command.upgrade(cfg, "head")
+    eng = create_engine(get_settings().test_migration_database_url, **ENGINE_OPTIONS)
+    with eng.connect() as c:
+        views = c.execute(
+            text(
+                "SELECT count(*) FROM information_schema.role_table_grants "
+                "WHERE grantee = :r AND privilege_type = 'SELECT' AND table_name = ANY(:v)"
+            ),
+            {"r": ROLE, "v": VIEWS},
+        ).scalar()
+        raw = c.execute(
+            text(
+                "SELECT count(*) FROM information_schema.role_table_grants "
+                "WHERE grantee = :r AND table_name <> ALL(:v)"
+            ),
+            {"r": ROLE, "v": VIEWS},
+        ).scalar()
+    eng.dispose()
+    assert (views, raw) == (len(VIEWS), 0)
