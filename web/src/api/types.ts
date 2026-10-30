@@ -393,7 +393,8 @@ export interface SwitchResponse {
   action: string;
   amount_paise: number | null;
   decision: "approved" | null;
-  waiting_for: string | null;
+  waiting_for: "hq_owner" | "second_person" | string | null;
+  self_approved?: "downgrade" | "owner_override" | null;
   expires_at: string | null;
   execution: string;
 }
@@ -473,7 +474,7 @@ export interface PrivacyContact {
   name: string;
   email: string;
   response_target_days: number;
-  legal_ceiling_days: number;
+  acknowledge_hours: number;
   response_text: string;
 }
 
@@ -527,9 +528,10 @@ export interface ErasureRequest {
   received_at: string;
   received_text: string;
   expected_by: string | null;
-  legal_ceiling_by: string | null;
   expected_text: string | null;
   completed_at: string | null;
+  // What happened to the one completion message; null until it is final.
+  completion_message: "sent" | "failed" | "unknown" | "expired" | "none" | null;
   can_withdraw: boolean;
   contact: PrivacyContact;
 }
@@ -545,8 +547,14 @@ export interface ErasureInfo {
   provisional_label: string | null;
   timing: string;
   target_days: number;
-  legal_ceiling_days: number;
   contact: PrivacyContact;
+  completion_notice: {
+    channels: ("phone" | "email")[];
+    default: "phone" | "email" | null;
+    labels: Record<string, string>;
+    text: string;
+    choose: string;
+  };
   buttons: Record<"request" | "confirm" | "back" | "withdraw", string>;
   confirm: { title: string; body: string };
   status_title: string;

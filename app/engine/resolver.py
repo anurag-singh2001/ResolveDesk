@@ -100,6 +100,10 @@ def _apply(session: Session, order: Transaction, facts, category: str, option) -
     order_ref = str(order.id)
 
     if isinstance(option, RefundPercentOption):
+        if s["refund_channel"] != "tenant_gateway":
+            # Placed through a delivery app: that app refunds it, so no refund option exists
+            # (the customer is never shown a request we could not honour).
+            return Remedy(None, {}, "the delivery app refunds this order", "escalate")
         # The option's percent is what the pack offers; refund_max_percent stays the ceiling.
         percent = min(option.refund_percent, s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)

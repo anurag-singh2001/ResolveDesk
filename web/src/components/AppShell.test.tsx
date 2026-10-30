@@ -68,7 +68,7 @@ describe("privacy contact", () => {
     });
     renderApp("/help");
     expect(await screen.findByRole("link", { name: "privacy@acme.test" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Privacy contact" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Privacy and grievance contact" })).toHaveAttribute(
       "href",
       "mailto:privacy@acme.test",
     );

@@ -24,8 +24,10 @@ from app.core.models import (
     TicketMessage,
 )
 from app.core.money import format_inr
+from app.core.settings_resolver import effective_settings
 from app.engine.approvals import not_superseded
 from app.engine.needs import need_from_payload, question_for
+from app.engine.privacy import close_text
 
 
 @dataclass(frozen=True)
@@ -96,6 +98,8 @@ def case_timeline(
                 continue
             text_key = f"close.{reason}"
         text = t(text_key, lang)
+        if e.event == "case.closed":  # the no-remedy wording carries the contact (M2)
+            text = close_text(reason, effective_settings(session), lang)
         if e.event == "case.awaiting_info":  # say WHAT we need: a code-owned template
             text = question_for(need_from_payload(e.payload), lang)
         steps.append(TimelineStep(e.occurred_at, stage, t(title_key, lang), text))

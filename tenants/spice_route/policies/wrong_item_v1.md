@@ -4,6 +4,7 @@ title: Wrong item delivered
 topic: wrong_item
 version: 1
 effective_from: 2026-01-01
+effective_to: 2026-11-01
 scope: org
 ---
 # Wrong item delivered (v1)

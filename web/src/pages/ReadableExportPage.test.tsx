@@ -6,7 +6,7 @@ import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
 const f = (label: string, value: string) => ({ label, value });
 
 function exportBody(): ReadableExport {
-  const base = { purpose: "To show what you bought.", retention: "Kept 7 years.", retention_provisional: true };
+  const base = { purpose: "To show what you bought.", retention: "Kept 8 years.", retention_provisional: true };
   return {
     language: "en",
     title: "Your data, in a readable form",
@@ -35,12 +35,12 @@ function exportBody(): ReadableExport {
       { key: "processors", title: "Companies that handle data for us", purpose: null, retention: null, retention_provisional: false, records: [[f("Name", "Neon")]] },
     ],
     contact: {
-      label: "Privacy contact",
+      label: "Privacy and grievance contact",
       configured: true,
       name: "Privacy desk",
       email: "privacy@example.test",
       response_target_days: 30,
-      legal_ceiling_days: 90,
+      acknowledge_hours: 48,
       response_text: "We aim to reply within 30 days.",
     },
   };

@@ -292,6 +292,9 @@ class SwitchIn(BaseModel):
     amount_paise: int | None = Field(None, strict=True, gt=0)
     approve: bool = False
     note: str = Field(max_length=500)  # the why, audited (blank is refused: 422)
+    # hq_owner only: approve a raise yourself (up to the tenant's small limit) when there is no
+    # second person. Needs a written reason; audited as self_approved.
+    self_approve_reason: str | None = Field(None, max_length=500)
 
 
 class SwitchOut(BaseModel):
@@ -300,7 +303,10 @@ class SwitchOut(BaseModel):
     action: str
     amount_paise: int | None
     decision: str | None  # approved, or None while it waits for an approver
-    waiting_for: str | None  # hq_owner: the amount is above what the caller may approve
+    # hq_owner: above what the caller may approve; second_person: the caller authored it, so
+    # someone else must approve (unless a downgrade or a small owner override)
+    waiting_for: str | None
+    self_approved: str | None = None  # downgrade | owner_override
     expires_at: datetime | None
     execution: str  # queued | none
 
@@ -316,8 +322,9 @@ def post_switch(
 ) -> SwitchOut:
     """Supersede a pending proposal with another allowed remedy (S7.10). 404 out of scope or
     another tenant, 409 not pending (decided, or already switched), 422 outside the rule.
-    `approve: true` approves the new proposal in the same step only if this caller could
-    approve that amount; otherwise it stays pending for the right approver."""
+    The caller authors the new proposal, so they cannot approve it, except `approve: true` on a
+    downgrade, or an hq_owner's `self_approve_reason` up to the tenant's small limit; otherwise
+    it stays pending for a different approver (`waiting_for`)."""
     try:
         result = switch_remedy(
             db,
@@ -328,6 +335,7 @@ def post_switch(
             approve=body.approve,
             note=body.note,
             now=datetime.now(UTC),
+            self_approve_reason=body.self_approve_reason,
         )
     except NotFound:
         raise not_found() from None
@@ -350,6 +358,7 @@ def post_switch(
         amount_paise=new.amount_paise,
         decision=result.approval.decision if result.approval else None,
         waiting_for=result.waiting_for,
+        self_approved=result.self_approved,
         expires_at=result.approval.expires_at if result.approval else None,
         execution="queued" if queued else "none",
     )

@@ -45,7 +45,7 @@ Click a card to open the order. The order page shows:
    such as *Voucher* or *Ask for a refund*. Each choice shows what you would get, worked out for your order, and
    how long it usually takes: "Usually instant" or "After a team member approves it". Pick one. If only
    one remedy is possible, no list is shown. Your choice never changes the limits: the amount is always
-   set by our rules, and a refund is a request that a team member decides on. If the option you picked
+   set by our rules, and a refund is a request that a team member decides on (the voucher is the default; the refund choice is not shown on orders you placed through a delivery app such as Swiggy or Zomato, because that app refunds those). If the option you picked
    cannot be given any more, we use another that is allowed and note it. If you did not pick a category yet
    (*Not sure*), the same list may appear on the case page while we are still looking at your report.
 5. Under **Tell us what happened**, describe the problem in your own words.
@@ -55,8 +55,8 @@ You go straight to the **case page** for your report.
 
 **Privacy requests.** To ask about your personal data, pick **Privacy request** as the category. It is
 never handled by the assistant: it goes straight to a member of our team, and the case page names our
-**Privacy contact** and the date by which we aim to respond. That date is our own internal target, not a
-legal deadline. The Privacy contact is also linked in the footer of every page and on the **Help** page.
+**Privacy and grievance contact** and the date by which we aim to respond. That date is our own internal target, not a
+legal deadline. We confirm we have your message within 48 hours. The Privacy and grievance contact is also linked in the footer of every page and on the **Help** page.
 
 ## My cases and the case page
 
@@ -89,7 +89,7 @@ timeline shows "You replied".
 | **Confirmed** | Done. For a refund, the payment provider has confirmed it; for a voucher, it has been issued. |
 | **Declined** | Staff reviewed it and no remedy was approved. The message explains. |
 | **With our team** | A person is handling your case directly. |
-| **Closed** | The case is finished. |
+| **Closed** | The case is finished. If we closed it without a refund or voucher, the message says so in plain words, how to write to our privacy and grievance contact if you think we missed something (we reply within 2 working days and aim to settle within 30 days), and that you can call the National Consumer Helpline on 1915 (consumerhelpline.gov.in). |
 
 ## What happens after you report
 
@@ -128,8 +128,8 @@ Open **Privacy & data** in the menu.
   closes; your name and contact details are kept while you have an account, until you ask us to
   erase them. The retention periods are marked **provisional** until the business confirms them. Below the table, **Who else sees it** names the companies that
   process data for us. A **What we do not keep** line appears only when the business has
-  confirmed the claim. The **Privacy contact** (name, email and how fast we aim to reply, with
-  the 90-day legal limit) shows at the top and bottom of the page. The page uses your chosen
+  confirmed the claim (today: we never see or store your card number, CVV or UPI PIN). The **Privacy and grievance contact** (name, email, and our own targets: we confirm we have your message within 48 hours and aim to reply within 30 days, not a legal deadline;
+  "Not set yet" until the business names someone) shows at the top and bottom of the page. The page uses your chosen
   language.
 - **Offers and promotions.** Each offer choice explains what you get (for example offers and vouchers for your next order), what we send, how often (at most one offer message in 30 days) and on which channel (WhatsApp). The switch starts **Off**, the label and the word **On** or **Off** are always visible, and nothing is ticked for you. To stop offers, turn the switch off: one click, and it applies to the next message we would send. **Help messages** are shown as always on, because they are needed to resolve your order; they have no switch, and turning offers off never changes them. **History of your choices** lists each change with its date, channel and the wording version in force. The page uses your chosen language.
 - **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
@@ -148,12 +148,20 @@ Open **Privacy & data** in the menu.
   Click **Request erasure**, read the confirmation (**Cancel** is selected first, and nothing is
   sent until you press **Yes, request erasure**). Then the card shows your request: **Received**,
   **Could not complete yet** with the reason, **Done**, or **Withdrawn**, the date we received
-  it, the date we aim to finish by (the business's target, 30 days unless it set another) and
-  the legal limit (90 days), and the privacy contact. It says **Done** only after the erasure has
+  it, the date we aim to finish by (the business's own target, 30 days unless it set another; we do not state a legal deadline) and
+  the privacy and grievance contact. It says **Done** only after the erasure has
   really been carried out. A request that could not complete is not dropped: it stays open and a
   person re-checks it. Until it is carried out, press **Withdraw my request** to take it back;
   you can ask again later. Asking again while a request is open shows that same request. After
   it is done you can no longer sign in, because your sign-in is one of the things removed.
+  **One message when it is done.** In the confirmation you choose where we tell you (your phone
+  or your email, if we hold them). We keep that contact for up to 7 days, only to send this one
+  message, then delete it. After the erasure has really been carried out we send it once: what
+  we removed, what we kept and why (payment and refund records are kept up to 8 years, counted
+  from the end of the financial year, and are marked provisional until the business confirms
+  them), the privacy and grievance contact, and that you can complain to the Data Protection
+  Board of India if you are still not satisfied after using our process. It never says "done"
+  before the erasure has succeeded. If we hold no phone or email, the confirmation says so.
 
 ## Language for our messages
 

@@ -417,7 +417,7 @@ One signal end to end: BrewCo Baner repeat-customer rate drop.
 2. Diagnosis agent drills down (time of day, ticket categories) and links support tickets.
 3. Code builds the audience: lapsed regulars, minus no-consent, minus frequency-capped.
 4. Proposal: win-back offer, 10% holdout, budget cap from settings, success metric.
-5. Approval by franchisee owner and HQ (campaign value > ₹10,000 needs both).
+5. Approval by two different people, one of them HQ, for every campaign (owner decision 2026-10-31). The threshold is the setting `campaign_dual_approval_min_paise`, default 0 (every campaign); a tenant may raise it so that cheaper campaigns need only one HQ approver.
 6. Send via messaging connector, one idempotency key per customer.
 7. After the window, compare treatment vs holdout; verdict = worked / didn't work / inconclusive (sample too small); save to playbook.
 

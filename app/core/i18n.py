@@ -305,9 +305,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "हमें आपका प्राइवेसी अनुरोध मिल गया है और हमने इसे अपनी टीम के एक सदस्य को भेज दिया है।",
     },
     "privacy.reach": {
-        "en": "You can also reach our privacy contact: {contact}.",
-        "hi-Latn": "Aap hamare privacy contact se bhi sampark kar sakte hain: {contact}.",
-        "hi": "आप हमारे प्राइवेसी संपर्क से भी संपर्क कर सकते हैं: {contact}।",
+        "en": "You can also reach our privacy and grievance contact: {contact}.",
+        "hi-Latn": "Aap hamare privacy aur shikayat sampark se bhi sampark kar sakte hain: "
+        "{contact}.",
+        "hi": "आप हमारे प्राइवेसी और शिकायत संपर्क से भी संपर्क कर सकते हैं: {contact}।",
     },
     "privacy.target": {
         "en": "Our internal target is to respond by {date}.",
@@ -427,9 +428,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "अभी तय नहीं हुआ।",
     },
     "held.ret.records": {
-        "en": "Kept {years} years, as business records.",
-        "hi-Latn": "{years} saal tak rakha jaata hai, business record ke roop mein.",
-        "hi": "व्यवसाय रिकॉर्ड के रूप में {years} साल तक रखा जाता है।",
+        "en": "Kept {years} years, counted from the end of the financial year, as business "
+        "records.",
+        "hi-Latn": "{years} saal tak rakha jaata hai, vitt varsh ke ant se ginkar, business "
+        "record ke roop mein.",
+        "hi": "वित्त वर्ष के अंत से गिनकर {years} साल तक, व्यवसाय रिकॉर्ड के रूप में रखा जाता है।",
     },
     "held.ret.consents": {
         "en": "Kept as proof of your choices.",
@@ -447,9 +450,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "{n} रिकॉर्ड में",
     },
     "held.not_kept.card_numbers": {
-        "en": "We do not keep your card numbers.",
-        "hi-Latn": "Hum aapke card number nahin rakhte.",
-        "hi": "हम आपके कार्ड नंबर नहीं रखते।",
+        "en": "We never see or store your card number, CVV or UPI PIN.",
+        "hi-Latn": "Hum aapka card number, CVV ya UPI PIN na dekhte hain, na rakhte hain.",
+        "hi": "हम आपका कार्ड नंबर, CVV या UPI PIN न देखते हैं, न रखते हैं।",
     },
     "held.not_kept.upi_details": {
         "en": "We do not keep your UPI details.",
@@ -457,15 +460,18 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "हम आपके UPI विवरण नहीं रखते।",
     },
     "held.contact.label": {
-        "en": "Privacy contact",
-        "hi-Latn": "Privacy contact",
-        "hi": "प्राइवेसी संपर्क",
+        "en": "Privacy and grievance contact",
+        "hi-Latn": "Privacy aur shikayat sampark",
+        "hi": "प्राइवेसी और शिकायत संपर्क",
     },
+    # Our own targets, not a legal deadline (owner decision P2).
     "held.contact.target": {
-        "en": "We aim to reply within {days} days. The legal limit is {ceiling} days.",
-        "hi-Latn": "Hum {days} din ke andar jawab dene ka lakshya rakhte hain. Kanooni "
-        "seema {ceiling} din hai.",
-        "hi": "हम {days} दिन के भीतर जवाब देने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} दिन है।",
+        "en": "We confirm we have your message within {hours} hours and aim to reply within "
+        "{days} days.",
+        "hi-Latn": "Hum {hours} ghante ke andar bata dete hain ki aapka sandesh mil gaya aur "
+        "{days} din ke andar jawab dene ka lakshya rakhte hain.",
+        "hi": "हम {hours} घंटे के भीतर बता देते हैं कि आपका संदेश मिल गया और {days} दिन के भीतर "
+        "जवाब देने का लक्ष्य रखते हैं।",
     },
     "held.h.title": {
         "en": "What we hold about you",
@@ -581,10 +587,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "ऑर्डर, भुगतान और रिफ़ंड: राशि, तारीख़, ऑर्डर संदर्भ और रिफ़ंड या वाउचर के रिकॉर्ड",
     },
     "erase.keep.records.why": {
-        "en": "Kept {years} years, for our accounts and to show what was paid.",
-        "hi-Latn": "{years} saal rakhe jaate hain, hamare hisaab ke liye aur yeh dikhane ke liye "
-        "ki kya bhugtaan hua.",
-        "hi": "{years} साल रखे जाते हैं, हमारे हिसाब के लिए और यह दिखाने के लिए कि क्या भुगतान हुआ।",
+        "en": "Kept {years} years, counted from the end of the financial year, for our "
+        "accounts and to show what was paid.",
+        "hi-Latn": "{years} saal rakhe jaate hain, vitt varsh ke ant se ginkar, hamare hisaab ke "
+        "liye aur yeh dikhane ke liye ki kya bhugtaan hua.",
+        "hi": "वित्त वर्ष के अंत से गिनकर {years} साल रखे जाते हैं, हमारे हिसाब के लिए और यह "
+        "दिखाने के लिए कि क्या भुगतान हुआ।",
     },
     "erase.keep.cases": {
         "en": "Case records: category, status and dates",
@@ -776,10 +784,76 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "{date} को मिला",
     },
     "erase.expected_by": {
-        "en": "We aim to finish by {date}. The legal limit is {ceiling}.",
-        "hi-Latn": "Hum {date} tak poora karne ka lakshya rakhte hain. "
-        "Kanooni seema {ceiling} hai.",
-        "hi": "हम {date} तक पूरा करने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} है।",
+        "en": "We aim to finish by {date}.",
+        "hi-Latn": "Hum {date} tak poora karne ka lakshya rakhte hain.",
+        "hi": "हम {date} तक पूरा करने का लक्ष्य रखते हैं।",
+    },
+    # ---- erasure completion message (S8.8, owner decision P4). Hindi awaits native review ----
+    "erase.notice.sent_to": {
+        "en": "When it is done we will tell you once, at the contact you choose. We keep that "
+        "contact for up to {days} days, only to send this message, and then delete it.",
+        "hi-Latn": "Kaam poora hone par hum aapko ek baar, aapke chune hue sampark par bata "
+        "denge. Hum yeh sampark sirf is sandesh ke liye {days} din tak rakhte hain, phir mita "
+        "dete hain.",
+        "hi": "काम पूरा होने पर हम आपको एक बार, आपके चुने हुए संपर्क पर बता देंगे। हम यह संपर्क "
+        "सिर्फ़ इस संदेश के लिए {days} दिन तक रखते हैं, फिर मिटा देते हैं।",
+    },
+    "erase.notice.none": {
+        "en": "We have no phone number or email for you, so we cannot tell you when it is "
+        "done. You can check with our privacy and grievance contact.",
+        "hi-Latn": "Hamare paas aapka phone number ya email nahin hai, isliye hum aapko bata "
+        "nahin payenge ki kaam ho gaya. Aap hamare privacy aur shikayat sampark se pooch sakte "
+        "hain.",
+        "hi": "हमारे पास आपका फ़ोन नंबर या ईमेल नहीं है, इसलिए हम आपको बता नहीं पाएँगे कि काम हो "
+        "गया। आप हमारे प्राइवेसी और शिकायत संपर्क से पूछ सकते हैं।",
+    },
+    "erase.notice.choose": {
+        "en": "Where should we tell you?",
+        "hi-Latn": "Hum aapko kahan bataye?",
+        "hi": "हम आपको कहाँ बताएँ?",
+    },
+    "erase.notice.phone": {
+        "en": "My phone",
+        "hi-Latn": "Mera phone",
+        "hi": "मेरा फ़ोन",
+    },
+    "erase.notice.email": {
+        "en": "My email",
+        "hi-Latn": "Mera email",
+        "hi": "मेरा ईमेल",
+    },
+    "notice.done": {
+        "en": "Your erasure request {reference} is complete. We removed your name, contact "
+        "details and message text, and turned off offers and promotions.",
+        "hi-Latn": "Aapka erasure request {reference} poora ho gaya. Humne aapka naam, sampark "
+        "vivaran aur sandesh ka text hata diya hai, aur offers aur promotions band kar diye hain.",
+        "hi": "आपका मिटाने का अनुरोध {reference} पूरा हो गया। हमने आपका नाम, संपर्क विवरण और "
+        "संदेशों का टेक्स्ट हटा दिया है, और ऑफ़र और प्रमोशन बंद कर दिए हैं।",
+    },
+    "notice.kept": {
+        "en": "We kept payment and refund records, without your name, for our accounts and to "
+        "show what was paid. They are kept up to {years} years.",
+        "hi-Latn": "Humne bhugtaan aur refund ke records aapke naam ke bina rakhe hain, hamare "
+        "hisaab ke liye aur yeh dikhane ke liye ki kya bhugtaan hua. Ve {years} saal tak rakhe "
+        "jaate hain.",
+        "hi": "हमने भुगतान और रिफ़ंड के रिकॉर्ड आपके नाम के बिना रखे हैं, हमारे हिसाब के लिए और यह "
+        "दिखाने के लिए कि क्या भुगतान हुआ। वे {years} साल तक रखे जाते हैं।",
+    },
+    "notice.contact": {
+        "en": "If you have a question or complaint, contact {contact}; we aim to reply within "
+        "{days} days.",
+        "hi-Latn": "Agar aapka koi sawal ya shikayat hai, to {contact} se sampark karein; hum "
+        "{days} din ke andar jawab dene ka lakshya rakhte hain.",
+        "hi": "अगर आपका कोई सवाल या शिकायत है, तो {contact} से संपर्क करें; हम {days} दिन के भीतर "
+        "जवाब देने का लक्ष्य रखते हैं।",
+    },
+    "notice.board": {
+        "en": "If you are still not satisfied after using our process, you can complain to the "
+        "Data Protection Board of India.",
+        "hi-Latn": "Agar hamari prakriya ke baad bhi aap santusht nahin hain, to aap Data "
+        "Protection Board of India se shikayat kar sakte hain.",
+        "hi": "अगर हमारी प्रक्रिया के बाद भी आप संतुष्ट नहीं हैं, तो आप डेटा प्रोटेक्शन बोर्ड ऑफ़ "
+        "इंडिया से शिकायत कर सकते हैं।",
     },
     # ---- consent as benefits (S8.5b). Hindi awaits native review (docs/DECISIONS.md) ----
     "consent.h.title": {
@@ -933,11 +1007,37 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Humne is case ko suljha hua maan kar band kar diya hai.",
         "hi": "हमने इस केस को सुलझा हुआ मानकर बंद कर दिया है।",
     },
+    # Owner decision M2 (2026-10-31): a reason, a way to contest, and the National Consumer
+    # Helpline. {contact} is the privacy and grievance contact; {days} the settlement target.
     "close.no_remedy": {
-        "en": "We reviewed this case and closed it. No remedy is due on this order.",
-        "hi-Latn": "Humne is case ki jaanch ki aur ise band kar diya. "
-        "Is order par koi muaavza dena nahi banta.",
-        "hi": "हमने इस केस की जाँच की और इसे बंद कर दिया। इस ऑर्डर पर कोई मुआवज़ा देय नहीं है।",
+        "en": "We have looked at your case again and, based on the records for this order, we "
+        "are not able to offer a refund or voucher this time. If you think we have missed "
+        "something, or you have a photo or receipt to share, contact us at {contact}: we reply "
+        "within 2 working days and aim to settle within {days} days. You can also call the "
+        "National Consumer Helpline on 1915 (consumerhelpline.gov.in).",
+        "hi-Latn": "Humne aapka case dobara dekha. Is order ke records ke hisaab se hum is baar "
+        "refund ya voucher nahi de paa rahe hain. Agar aapko lagta hai ki kuch chhoot gaya hai, "
+        "ya aapke paas photo ya rasid hai, to {contact} par likhiye: hum 2 kaam ke dinon mein "
+        "jawab denge aur {days} din mein nipatane ki koshish karenge. Aap National Consumer "
+        "Helpline 1915 (consumerhelpline.gov.in) par bhi sampark kar sakte hain.",
+        "hi": "हमने आपका केस दोबारा देखा। इस ऑर्डर के रिकॉर्ड के आधार पर हम इस बार रिफंड या "
+        "वाउचर नहीं दे पा रहे हैं। अगर आपको लगता है कि कुछ छूट गया है, या आपके पास फ़ोटो या "
+        "रसीद है, तो {contact} पर लिखें: हम 2 कार्य-दिवस में जवाब देंगे और {days} दिन में "
+        "निपटाने का प्रयास करेंगे। आप राष्ट्रीय उपभोक्ता हेल्पलाइन 1915 (consumerhelpline.gov.in) "
+        "पर भी संपर्क कर सकते हैं।",
+    },
+    # Same sentence without the contact clause, used only while no contact is set.
+    "close.no_remedy_nocontact": {
+        "en": "We have looked at your case again and, based on the records for this order, we "
+        "are not able to offer a refund or voucher this time. You can call the National "
+        "Consumer Helpline on 1915 (consumerhelpline.gov.in) if you think we have missed "
+        "something.",
+        "hi-Latn": "Humne aapka case dobara dekha. Is order ke records ke hisaab se hum is baar "
+        "refund ya voucher nahi de paa rahe hain. Agar aapko lagta hai ki kuch chhoot gaya hai, to "
+        "aap National Consumer Helpline 1915 (consumerhelpline.gov.in) par sampark kar sakte hain.",
+        "hi": "हमने आपका केस दोबारा देखा। इस ऑर्डर के रिकॉर्ड के आधार पर हम इस बार रिफंड या "
+        "वाउचर नहीं दे पा रहे हैं। अगर आपको लगता है कि कुछ छूट गया है, तो आप राष्ट्रीय "
+        "उपभोक्ता हेल्पलाइन 1915 (consumerhelpline.gov.in) पर संपर्क कर सकते हैं।",
     },
     "close.duplicate": {
         "en": "We have closed this case because it repeats another report of yours.",

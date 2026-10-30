@@ -148,20 +148,22 @@ def test_processors_and_contact_come_from_settings(api, app_engine, tid, people)
     ]
     assert body["processors"] and body["provisional_label"]
     c = body["contact"]
-    assert c["label"] == "Privacy contact"
+    assert c["label"] == "Privacy and grievance contact"
     assert c["name"] == settings["privacy_contact_name"]
     assert c["email"] == settings["privacy_contact_email"]
     assert c["response_target_days"] == settings["grievance_target_days"] == 30
-    assert c["legal_ceiling_days"] == data_held.LEGAL_CEILING_DAYS == 90
+    assert "legal_ceiling_days" not in c and c["acknowledge_hours"] == 48
     assert c["configured"] is True
-    assert "30" in c["response_text"] and "90" in c["response_text"]
+    assert "30" in c["response_text"] and "48" in c["response_text"]
+    assert "legal" not in c["response_text"].lower() and "90" not in c["response_text"]
 
 
 def test_not_kept_claims_need_code_confirmation_and_the_setting(
     api, app_engine, tid, people, monkeypatch
 ):
     cid, auth = people()
-    assert api.get("/me/data-held", headers=auth).json()["not_kept"] == []  # default: hidden
+    shown = api.get("/me/data-held", headers=auth).json()["not_kept"]
+    assert shown == ["We never see or store your card number, CVV or UPI PIN."]  # confirmed by scan
     with tenant_session(tid, app_engine) as s:
         customer = s.get(Customer, cid)
         settings = effective_settings(s)
@@ -171,7 +173,8 @@ def test_not_kept_claims_need_code_confirmation_and_the_setting(
                 "not_kept"
             ]
 
-        # A tenant override alone never enables a claim: nothing is confirmed in code yet.
+        # A tenant override alone never enables a claim: with nothing confirmed in code, none shows.
+        monkeypatch.setattr(data_held, "CONFIRMED_NOT_KEPT", frozenset())
         assert claims(["card_numbers", "upi_details"]) == []
         monkeypatch.setattr(data_held, "CONFIRMED_NOT_KEPT", frozenset({"card_numbers"}))
         assert len(claims(["card_numbers"])) == 1  # confirmed in code AND listed
@@ -192,7 +195,7 @@ def test_overrides_cannot_raise_the_ceiling_or_drop_the_provisional_label(app_en
             "grievance_target_days": 500,
         }
         body = data_held.what_we_hold(s, customer, hostile)
-        assert body["contact"]["legal_ceiling_days"] == 90
+        assert "legal_ceiling_days" not in body["contact"]
         assert body["contact"]["response_target_days"] <= 90
         assert "365" not in body["contact"]["response_text"]
         assert body["provisional_label"]

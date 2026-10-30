@@ -33,12 +33,16 @@ from app.engine.retention import retention_days
 # until the owner has checked each claim against the payment mock) AND the tenant setting
 # `data_not_kept` lists it; the setting alone never enables a claim.
 KNOWN_NOT_KEPT = ("card_numbers", "upi_details")
-CONFIRMED_NOT_KEPT: frozenset[str] = frozenset()
+# `card_numbers` is confirmed by tests/integration/test_no_card_data.py (owner decision P5):
+# card number, CVV and UPI PIN are never stored. `upi_details` stays unconfirmed: a gateway
+# refund payload can carry the payer's UPI ID, and nothing proves otherwise yet.
+CONFIRMED_NOT_KEPT: frozenset[str] = frozenset({"card_numbers"})
 # Retention figures stay labelled provisional until counsel confirms them; flip in code only.
 RETENTION_CONFIRMED = False
-# The statutory outer limit for answering a request; the internal target is a setting.
-LEGAL_CEILING_DAYS = 90
-DEFAULT_RECORD_YEARS = 7
+# Our own answer-by target is a setting (grievance_target_days); the acknowledgement time is fixed.
+MAX_TARGET_DAYS = 90  # sanity bound on the tenant setting; NOT a statement of any legal limit
+ACK_HOURS = 48  # we confirm we have a privacy message within this many hours (owner decision P2)
+DEFAULT_RECORD_YEARS = 8  # payment and refund records: 8 financial years (owner decision P1)
 HEADINGS = ("title", "item", "yours", "purpose", "keep", "use", "processors", "not_kept", "contact")
 RETENTION_FLOOR_DAYS = 365  # same one-year floor the retention job applies
 
@@ -153,10 +157,11 @@ def processors(settings: dict[str, Any]) -> list[dict[str, str]]:
 
 
 def target_days(settings: dict[str, Any]) -> int:
-    """Our internal answer-by target in days (tenant setting, default 30, never above the legal
-    ceiling). A bool or a bad value falls back to the default."""
+    """Our internal answer-by target in days (tenant setting, default 30, kept within a sanity
+    bound). A bool or a bad value falls back to the default. It is our own target: no legal
+    deadline for answering or erasing is stated anywhere (owner decision P2)."""
     days = settings.get("grievance_target_days")
-    ok = isinstance(days, int) and not isinstance(days, bool) and 0 < days <= LEGAL_CEILING_DAYS
+    ok = isinstance(days, int) and not isinstance(days, bool) and 0 < days <= MAX_TARGET_DAYS
     return days if ok else 30
 
 
@@ -171,8 +176,8 @@ def contact(settings: dict[str, Any], lang: str) -> dict[str, Any]:
         "name": name if configured else "",
         "email": email,
         "response_target_days": days,
-        "legal_ceiling_days": LEGAL_CEILING_DAYS,
-        "response_text": t("held.contact.target", lang, days=days, ceiling=LEGAL_CEILING_DAYS)
+        "acknowledge_hours": ACK_HOURS,
+        "response_text": t("held.contact.target", lang, days=days, hours=ACK_HOURS)
         if configured
         else t("held.contact.unset", lang),
     }

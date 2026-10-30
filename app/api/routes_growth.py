@@ -97,7 +97,9 @@ def _campaign_out(db: Session, c: Campaign, now: datetime) -> CampaignOut:
             }
             for a in approvals
         ],  # fmt: skip
-        fully_approved=camp.dual_approved(camp.valid_approvals(c, approvals, now)),
+        fully_approved=camp.dual_approved(
+            camp.valid_approvals(c, approvals, now), camp.approvers_needed(db, c)
+        ),
         playbook=None
         if entry is None
         else {

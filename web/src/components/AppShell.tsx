@@ -169,11 +169,11 @@ export function AppShell() {
       <footer className="mx-auto max-w-6xl border-t border-border px-6 py-4 text-xs text-muted-foreground sm:px-12">
         {privacy && privacy.email ? (
           <a href={`mailto:${privacy.email}`} title={privacy.name} className="underline underline-offset-2 transition-colors duration-200 hover:text-brand">
-            Privacy contact
+            Privacy and grievance contact
           </a>
         ) : (
           <NavLink to="/help" className="underline underline-offset-2 transition-colors duration-200 hover:text-brand">
-            Privacy contact
+            Privacy and grievance contact
           </NavLink>
         )}
       </footer>
