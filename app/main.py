@@ -12,6 +12,7 @@ from app.api import (
     routes_locations,
     routes_meta,
     routes_orders,
+    routes_platform,
     routes_policies,
 )
 from app.config import get_settings
@@ -43,6 +44,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_growth.router)
     app.include_router(routes_insights.router)
     app.include_router(routes_data_rights.router)
+    app.include_router(routes_platform.router)  # 404 unless the platform admin is configured
     if get_settings().app_env in routes_admin.DEV_ENVS:  # allow-list
         app.include_router(routes_admin.router)
         if get_settings().mock_state_file:  # mock providers only exist in dev/test

@@ -76,6 +76,15 @@ class Settings(BaseSettings):
     # Lockout: this many failed logins for one tenant+email within the window -> 429.
     login_max_failures: int = Field(default=5, ge=1)
     login_window_minutes: int = Field(default=15, ge=1)
+    # Platform admin (S9.1): one operator principal, configured only here (never in the DB).
+    # The feature is ON only when email, bcrypt hash AND the platform DB URL are all set; any
+    # missing piece and every /platform route answers 404 (fail closed).
+    platform_admin_email: str | None = None
+    platform_admin_password_hash: SecretStr | None = None
+    # Connection for the aggregate-only role resolvedesk_platform (no table rights, no tenant).
+    platform_database_url: str | None = None
+    platform_jwt_ttl_minutes: int = Field(default=30, ge=1, le=240)
+    platform_jwt_audience: str = "resolvedesk-platform"
     # Browser origins allowed by CORS, comma-separated (the React app's dev server by default).
     web_origins: str = "http://localhost:5173"
 
@@ -90,6 +99,16 @@ class Settings(BaseSettings):
         if self.app_env == "prod" and self.llm_cache:
             raise ValueError("prod requires LLM_CACHE=false (the cache stores customer text)")
         return self
+
+
+def platform_admin_enabled(s: Settings) -> bool:
+    """All three pieces present and non-blank. Anything less keeps the platform routes off."""
+    return bool(
+        (s.platform_admin_email or "").strip()
+        and s.platform_admin_password_hash is not None
+        and s.platform_admin_password_hash.get_secret_value().strip()
+        and (s.platform_database_url or "").strip()
+    )
 
 
 @lru_cache
