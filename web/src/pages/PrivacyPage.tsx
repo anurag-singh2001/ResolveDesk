@@ -11,6 +11,7 @@ import {
   ErrorState,
   Loading,
   PageHeader,
+  Switch,
   numClass,
   tableClass,
   tableWrapClass,
@@ -19,7 +20,6 @@ import {
 } from "../components/ui";
 import { useApi } from "../lib/useApi";
 
-const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp" };
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -28,6 +28,7 @@ function when(iso: string): string {
 function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consents) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const b = data.benefits;
 
   async function toggle(purpose: string, granted: boolean) {
     setBusy(true);
@@ -43,39 +44,43 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
 
   return (
     <Card className="p-5">
-      <h2 className="font-montserrat text-base font-semibold text-foreground">Offers and promotions</h2>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Help with an order never needs this. Turn it on only if you want offers from us; turn it off any time, in one click.
-      </p>
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{b.headings.title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{b.headings.intro}</p>
       {error && <Alert>{error}</Alert>}
       <ul className="mt-3 divide-y divide-border">
-        {data.consents.map((c) => {
-          const label = `Marketing messages on ${CHANNEL_LABEL[c.channel] ?? c.channel}`;
-          return (
-            <li key={`${c.purpose}-${c.channel}`} className="flex items-center justify-between gap-3 py-3">
-              <label htmlFor={`consent-${c.purpose}-${c.channel}`} className="text-sm text-foreground">
-                {label}
-              </label>
-              <input
-                id={`consent-${c.purpose}-${c.channel}`}
-                type="checkbox"
-                role="switch"
-                className="h-5 w-5"
-                checked={c.granted}
-                disabled={busy}
-                onChange={(e) => void toggle(c.purpose, e.target.checked)}
-              />
-            </li>
-          );
-        })}
+        {b.purposes.map((p) => (
+          <li key={`${p.purpose}-${p.channel}`} className="space-y-2 py-3" data-testid={`consent-${p.purpose}`}>
+            <h3 className="text-sm font-semibold text-foreground">{p.title}</h3>
+            <p className="text-sm text-foreground">{p.benefit}</p>
+            <p className="text-sm text-muted-foreground">
+              {p.sent} {p.cap} {p.channel_label}.
+            </p>
+            <Switch
+              id={`consent-${p.purpose}-${p.channel}`}
+              label={p.switch_label}
+              stateLabel={p.state_label}
+              checked={p.granted}
+              disabled={busy}
+              onChange={(next) => void toggle(p.purpose, next)}
+            />
+          </li>
+        ))}
+        <li className="space-y-1 py-3" data-testid="consent-always-on">
+          <h3 className="text-sm font-semibold text-foreground">
+            {b.always_on.title}
+            <Badge tone="muted" className="ml-2">{b.always_on.badge}</Badge>
+          </h3>
+          <p className="text-sm text-muted-foreground">{b.always_on.body}</p>
+        </li>
       </ul>
-      {data.history.length > 0 && (
-        <details className="mt-2 text-sm text-muted-foreground">
-          <summary className="cursor-pointer">History of your choices</summary>
-          <ul className="mt-2 space-y-1">
-            {data.history.map((h, i) => (
+      <p className="mt-2 text-sm text-foreground" data-testid="consent-note">{b.headings.note}</p>
+      {b.history_labelled.length > 0 && (
+        <details className="mt-3 text-sm text-muted-foreground" open>
+          <summary className="cursor-pointer">{b.headings.history}</summary>
+          <ul className="mt-2 space-y-1" data-testid="consent-history">
+            {b.history_labelled.map((h, i) => (
               <li key={i}>
-                {when(h.at)}: {h.granted ? "agreed to" : "stopped"} {h.purpose} on {CHANNEL_LABEL[h.channel] ?? h.channel}
+                {when(h.at)}: {h.action_label} {h.purpose_label} {h.channel_label}. {b.headings.notice}: {h.notice_version}
               </li>
             ))}
           </ul>

@@ -781,6 +781,111 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "Kanooni seema {ceiling} hai.",
         "hi": "हम {date} तक पूरा करने का लक्ष्य रखते हैं। कानूनी सीमा {ceiling} है।",
     },
+    # ---- consent as benefits (S8.5b). Hindi awaits native review (docs/DECISIONS.md) ----
+    "consent.h.title": {
+        "en": "Offers and promotions",
+        "hi-Latn": "Offers aur promotions",
+        "hi": "ऑफ़र और प्रमोशन",
+    },
+    "consent.h.intro": {
+        "en": "You choose whether we send you offers. Every switch starts off.",
+        "hi-Latn": "Offers bhejein ya nahin, yeh aap chunte hain. "
+        "Har switch band se shuru hota hai.",
+        "hi": "ऑफ़र भेजें या नहीं, यह आप चुनते हैं। हर स्विच बंद से शुरू होता है।",
+    },
+    "consent.h.history": {
+        "en": "History of your choices",
+        "hi-Latn": "Aapke choices ka itihaas",
+        "hi": "आपकी पसंद का इतिहास",
+    },
+    "consent.h.note": {
+        "en": "Turning offers off never changes the help you get with an order.",
+        "hi-Latn": "Offers band karne se order mein milne wali madad par koi asar nahin padta.",
+        "hi": "ऑफ़र बंद करने से ऑर्डर में मिलने वाली मदद पर कोई असर नहीं पड़ता।",
+    },
+    "consent.h.on": {
+        "en": "On",
+        "hi-Latn": "Chalu",
+        "hi": "चालू",
+    },
+    "consent.h.off": {
+        "en": "Off",
+        "hi-Latn": "Band",
+        "hi": "बंद",
+    },
+    "consent.h.notice": {
+        "en": "Wording version",
+        "hi-Latn": "Wording version",
+        "hi": "शब्दावली संस्करण",
+    },
+    "consent.marketing.title": {
+        "en": "Offers and vouchers",
+        "hi-Latn": "Offers aur vouchers",
+        "hi": "ऑफ़र और वाउचर",
+    },
+    "consent.marketing.benefit": {
+        "en": "Hear about offers and vouchers for your next order.",
+        "hi-Latn": "Apne agle order ke offers aur vouchers ke bare mein jaaniye.",
+        "hi": "अपने अगले ऑर्डर के ऑफ़र और वाउचर के बारे में जानिए।",
+    },
+    "consent.marketing.sent": {
+        "en": "We send a short message about an offer or voucher.",
+        "hi-Latn": "Hum offer ya voucher ke bare mein ek chhota message bhejte hain.",
+        "hi": "हम ऑफ़र या वाउचर के बारे में एक छोटा संदेश भेजते हैं।",
+    },
+    "consent.marketing.switch": {
+        "en": "Send me offers and vouchers",
+        "hi-Latn": "Mujhe offers aur vouchers bhejiye",
+        "hi": "मुझे ऑफ़र और वाउचर भेजें",
+    },
+    "consent.cap": {
+        "en": "At most one offer message in {days} days.",
+        "hi-Latn": "{days} din mein zyada se zyada ek offer message.",
+        "hi": "{days} दिन में अधिकतम एक ऑफ़र संदेश।",
+    },
+    "consent.channel.whatsapp": {
+        "en": "On WhatsApp",
+        "hi-Latn": "WhatsApp par",
+        "hi": "WhatsApp पर",
+    },
+    "consent.state.on": {
+        "en": "On",
+        "hi-Latn": "Chalu",
+        "hi": "चालू",
+    },
+    "consent.state.off": {
+        "en": "Off",
+        "hi-Latn": "Band",
+        "hi": "बंद",
+    },
+    "consent.help.title": {
+        "en": "Help messages",
+        "hi-Latn": "Madad ke messages",
+        "hi": "मदद के संदेश",
+    },
+    "consent.help.body": {
+        "en": "Always on, needed to resolve your order. There is no switch for these, "
+        "and turning offers off does not change them.",
+        "hi-Latn": "Hamesha chalu, aapka order suljhane ke liye zaroori. "
+        "Inke liye koi switch nahin hai, aur offers band karne se yeh nahin badalte.",
+        "hi": "हमेशा चालू, आपका ऑर्डर सुलझाने के लिए ज़रूरी। "
+        "इनके लिए कोई स्विच नहीं है, और ऑफ़र बंद करने से ये नहीं बदलते।",
+    },
+    "consent.help.badge": {
+        "en": "Always on",
+        "hi-Latn": "Hamesha chalu",
+        "hi": "हमेशा चालू",
+    },
+    "consent.hist.granted": {
+        "en": "agreed to",
+        "hi-Latn": "sahmat hue",
+        "hi": "सहमत हुए",
+    },
+    "consent.hist.withdrawn": {
+        "en": "stopped",
+        "hi-Latn": "band kiya",
+        "hi": "बंद किया",
+    },
     # ---- staff replies and closing (app/engine/staff_actions.py, S7.6) ----
     # Hinglish and Devanagari copy is plain and awaits native review (docs/DECISIONS.md).
     "staff.looking_into": {

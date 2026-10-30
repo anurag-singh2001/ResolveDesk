@@ -1,4 +1,4 @@
-# Customer guide
+﻿# Customer guide
 
 ResolveDesk is where you see your orders and get help when something goes wrong with one. You
 tell us what happened, we check the order's records, and a person approves any refund before it
@@ -7,7 +7,7 @@ is paid.
 ## Signing in
 
 1. Open the app. You see the **Sign in** page.
-2. Under **Business**, choose the restaurant or café you ordered from.
+2. Under **Business**, choose the restaurant or cafÃ© you ordered from.
 3. Enter the **email** and **password** for your account, then click **Sign in**.
 
 If you see **"Wrong email or password"**, check both and try again. After five wrong tries the
@@ -39,7 +39,7 @@ Click a card to open the order. The order page shows:
 1. Open the order from **My orders**.
 2. Click **Report a problem**.
 3. Under **What went wrong?**, pick the closest match, such as *Late delivery* or *Missing items*.
-   If none fits, or you are not sure, pick **Not sure — just describe it** (when shown) and our
+   If none fits, or you are not sure, pick **Not sure â€” just describe it** (when shown) and our
    assistant will work out the category from your message.
 4. For some problems (for example a wrong item) a **How would you like this settled?** list appears,
    such as *Voucher* or *Ask for a refund*. Each choice shows what you would get, worked out for your order, and
@@ -131,10 +131,7 @@ Open **Privacy & data** in the menu.
   confirmed the claim. The **Privacy contact** (name, email and how fast we aim to reply, with
   the 90-day legal limit) shows at the top and bottom of the page. The page uses your chosen
   language.
-- **Offers and promotions.** Help with an order never needs your permission for offers. If you
-  want offers on WhatsApp, turn the switch on; to stop them, turn it off. One click either way,
-  and it applies to the next message we would send. **History of your choices** lists each
-  change with its date.
+- **Offers and promotions.** Each offer choice explains what you get (for example offers and vouchers for your next order), what we send, how often (at most one offer message in 30 days) and on which channel (WhatsApp). The switch starts **Off**, the label and the word **On** or **Off** are always visible, and nothing is ticked for you. To stop offers, turn the switch off: one click, and it applies to the next message we would send. **Help messages** are shown as always on, because they are needed to resolve your order; they have no switch, and turning offers off never changes them. **History of your choices** lists each change with its date, channel and the wording version in force. The page uses your chosen language.
 - **Download my data.** Saves a file with your details, orders, cases, your choices above, and the
   companies that process data for us (such as the AI providers and the database host). The file is
   for other software. For a copy you can read, click **Open readable version**: one page in your
@@ -163,14 +160,14 @@ Open **Privacy & data** in the menu.
 We reply in the language you write in. You do not choose a setting.
 
 - If you write in **English**, we reply in English. If you write in **Hinglish** (Hindi in English
-  letters), we reply in Hinglish. If you write in **हिन्दी** (Devanagari), we reply in Hindi.
+  letters), we reply in Hinglish. If you write in **à¤¹à¤¿à¤¨à¥à¤¦à¥€** (Devanagari), we reply in Hindi.
 - The language is set from your first message about a report and stays the same for that report.
   It changes only if you write in Devanagari, or send two longer messages in a different language.
   Very short replies such as "haan", "yes" or "ok", and messages that are only an order number or
   an emoji, never change it.
 - Only our messages about your reports change. The buttons, menus and headings of this app stay
   in English.
-- Amounts look the same in every language (for example `₹1,00,000.00`), and dates use a month
+- Amounts look the same in every language (for example `â‚¹1,00,000.00`), and dates use a month
   name (for example `27 Oct 2026`), never numbers like `10/11`.
 - The messages are fixed, pre-written sentences, not generated text. The Hindi and Hinglish
   versions say exactly what the English ones say, and keep *waiting for approval*, *being

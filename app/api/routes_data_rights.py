@@ -26,7 +26,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import data_export, data_held, erasure_info
+from app.engine import consent_benefits, data_export, data_held, erasure_info
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -58,13 +58,29 @@ class ConsentEventOut(BaseModel):
     at: datetime
 
 
-class ConsentsOut(BaseModel):
+class ConsentStateOut(BaseModel):
+    """The plain record of choices; this is what the data export embeds."""
+
     notice_version: str
     consents: list[ConsentOut]
     history: list[ConsentEventOut]
 
 
+class ConsentsOut(ConsentStateOut):
+    # Benefit wording, frequency cap and the always-on help note (S8.5b), in the customer's
+    # language. Page copy, so it is not part of the export.
+    benefits: consent_benefits.Benefits
+
+
 def _consents(db: Session, customer: Customer) -> ConsentsOut:
+    state, current, events = _state(db, customer)
+    return ConsentsOut(
+        **state.model_dump(),
+        benefits=consent_benefits.build(customer.preferred_language, current, events),
+    )
+
+
+def _state(db: Session, customer: Customer):
     rows = {
         (c.purpose, c.channel): c
         for c in db.scalars(select(Consent).where(Consent.customer_id == customer.id))
@@ -86,7 +102,8 @@ def _consents(db: Session, customer: Customer) -> ConsentsOut:
         .where(ConsentEvent.customer_id == customer.id)
         .order_by(ConsentEvent.created_at, ConsentEvent.id)
     )
-    return ConsentsOut(
+    events = list(events)
+    state = ConsentStateOut(
         notice_version=privacy.NOTICE_VERSION,
         consents=current,
         history=[
@@ -101,6 +118,7 @@ def _consents(db: Session, customer: Customer) -> ConsentsOut:
             for e in events
         ],
     )
+    return state, current, events
 
 
 @router.get("/me/consents")
@@ -170,7 +188,7 @@ def my_data_export(
                 "message": st.message,
             }
         )
-    consent = _consents(db, customer)
+    consent = _state(db, customer)[0]
     return {
         "generated_at": now,
         "profile": {

@@ -962,7 +962,7 @@ class CampaignMember(TenantOwned, Base):
         CheckConstraint("arm IN ('treatment', 'holdout')", name="ck_campaign_members_arm"),
         CheckConstraint(
             "send_status IN ('pending', 'submitted', 'processing', 'succeeded', 'failed', "
-            "'unknown')",
+            "'unknown', 'skipped')",
             name="ck_campaign_members_send_status",
         ),
         # Holdout members are never contacted.
@@ -977,6 +977,10 @@ class CampaignMember(TenantOwned, Base):
     send_status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="pending")
     idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(120))
+    # Set when the executor claims the member for sending (migration 0029); the send-time
+    # frequency cap counts from here. `skipped` members carry a reason code instead.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    skip_reason: Mapped[str | None] = mapped_column(String(32))
 
 
 class CampaignApproval(TenantOwned, Base):

@@ -3,11 +3,58 @@ import { describe, expect, it, vi } from "vitest";
 import type { Consents, DataHeld, ErasureInfo, ErasureRequest, Role } from "../api/types";
 import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
 
-function consents(granted: boolean): Consents {
+function consents(granted: boolean, withHistory = false): Consents {
   return {
     notice_version: "v1",
     consents: [{ purpose: "marketing", channel: "whatsapp", granted, updated_at: null }],
     history: [],
+    benefits: {
+      language: "en",
+      headings: {
+        title: "Offers and promotions",
+        intro: "You choose whether we send you offers. Every switch starts off.",
+        history: "History of your choices",
+        note: "Turning offers off never changes the help you get with an order.",
+        on: "On",
+        off: "Off",
+        notice: "Wording version",
+      },
+      always_on: {
+        title: "Help messages",
+        body: "Always on, needed to resolve your order. There is no switch for these.",
+        badge: "Always on",
+      },
+      purposes: [
+        {
+          purpose: "marketing",
+          channel: "whatsapp",
+          granted,
+          title: "Offers and vouchers",
+          benefit: "Hear about offers and vouchers for your next order.",
+          sent: "We send a short message about an offer or voucher.",
+          cap: "At most one offer message in 30 days.",
+          cap_days: 30,
+          channel_label: "On WhatsApp",
+          switch_label: "Send me offers and vouchers",
+          state_label: granted ? "On" : "Off",
+        },
+      ],
+      history_labelled: withHistory
+        ? [
+            {
+              purpose: "marketing",
+              channel: "whatsapp",
+              granted: false,
+              source: "customer",
+              notice_version: "v1",
+              at: "2026-10-27T10:00:00Z",
+              purpose_label: "Offers and vouchers",
+              channel_label: "On WhatsApp",
+              action_label: "stopped",
+            },
+          ]
+        : [],
+    },
   };
 }
 
@@ -161,7 +208,7 @@ describe("privacy page", () => {
   it("lets a customer turn marketing on and off", async () => {
     const { calls } = setup();
     renderApp("/privacy");
-    const toggle = await screen.findByRole("switch", { name: /Marketing messages on WhatsApp/ });
+    const toggle = await screen.findByRole("switch", { name: /Send me offers and vouchers/ });
     expect(toggle).not.toBeChecked();
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByRole("switch")).toBeChecked());
@@ -169,6 +216,41 @@ describe("privacy page", () => {
     await waitFor(() => expect(screen.getByRole("switch")).not.toBeChecked());
     const posts = calls.filter((c) => c.method === "POST").map((c) => c.body);
     expect(posts).toEqual([{ granted: true }, { granted: false }]);
+  });
+
+  it("explains each choice as a benefit with its cap, and shows help as always on without a switch", async () => {
+    setup();
+    renderApp("/privacy");
+    const row = await screen.findByTestId("consent-marketing");
+    expect(row).toHaveTextContent("Hear about offers and vouchers");
+    expect(row).toHaveTextContent("At most one offer message in 30 days.");
+    expect(row).toHaveTextContent("On WhatsApp");
+    expect(screen.getByRole("switch")).not.toBeChecked(); // off by default
+    expect(screen.getAllByRole("switch")).toHaveLength(1); // help has none
+    const help = screen.getByTestId("consent-always-on");
+    expect(help).toHaveTextContent("Always on");
+    expect(help.querySelector("[role=switch],input")).toBeNull();
+    expect(screen.getByTestId("consent-note")).toHaveTextContent("never changes the help");
+  });
+
+  it("withdraws in one click and keeps the history visible with the wording version", async () => {
+    seedSession();
+    const { calls } = mockFetch({
+      "GET /me/data-held": { body: held() },
+      "GET /me": { body: makeMe("customer") },
+      "GET /orders": { body: [] },
+      "GET /me/consents": { body: consents(true, true) },
+      "POST /me/consents/marketing": { body: consents(false, true) },
+      "GET /me/erasure-request": { body: null },
+    });
+    renderApp("/privacy");
+    const toggle = await screen.findByRole("switch", { name: /Send me offers and vouchers/ });
+    expect(toggle).toBeChecked();
+    fireEvent.click(toggle);
+    await waitFor(() => expect(screen.getByRole("switch")).not.toBeChecked());
+    expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ granted: false }]);
+    expect(screen.getByTestId("consent-history")).toHaveTextContent("stopped Offers and vouchers On WhatsApp");
+    expect(screen.getByTestId("consent-history")).toHaveTextContent("Wording version: v1");
   });
 
   it("downloads the data", async () => {
