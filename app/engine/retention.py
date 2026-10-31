@@ -44,6 +44,7 @@ from app.core.models import (
     Verification,
 )
 from app.core.settings_resolver import effective_settings
+from app.core.telemetry import run_job
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
 from app.engine.approvals import not_superseded
@@ -229,7 +230,14 @@ def purge_all(
     for folder in tenant_dirs():
         slug = load_tenant(folder).slug
         try:
-            reports[slug] = purge_tenant(engine, tenant_id_for(slug), now, apply)
+            tid = tenant_id_for(slug)
+            reports[slug] = run_job(
+                engine,
+                tid,
+                "retention_apply" if apply else "retention_dry_run",
+                lambda t=tid: purge_tenant(engine, t, now, apply),
+                lambda r: {"messages": r.messages, "cases": r.cases, "customers": r.customers},
+            )
         except Exception:
             log.exception("retention failed for tenant %s", slug)
             reports[slug] = None

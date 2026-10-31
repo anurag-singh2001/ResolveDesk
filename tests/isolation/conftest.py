@@ -28,7 +28,9 @@ from app.core.models import (
     Execution,
     FeatureFlag,
     Fulfilment,
+    JobRun,
     LineItem,
+    LlmUsage,
     Location,
     LocationBrand,
     LoginFailure,
@@ -314,6 +316,14 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
     s.flush()
     s.add(Verification(tenant_id=tid, execution_id=execution_id, status="unknown"))
     s.add(DomainEvent(tenant_id=tid, event="test.created", entity_id=case_id))
+    s.add(
+        LlmUsage(
+            tenant_id=tid, role="main", provider="p", model="m", calls=1, input_tokens=1,
+            output_tokens=1, estimated_cost_micro_paise=0, failures=0, latency_ms=1,
+            outcome="ok",
+        )
+    )  # fmt: skip
+    s.add(JobRun(tenant_id=tid, job="test", status="ok", started_at=datetime.now(UTC)))
     s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
 
 

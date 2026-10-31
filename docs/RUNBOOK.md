@@ -74,6 +74,28 @@ Point tests at a separate database (`TEST_DATABASE_URL`), never the demo one.
 | `make eval` refuses to run | DATABASE_URL points at the demo DB | point it at a scratch DB |
 | `make retention` exits 2 | APP_ENV not set in the process environment | `APP_ENV=dev make retention` |
 
+## Platform admin (S9.1)
+
+The platform admin is one operator who sees cross-tenant counts and never a customer record. It is OFF until you set all four variables in `.env` (never commit them). With any one missing, blank, or the API restarted without them, every `/platform/...` route answers 404.
+
+| Variable | What it is |
+| --- | --- |
+| `PLATFORM_ADMIN_EMAIL` | the operator's sign-in email |
+| `PLATFORM_ADMIN_PASSWORD_HASH` | a bcrypt hash of the password (not the password) |
+| `PLATFORM_JWT_SECRET` | signing key for platform tokens: at least 32 characters, random, and NOT the same as `JWT_SECRET` (never the dev secret). Without it the feature stays off. e.g. `uv run python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `PLATFORM_DATABASE_URL` | connection string for the DB role `resolvedesk_platform` (below) |
+
+Optional: `PLATFORM_JWT_TTL_MINUTES` (default 30, token life is the smaller of this and `JWT_TTL_MINUTES`).
+
+1. Make the hash (bcrypt hashes contain `$`; put it in `.env` between single quotes if your shell expands it): `uv run python -c "import getpass; from app.core.passwords import hash_password; print(hash_password(getpass.getpass()))"`.
+2. Migration 0028 creates the role `resolvedesk_platform` as NOLOGIN with no table rights. Give it a login and a strong password as the DB owner (once per database, the password stays out of the repo): `ALTER ROLE resolvedesk_platform LOGIN PASSWORD '<strong password>';`. Build `PLATFORM_DATABASE_URL` from your existing app URL with that user and password (same host and database, pooled endpoint is fine).
+3. Sign in: `POST /platform/auth/login` with `{"email", "password"}`; use the returned bearer token on `GET /platform/tenants`, `/platform/cases`, `/platform/approvals`, `/platform/activity`. A tenant token gets 403 there; a platform token gets 401 on every tenant route.
+4. Five login attempts without a success in 15 minutes give 429. The counter is global (not per IP) and lives in one API process: an attacker can lock the operator out for 15 minutes, and a restart or a second process resets it. So use a long, random, high-entropy password. Failed logins and lockouts are logged (no email or password).
+5. The DB role and its password are per database CLUSTER (roles are cluster-wide on Neon): the demo and test databases share one `resolvedesk_platform` and one password, so a password set for one applies to both.
+6. Every read writes a row to `platform_audit_events` (actor and route only), readable by the DB owner.
+
+The role can read only the `platform_*_v` aggregate views (counts by tenant slug, day and status code; no names, phones, messages or ids). Later stories add their views the same way.
+
 ## Clearing a case the AI could not handle (the stuck demo case O0005779)
 
 A case whose reason reads "AI unavailable: MissingAPIKey" (or `ProviderFailed`) came to a person only because the models could not run. Order O0005779 is such a case in the demo data. Clear it with S7.4:
@@ -88,6 +110,14 @@ Without pressing anything, `make sweep` (or the running sweeper) retries such ca
 ## Cases showing Owner "Unassigned" (made before S7.2)
 
 Cases that were escalated or awaiting approval before case ownership existed have no owner. `make sweep` (and the running sweeper) gives each one an owner by the same rule as new cases (outlet manager, else franchisee owner, else HQ) and writes a `case.owner_assigned` audit row per case. Only the owner fields change. It is idempotent: an owner already set, by the engine or by a person, is never replaced, and a second run reports `owners assigned 0`. Closed or resolved cases stay unowned on purpose.
+## LLM usage and job runs (S9.2)
+
+Two tables, filled automatically, nothing to switch on:
+
+- `llm_usage`: after each agent run, one row per role, provider and model with calls, input and output tokens, summed latency (ms), failures, outcome (`ok`, `error`, `fallback_used`) and the failing exception class. Cost is `estimated_cost_micro_paise` (1 paise = 1,000,000), an ESTIMATE from `LLM_PRICES_PAISE_PER_MILLION` (JSON, `{"gemini/<model>": [input, output]}` in whole paise per million tokens). Unlisted models cost 0. Check the provider's invoice for real spend.
+- `job_runs`: one row per tenant per job: `sweep`, `retention_dry_run` (or `retention_apply`), `growth_nightly`, with `running`, `ok` or `failed`, integer counts and the error class. A row stuck on `running` means the process died mid-job; the next start of the same job for that tenant marks any `running` row older than 6 hours as `failed` with error class `Abandoned`.
+- A run killed before it finishes loses its token counters (written once, at the end of the run), so usage totals are a floor, not exact.
+- Neither table holds prompt, reply or message text, and exception messages are not stored. Recording is best effort: if it fails, a warning with the exception class is logged and the run or job carries on.
 
 ## Safety reminders
 
