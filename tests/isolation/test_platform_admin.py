@@ -455,6 +455,8 @@ def test_downgrade_then_upgrade_restores_exactly_the_same_rights(app_engine):
     from alembic import command
     from alembic.config import Config
 
+    # Every platform view across stories (S9.1 views plus the S9.5 usage and job views).
+    ALL_VIEWS = [*VIEWS, "platform_llm_usage_v", "platform_job_runs_v"]
     cfg = Config("alembic.ini")
     cfg.attributes["url"] = get_settings().test_migration_database_url
     command.downgrade(cfg, "0027")
@@ -470,14 +472,14 @@ def test_downgrade_then_upgrade_restores_exactly_the_same_rights(app_engine):
                 "SELECT count(*) FROM information_schema.role_table_grants "
                 "WHERE grantee = :r AND privilege_type = 'SELECT' AND table_name = ANY(:v)"
             ),
-            {"r": ROLE, "v": VIEWS},
+            {"r": ROLE, "v": ALL_VIEWS},
         ).scalar()
         raw = c.execute(
             text(
                 "SELECT count(*) FROM information_schema.role_table_grants "
                 "WHERE grantee = :r AND table_name <> ALL(:v)"
             ),
-            {"r": ROLE, "v": VIEWS},
+            {"r": ROLE, "v": ALL_VIEWS},
         ).scalar()
     eng.dispose()
-    assert (views, raw) == (len(VIEWS), 0)
+    assert (views, raw) == (len(ALL_VIEWS), 0)

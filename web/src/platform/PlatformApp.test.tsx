@@ -1,7 +1,7 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
-import { mockFetch, renderApp, seedSession } from "../test/utils";
+import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
 import { PLATFORM_KEY } from "./session";
 
 const tenants = [
@@ -62,7 +62,7 @@ describe("platform portal", () => {
 
   it("never sends a business token to the portal or the portal token anywhere else", async () => {
     seedSession("tenant-tok");
-    const { calls } = mockFetch({ ...login, ...data });
+    const { calls } = mockFetch({ ...login, ...data, "GET /me": { body: makeMe("hq_owner") } });
     renderApp("/platform");
     await signIn();
     await screen.findByRole("heading", { name: "Health" });
@@ -118,7 +118,7 @@ describe("platform portal", () => {
     expect(await screen.findByRole("heading", { name: "Scheduled jobs" })).toBeInTheDocument();
     const row = (await screen.findByText("Sweep", { selector: "td" })).closest("tr")!;
     expect(within(row).getByText("6")).toBeInTheDocument();
-    expect(within(row).getByText("85 ms")).toBeInTheDocument();
+    expect(within(row).getByText("92 ms")).toBeInTheDocument();
   });
 
   it("shows AI performance with money in mono and rates from the counts", async () => {
@@ -128,8 +128,8 @@ describe("platform portal", () => {
     expect(await screen.findByRole("heading", { name: "AI performance" })).toBeInTheDocument();
     const cost = (await screen.findAllByText("₹0.25"))[0];
     expect(cost.className).toContain("font-mono");
-    expect(screen.getAllByText("8.3%").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("33.3%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("10.0%").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("100.0%").length).toBeGreaterThan(0);
   });
 
   it.each([

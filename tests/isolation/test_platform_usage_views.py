@@ -77,7 +77,7 @@ def test_totals_match_the_tenant_own_rows(papi, app_engine, tenants):  # noqa: F
     assert sum(r["run_count"] for r in jobs if r["tenant_slug"] == slug) == runs
 
 
-def test_reads_are_audited(papi, owner_engine):
+def test_reads_are_audited(papi, owner_engine):  # noqa: F811
     headers = _platform_headers(papi)
     for path in ROUTES:
         with owner_engine.connect() as c:
