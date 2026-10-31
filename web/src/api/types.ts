@@ -735,7 +735,7 @@ export interface SegmentCell {
 export interface SegmentGroup {
   id: string | null;
   name: string;
-  customers: number;
+  customers: number | null; // null: hidden (under the small-cell minimum)
   segments: SegmentCell[];
 }
 

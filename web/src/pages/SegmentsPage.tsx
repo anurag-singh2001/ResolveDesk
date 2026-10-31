@@ -27,6 +27,9 @@ const HELP: Record<string, string> = {
   one_and_done: "Exactly one order, and not a new customer.",
 };
 
+const CONTACTABLE_NOTE =
+  "Consent granted, a phone number, one customer per phone. It can be higher than a real campaign audience, because the 30-day frequency cap is not applied here.";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 function monthLabel(iso: string): string {
@@ -48,7 +51,7 @@ function SegmentTable({ group, minimum }: { group: SegmentGroup; minimum: number
             <th scope="col" className={`${thClass} text-right`}>Share of base</th>
             <th scope="col" className={`${thClass} text-right`}>Average order</th>
             <th scope="col" className={`${thClass} text-right`}>Total spend</th>
-            <th scope="col" className={`${thClass} text-right`}>Can be messaged on WhatsApp</th>
+            <th scope="col" className={`${thClass} text-right`} title={CONTACTABLE_NOTE}>Can be messaged on WhatsApp*</th>
             <th scope="col" className={`${thClass} text-right`}>Own channel</th>
             <th scope="col" className={`${thClass} text-right`}>Delivery app only</th>
             <th scope="col" className={`${thClass} text-right`}>Delivery app only, not contactable</th>
@@ -198,9 +201,9 @@ export function SegmentsPage() {
       ) : (
         <div className="space-y-6">
           <p className="text-xs text-muted-foreground" data-testid="segments-meta">
-            {group.customers} customers with orders · lapsed means no order for {res.lapsed_days} days · new means first order in the last {res.new_days} days.
-            Counts include customers who have not agreed to marketing; only the WhatsApp column reflects consent.
-            {res.cells_hidden_below_min && ` Groups under ${res.small_cell_min} customers are hidden.`}
+            {group.customers === null ? `Fewer than ${res.small_cell_min}` : group.customers} customers with orders · lapsed means no order for {res.lapsed_days} days · new means first order in the last {res.new_days} days.
+            Counts include customers who have not agreed to marketing; only the WhatsApp column reflects consent. *{CONTACTABLE_NOTE}
+            {res.cells_hidden_below_min && ` Groups under ${res.small_cell_min} customers are hidden, and some larger figures too, so a hidden one cannot be worked out from the rest.`}
           </p>
           <SegmentChart group={group} />
           <section aria-label="Segment table">

@@ -114,7 +114,7 @@ describe("segments page", () => {
     const row = table.getByRole("rowheader", { name: "Loyal" }).closest("tr") as HTMLElement;
     expect(row).toHaveTextContent("Hidden: fewer than 10 customers");
     expect(within(row).queryByText("0")).not.toBeInTheDocument();
-    expect(screen.getByTestId("segments-meta")).toHaveTextContent("Groups under 10 customers are hidden.");
+    expect(screen.getByTestId("segments-meta")).toHaveTextContent("Groups under 10 customers are hidden");
   });
 
   it("marks cohort months that are not over, and hidden cohorts", async () => {
@@ -131,6 +131,19 @@ describe("segments page", () => {
     const row = (await screen.findAllByRole("row")).find((r) => within(r).queryByRole("rowheader", { name: "New" })) as HTMLElement;
     expect(within(row).getAllByRole("cell")[0]).toHaveTextContent("11");
     expect(within(screen.getByTestId("cohort-table")).queryByText("Hidden: fewer than 10 customers")).not.toBeInTheDocument();
+  });
+
+  it("says the WhatsApp figure can exceed a real campaign audience", async () => {
+    open("hq_owner", segmentsBody());
+    expect(await screen.findByTestId("segments-meta")).toHaveTextContent("frequency cap is not applied");
+    expect(screen.getByRole("columnheader", { name: /Can be messaged on WhatsApp\*/ })).toHaveAttribute("title", expect.stringContaining("frequency cap"));
+  });
+
+  it("copes with a hidden group total", async () => {
+    const body = segmentsBody();
+    body.groups[0].customers = null;
+    open("location_manager", body);
+    expect(await screen.findByTestId("segments-meta")).toHaveTextContent("Fewer than 10 customers with orders");
   });
 
   it("says plainly that counts include people who have not agreed to marketing", async () => {

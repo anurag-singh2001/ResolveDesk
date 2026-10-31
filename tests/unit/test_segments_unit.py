@@ -137,3 +137,69 @@ def test_every_vertical_pack_has_segment_defaults(pack):
     assert (cfg.lapsed_days, cfg.new_days, cfg.at_risk_multiple) == (28, 30, 2)
     assert (cfg.loyal_top_percent, cfg.small_cell_min) == (20, 10)
     assert cfg.lapsed_days == lapsed.LAPSED_DAYS
+
+
+# -- complementary suppression and the lapsed bound ----------------------------------------------
+
+import random  # noqa: E402
+
+from app.modules.growth.segments import CUSTOMERS, hide_plan  # noqa: E402
+
+SUMS = ((CUSTOMERS, "active", "lapsed"),)
+NAMES = [CUSTOMERS, *SEGMENTS]
+
+
+def solvable(sizes, hidden, groups, names=NAMES, sums=SUMS):
+    """Any relation left with exactly one hidden term lets a reader compute that term."""
+    relations = [[(g, t) for t in trio] for g in range(groups) for trio in sums]
+    if groups > 1:
+        relations += [[(g, n) for g in range(groups)] for n in names]
+    return [r for r in relations if sum(t in hidden for t in r) == 1]
+
+
+def test_a_lone_small_lapsed_cell_also_hides_active():
+    sizes = {(0, CUSTOMERS): 100, (0, "active"): 95, (0, "lapsed"): 5}
+    sizes.update({(0, s): 50 for s in SEGMENTS if s not in ("active", "lapsed")})
+    hidden = hide_plan(sizes, 1, NAMES, 10, SUMS)
+    assert {(0, "lapsed"), (0, "active")} <= hidden and (0, CUSTOMERS) not in hidden
+
+
+def test_a_small_brand_cell_hides_a_sibling_so_it_cannot_be_subtracted():
+    # group 0 = all brands, 1 and 2 = brands; brand 2's "new" is small
+    sizes = {(g, n): 50 for g in range(3) for n in NAMES}
+    sizes.update({(0, CUSTOMERS): 200, (1, CUSTOMERS): 120, (2, CUSTOMERS): 80})
+    sizes[(2, "new")] = 4
+    hidden = hide_plan(sizes, 3, NAMES, 10, SUMS)
+    assert (2, "new") in hidden and len({g for g, n in hidden if n == "new"}) >= 2
+    assert not solvable(sizes, hidden, 3)
+
+
+def test_no_hidden_value_can_be_derived_whatever_the_sizes():
+    rng = random.Random(42)
+    for _ in range(300):
+        groups = rng.randint(1, 4)
+        sizes = {(g, n): rng.randint(0, 40) for g in range(groups) for n in NAMES}
+        hidden = hide_plan(sizes, groups, NAMES, 10, SUMS)
+        assert all(k in hidden for k, v in sizes.items() if v < 10)  # small ones always hidden
+        if groups > 1:  # a lone group has nothing to difference against across groups
+            assert not solvable(sizes, hidden, groups)
+        else:
+            assert not [r for r in solvable(sizes, hidden, 1)]
+
+
+def test_nothing_extra_is_hidden_when_nothing_is_small():
+    sizes = {(g, n): 30 for g in range(3) for n in NAMES}
+    assert hide_plan(sizes, 3, NAMES, 10, SUMS) == set()
+
+
+def test_lapsed_days_is_bounded_in_one_place():
+    assert lapsed.clamp_lapsed_days(0) == 1 and lapsed.clamp_lapsed_days(-5) == 1
+    assert lapsed.clamp_lapsed_days(28) == 28
+    assert lapsed.lapsed_cut(NOW, 0) == NOW - timedelta(days=1)
+    assert lapsed.lapsed_cut(NOW, -9) == NOW - timedelta(days=1)
+    assert not lapsed.is_lapsed(NOW, NOW, 0)  # an order from now is never lapsed
+    cfg = SegmentSettings.of(
+        {"lapsed_days": 0, "segment_new_days": 30, "segment_at_risk_gap_multiple": 2,
+         "segment_loyal_top_percent": 20, "small_cell_min": 10}
+    )  # fmt: skip
+    assert cfg.lapsed_days == 1
