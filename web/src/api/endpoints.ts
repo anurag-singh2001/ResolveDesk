@@ -14,6 +14,8 @@ import type {
   OutletInsight,
   MetricsQuery,
   MetricsResponse,
+  SegmentsResponse,
+  CohortsResponse,
   Categories,
   Alternatives,
   AskResult,
@@ -161,6 +163,10 @@ export const api = {
     if (q.brand_id) p.set("brand_id", q.brand_id);
     return request<MetricsResponse>(`/insights/metrics?${p.toString()}`);
   },
+  segments: (brandId?: string) =>
+    request<SegmentsResponse>(`/insights/segments${brandId ? `?brand_id=${enc(brandId)}` : ""}`),
+  cohorts: (brandId?: string) =>
+    request<CohortsResponse>(`/insights/cohorts${brandId ? `?brand_id=${enc(brandId)}` : ""}`),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>

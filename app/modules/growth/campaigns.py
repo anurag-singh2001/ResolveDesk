@@ -21,10 +21,10 @@ from app.core.models import Campaign, CampaignApproval, CampaignMember, Signal
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.proposals import ProposalError, canonical_json
+from app.modules.growth.lapsed import LAPSED_DAYS, lapsed_cut
 
 ACTION = "win_back_campaign"
 TEMPLATE = "winback_offer"
-LAPSED_DAYS = 28  # no order at the location in this long before the signal window ended
 FREQUENCY_CAP_DAYS = 30  # nobody is in two campaigns within this long
 PROPOSAL_TTL = timedelta(hours=48)
 APPROVAL_TTL = timedelta(hours=24)
@@ -58,13 +58,17 @@ class Expired(GrowthError):
 
 
 def lapsed_audience(
-    session: Session, tenant_id: uuid.UUID, location_id: uuid.UUID, as_of: datetime
+    session: Session,
+    tenant_id: uuid.UUID,
+    location_id: uuid.UUID,
+    as_of: datetime,
+    lapsed_days: int = LAPSED_DAYS,
 ) -> list[tuple[uuid.UUID, str]]:
     """(customer_id, phone) of lapsed customers of a location, ordered by id: ordered here
     before the cut-off but not since; with a phone; marketing consent on WhatsApp (no consent
     row means no consent); not already in a campaign inside the frequency cap. One customer per
     phone, since real data has duplicate numbers and nobody should be messaged twice."""
-    cut = as_of - timedelta(days=LAPSED_DAYS)
+    cut = lapsed_cut(as_of, lapsed_days)  # the one "lapsed" definition (lapsed.py)
     rows = session.execute(
         text(
             """
@@ -186,7 +190,10 @@ def propose(
         raise ProposalError("window_days must be 1..60")
     settings = effective_settings(session, location_id=signal.location_id)
     pct = settings["growth_holdout_percent"]
-    audience = lapsed_audience(session, ctx.tenant_id, signal.location_id, signal.recent_end)
+    lapsed_days = settings["lapsed_days"]
+    audience = lapsed_audience(
+        session, ctx.tenant_id, signal.location_id, signal.recent_end, lapsed_days
+    )
     if len(audience) < 2:
         raise ProposalError("not enough eligible lapsed customers to run a campaign with a holdout")
     treatment, holdout = split_audience([c for c, _ in audience], str(signal.id), pct)
@@ -200,7 +207,7 @@ def propose(
         "template": TEMPLATE,
         "holdout_percent": pct,
         "split_seed": str(signal.id),
-        "lapsed_days": LAPSED_DAYS,
+        "lapsed_days": lapsed_days,
         "treatment_n": len(treatment),
         "holdout_n": len(holdout),
     }
