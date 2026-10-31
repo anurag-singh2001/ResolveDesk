@@ -193,7 +193,9 @@ def _hidden_cell(name: str) -> SegmentCell:
     )  # fmt: skip
 
 
-def _visible_cell(name: str, members: list[_Cust], base: int) -> SegmentCell:
+def _visible_cell(name: str, members: list[_Cust], base: int | None) -> SegmentCell:
+    """`base` is the group total, or None when that total is hidden: a share beside a visible
+    count would give the hidden total away."""
     orders = sum(c.orders for c in members)
     spend = sum(c.spend for c in members)
     phones = {c.phone for c in members if c.wa_granted and c.phone}  # one per phone
@@ -202,7 +204,7 @@ def _visible_cell(name: str, members: list[_Cust], base: int) -> SegmentCell:
         segment=name,
         suppressed=False,
         in_segment=len(members),
-        share_bp=round(len(members) * 10000 / base) if base else 0,
+        share_bp=None if base is None else round(len(members) * 10000 / base) if base else 0,
         orders=orders,
         total_spend_paise=spend,
         aov_paise=spend // orders if orders else None,
@@ -294,11 +296,11 @@ def segment_groups(
     out = []
     for g, (_, gid, name) in enumerate(todo):
         custs, by_segment = members[g]
+        total = None if (g, CUSTOMERS) in hidden else len(custs)
         cells = [
-            _hidden_cell(n) if (g, n) in hidden else _visible_cell(n, by_segment[n], len(custs))
+            _hidden_cell(n) if (g, n) in hidden else _visible_cell(n, by_segment[n], total)
             for n in SEGMENTS
         ]
-        total = None if (g, CUSTOMERS) in hidden else len(custs)
         out.append(SegmentGroup(id=gid, name=name, customers=total, segments=cells))
     return out
 

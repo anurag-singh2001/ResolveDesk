@@ -187,6 +187,13 @@ def test_no_hidden_value_can_be_derived_whatever_the_sizes():
             assert not [r for r in solvable(sizes, hidden, 1)]
 
 
+def test_a_visible_cell_shows_no_share_when_the_group_total_is_hidden():
+    from app.modules.growth.segments import _visible_cell
+
+    assert _visible_cell("active", [], None).share_bp is None
+    assert _visible_cell("active", [], 0).share_bp == 0
+
+
 def test_nothing_extra_is_hidden_when_nothing_is_small():
     sizes = {(g, n): 30 for g in range(3) for n in NAMES}
     assert hide_plan(sizes, 3, NAMES, 10, SUMS) == set()
