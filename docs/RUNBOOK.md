@@ -96,6 +96,12 @@ Optional: `PLATFORM_JWT_TTL_MINUTES` (default 30, token life is the smaller of t
 
 The role can read only the `platform_*_v` aggregate views (counts by tenant slug, day and status code; no names, phones, messages or ids). Later stories add their views the same way.
 
+## Platform portal (S9.5)
+
+Open `http://localhost:5173/platform` (the web app). It has its own sign in (the platform admin email and password from the section above), its own shell and no business navigation. The token is kept in `sessionStorage` under `resolvedesk.platform.session`, separate from the business token; a 401 or 403 clears it. If the platform admin is not set up, the sign in answers 404 and the page says "The platform portal is not enabled".
+
+Pages: Health (businesses, cases, approvals, last system activity), Scheduled jobs (`GET /platform/jobs`), AI performance (`GET /platform/ai-usage`). Logs and alerts and Scenario lab say "Coming soon" and show no numbers. Migration 0034 adds the views `platform_llm_usage_v` and `platform_job_runs_v` (sums and counts by business slug, day, provider, model, purpose, outcome, job, status; no ids, no text, no error class), granted only to `resolvedesk_platform`. Cost shows as an estimate (micro-paise rounded down to whole paise).
+
 ## Clearing a case the AI could not handle (the stuck demo case O0005779)
 
 A case whose reason reads "AI unavailable: MissingAPIKey" (or `ProviderFailed`) came to a person only because the models could not run. Order O0005779 is such a case in the demo data. Clear it with S7.4:

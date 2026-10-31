@@ -21,6 +21,7 @@ import { PrivacyPage } from "./pages/PrivacyPage";
 import { PrivacyRequestsPage } from "./pages/PrivacyRequestsPage";
 import { ReadableExportPage } from "./pages/ReadableExportPage";
 import { ReportProblemPage } from "./pages/ReportProblemPage";
+import { PlatformApp } from "./platform/PlatformApp";
 
 /** Hides screens a role has no use for. Access itself is enforced by the API on every call. */
 function Only({ when, children }: { when: boolean; children: ReactNode }) {
@@ -31,7 +32,15 @@ function NotFound() {
   return <EmptyState title="Page not found">The page you're looking for doesn't exist or isn't available to you.</EmptyState>;
 }
 
+/** The platform portal is its own area with its own sign-in: it never waits for, or shares, a
+ * business session. */
 export function App() {
+  const { pathname } = useLocation();
+  if (pathname === "/platform" || pathname.startsWith("/platform/")) return <PlatformApp />;
+  return <TenantApp />;
+}
+
+function TenantApp() {
   const { status, me, signedOutByUser } = useAuth();
   const location = useLocation();
 

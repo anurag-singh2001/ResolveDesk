@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, text
 
-from app.api.deps import _bearer, not_found
+from app.api.deps import _bearer
 from app.config import get_settings, platform_admin_enabled
 from app.core.auth import AuthError
 from app.core.db import get_engine
@@ -25,10 +25,16 @@ from app.core.platform_auth import (
     read_platform_token,
 )
 
+NOT_ENABLED_DETAIL = "platform admin not enabled"  # the portal tells "off" from any other 404
+
+
+def _off() -> HTTPException:
+    return HTTPException(status.HTTP_404_NOT_FOUND, NOT_ENABLED_DETAIL)
+
 
 def _feature_on() -> None:
     if not platform_admin_enabled(get_settings()):
-        raise not_found()
+        raise _off()
 
 
 PLATFORM_ROLE = "resolvedesk_platform"
@@ -93,6 +99,33 @@ class ErrorLogRow(BaseModel):
     last_at: datetime
 
 
+class LlmUsageRow(BaseModel):
+    tenant_slug: str
+    day: date
+    provider: str
+    model: str
+    purpose: str
+    outcome: str
+    run_count: int
+    call_count: int
+    failure_count: int
+    tokens_in: int
+    tokens_out: int
+    cost_micro_paise: int
+    latency_ms_total: int
+
+
+class JobRunRow(BaseModel):
+    tenant_slug: str
+    day: date
+    job: str
+    status: str
+    run_count: int
+    finished_count: int
+    duration_ms_total: int
+    last_started_at: datetime | None
+
+
 def get_platform_engine() -> Engine:
     """The aggregate-only connection. Tests override this dependency."""
     return get_engine(get_settings().platform_database_url)
@@ -111,7 +144,7 @@ def require_platform(
     except WrongPrincipal:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "platform admin only") from None
     except PlatformDisabled:
-        raise not_found() from None
+        raise _off() from None
     except AuthError:
         raise unauthorized from None
 
@@ -121,7 +154,7 @@ def platform_login(body: PlatformLoginIn) -> PlatformTokenOut:  # real time, not
     try:
         issued = authenticate_platform(body.email, body.password)
     except PlatformDisabled:
-        raise not_found() from None
+        raise _off() from None
     except PlatformLocked:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many failed logins, try again later"
@@ -227,3 +260,34 @@ def logs(
         "ORDER BY day DESC, occurrences DESC LIMIT 500",
     )
     return [ErrorLogRow(**r) for r in rows]
+
+
+@router.get("/ai-usage")
+def ai_usage(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[LlmUsageRow]:
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/ai-usage",
+        "SELECT tenant_slug, day, provider, model, purpose, outcome, run_count, call_count, "
+        "failure_count, tokens_in, tokens_out, cost_micro_paise, latency_ms_total "
+        "FROM platform_llm_usage_v "
+        "ORDER BY tenant_slug, day, provider, model, purpose, outcome",
+    )
+    return [LlmUsageRow(**r) for r in rows]
+
+
+@router.get("/jobs")
+def job_runs(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[JobRunRow]:
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/jobs",
+        "SELECT tenant_slug, day, job, status, run_count, finished_count, duration_ms_total, "
+        "last_started_at "
+        "FROM platform_job_runs_v ORDER BY tenant_slug, day, job, status",
+    )
+    return [JobRunRow(**r) for r in rows]
