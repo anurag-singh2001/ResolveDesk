@@ -72,6 +72,32 @@ class ActivityRow(BaseModel):
     last_system_event_at: datetime | None
 
 
+class LlmUsageRow(BaseModel):
+    tenant_slug: str
+    day: date
+    provider: str
+    model: str
+    purpose: str
+    outcome: str
+    run_count: int
+    call_count: int
+    failure_count: int
+    tokens_in: int
+    tokens_out: int
+    cost_micro_paise: int
+    latency_ms_total: int
+
+
+class JobRunRow(BaseModel):
+    tenant_slug: str
+    day: date
+    job: str
+    status: str
+    run_count: int
+    duration_ms_total: int
+    last_started_at: datetime | None
+
+
 def get_platform_engine() -> Engine:
     """The aggregate-only connection. Tests override this dependency."""
     return get_engine(get_settings().platform_database_url)
@@ -174,3 +200,33 @@ def activity(
         "SELECT tenant_slug, last_system_event_at FROM platform_activity_v ORDER BY tenant_slug",
     )
     return [ActivityRow(**r) for r in rows]
+
+
+@router.get("/ai-usage")
+def ai_usage(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[LlmUsageRow]:
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/ai-usage",
+        "SELECT tenant_slug, day, provider, model, purpose, outcome, run_count, call_count, "
+        "failure_count, tokens_in, tokens_out, cost_micro_paise, latency_ms_total "
+        "FROM platform_llm_usage_v "
+        "ORDER BY tenant_slug, day, provider, model, purpose, outcome",
+    )
+    return [LlmUsageRow(**r) for r in rows]
+
+
+@router.get("/jobs")
+def job_runs(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[JobRunRow]:
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/jobs",
+        "SELECT tenant_slug, day, job, status, run_count, duration_ms_total, last_started_at "
+        "FROM platform_job_runs_v ORDER BY tenant_slug, day, job, status",
+    )
+    return [JobRunRow(**r) for r in rows]
