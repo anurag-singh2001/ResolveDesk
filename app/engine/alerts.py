@@ -13,6 +13,7 @@ message, id or person is read or stored. Nothing is sent anywhere: the portal sh
 Rates are integer basis points; ratios integer percents (no floats).
 """
 
+import json
 import logging
 import re
 import uuid
@@ -25,7 +26,7 @@ from sqlalchemy.orm import Session
 
 from app.config import Settings
 from app.core.db import tenant_session
-from app.core.models import Case, JobRun, LlmUsage, Organization
+from app.core.models import AuditEvent, JobRun, LlmUsage, Organization
 
 log = logging.getLogger(__name__)
 
@@ -96,14 +97,17 @@ def _provider_failure_rate(session, slug: str, now: datetime, s: Settings) -> Co
 
 
 def _escalation_spike(session, slug: str, now: datetime, s: Settings) -> Conditions:
-    """Escalated cases opened in the last 24h against the mean of the 7 days before that."""
+    """Cases that escalated (distinct `case.escalated` audit events) in the last 24h against
+    the daily mean of the 7 days before: a case that was resolved since still counts."""
     day = timedelta(days=1)
 
     def count(lo: datetime, hi: datetime) -> int:
         return int(
             session.execute(
-                select(func.count()).where(
-                    Case.status == "escalated", Case.opened_at >= lo, Case.opened_at < hi
+                select(func.count(func.distinct(AuditEvent.entity_id))).where(
+                    AuditEvent.event == "case.escalated",
+                    AuditEvent.occurred_at >= lo,
+                    AuditEvent.occurred_at < hi,
                 )
             ).scalar_one()
         )
@@ -179,67 +183,79 @@ def parse_eval_report(path: Path) -> dict[str, int]:
     return out
 
 
-def _eval_regression(reports_dir: Path, s: Settings) -> Conditions:
-    """Latest report against the one before it: a pass-rate drop of at least the threshold."""
+_META = re.compile(r"^- (set|models): (.*)$")
+
+
+def _report_meta(path: Path) -> tuple[str, str]:
+    """(set, models) lines of a report; two reports compare only when both match."""
+    found: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        m = _META.match(line)
+        if m:
+            found[m[1]] = m[2].strip()
+    return found.get("set", ""), found.get("models", "")
+
+
+def _eval_regression(reports_dir: Path, s: Settings) -> Conditions | None:
+    """Latest report against the newest earlier one with the same set and models. None = not
+    evaluated (no folder, fewer than two reports, no table rows, nothing comparable): the
+    caller then resolves nothing, because "could not compare" is not "no regression"."""
     if not reports_dir.is_dir():
-        return {}
+        return None
     files = sorted(reports_dir.glob("eval-*.md"))
     if len(files) < 2:
-        return {}
-    previous, latest = parse_eval_report(files[-2]), parse_eval_report(files[-1])
-    out: Conditions = {}
-    for key, now_pass in latest.items():
-        drop = previous.get(key, now_pass) - now_pass
-        if drop >= s.alert_eval_drop_points:
-            out[("eval_regression", _scope(key))] = (drop, s.alert_eval_drop_points)
-    return out
+        return None
+    latest_file, meta = files[-1], _report_meta(files[-1])
+    latest = parse_eval_report(latest_file)
+    if not latest:
+        return None
+    for older in reversed(files[:-1]):
+        if _report_meta(older) != meta:
+            continue
+        previous = parse_eval_report(older)
+        if not previous:
+            return None
+        out: Conditions = {}
+        for key, now_pass in latest.items():
+            drop = previous.get(key, now_pass) - now_pass
+            if drop >= s.alert_eval_drop_points:
+                out[("eval_regression", _scope(key))] = (drop, s.alert_eval_drop_points)
+        return out
+    return None
 
 
 # --- reconcile ---------------------------------------------------------------------------
 
+_APPLY = text(
+    "SELECT alerts_apply(CAST(:c AS jsonb), CAST(:ev AS text[]), CAST(:pr AS jsonb), :now)"
+)
+
 
 def reconcile(
-    engine: Engine, conditions: Conditions, evaluated: set[str], now: datetime
+    engine: Engine,
+    conditions: Conditions,
+    evaluated: set[str],
+    now: datetime,
+    protected: list[tuple[str, str]] | None = None,
 ) -> dict[str, int]:
-    """Open / refresh / resolve in one short transaction. Only rules in `evaluated` may resolve."""
-    opened = refreshed = resolved = 0
-    with Session(engine) as session, session.begin():
-        rows = session.execute(
-            text("SELECT id, rule, scope FROM alerts WHERE status = 'open' FOR UPDATE")
-        ).all()
-        open_by_key = {(r.rule, r.scope): r.id for r in rows}
-        for (rule, scope), (value, threshold) in conditions.items():
-            params = {"rule": rule, "scope": scope, "v": value, "t": threshold, "now": now}
-            if (rule, scope) in open_by_key:
-                session.execute(
-                    text(
-                        "UPDATE alerts SET value = :v, threshold = :t, last_seen_at = :now "
-                        "WHERE rule = :rule AND scope = :scope AND status = 'open'"
-                    ),
-                    params,
-                )
-                refreshed += 1
-            else:
-                session.execute(
-                    text(
-                        "INSERT INTO alerts (rule, scope, status, value, threshold, opened_at, "
-                        "last_seen_at) VALUES (:rule, :scope, 'open', :v, :t, :now, :now) "
-                        "ON CONFLICT DO NOTHING"
-                    ),
-                    params,
-                )
-                opened += 1
-        for (rule, scope), alert_id in open_by_key.items():
-            if rule in evaluated and (rule, scope) not in conditions:
-                session.execute(
-                    text(
-                        "UPDATE alerts SET status = 'resolved', resolved_at = :now, "
-                        "last_seen_at = :now WHERE id = :id AND status = 'open'"
-                    ),
-                    {"id": alert_id, "now": now},
-                )
-                resolved += 1
-    return {"opened": opened, "refreshed": refreshed, "resolved": resolved}
+    """Open / refresh / resolve in ONE call to the SECURITY DEFINER function `alerts_apply`
+    (the app role has no grant on the table). Resolves only rules in `evaluated`, and never an
+    alert whose (rule, scope prefix) is in `protected` (its read failed)."""
+    payload = [
+        {"rule": r, "scope": sc, "value": v, "threshold": t}
+        for (r, sc), (v, t) in conditions.items()
+    ]
+    with engine.begin() as conn:
+        result = conn.execute(
+            _APPLY,
+            {
+                "c": json.dumps(payload),
+                "ev": sorted(evaluated),
+                "pr": json.dumps([{"rule": r, "prefix": p} for r, p in (protected or [])]),
+                "now": now,
+            },
+        ).scalar_one()
+    return {k: int(result[k]) for k in ("opened", "refreshed", "resolved")}
 
 
 def evaluate_alerts(
@@ -249,35 +265,39 @@ def evaluate_alerts(
     now: datetime | None = None,
     reports_dir: Path | None = None,
 ) -> dict[str, int]:
-    """Run every rule and reconcile. A rule that fails to read is skipped, not cleared."""
+    """Run every rule and reconcile. A read that fails protects only what it would have
+    decided: one tenant's failure leaves that tenant's alerts for that rule alone."""
     now = now or datetime.now(UTC)
     conditions: Conditions = {}
-    failed: set[str] = set()
+    evaluated = set(RULES)
+    protected: list[tuple[str, str]] = []
 
-    for rule, fn in TENANT_RULES.items():
-        try:
-            for tid in tenant_ids:
+    for tid in tenant_ids:
+        slug: str | None = None
+        for rule, fn in TENANT_RULES.items():
+            try:
                 with tenant_session(tid, engine) as session:
-                    conditions.update(fn(session, _tenant_slug(session), now, settings))
-        except Exception as exc:
-            failed.add(rule)
-            log.warning("alert rule %s could not be read: %s", rule, type(exc).__name__)
+                    slug = _tenant_slug(session)
+                    conditions.update(fn(session, slug, now, settings))
+            except Exception as exc:
+                log.warning("alert rule %s could not be read: %s", rule, type(exc).__name__)
+                if slug is None:  # cannot tell which scopes are this tenant's: protect the rule
+                    evaluated.discard(rule)
+                else:
+                    protected.append((rule, slug))
     try:
-        for rule, found in _platform_jobs(engine, now, settings).items():
-            if rule in failed:
-                continue  # its tenant part is unknown, so the rule as a whole is unknown
+        for found in _platform_jobs(engine, now, settings).values():
             conditions.update(found)
     except Exception as exc:
-        failed.update({"job_failed", "stuck_job"})
         log.warning("alert rule platform jobs could not be read: %s", type(exc).__name__)
+        protected += [("job_failed", "platform"), ("stuck_job", "platform")]
     try:
-        conditions.update(
-            _eval_regression(reports_dir or Path(settings.alert_eval_reports_dir), settings)
-        )
+        found = _eval_regression(reports_dir or Path(settings.alert_eval_reports_dir), settings)
     except Exception as exc:
-        failed.add("eval_regression")
         log.warning("alert rule eval_regression could not be read: %s", type(exc).__name__)
-
-    # A rule that failed keeps its open alerts as they are, but must not add stale ones either.
-    conditions = {k: v for k, v in conditions.items() if k[0] not in failed}
-    return reconcile(engine, conditions, set(RULES) - failed, now)
+        found = None
+    if found is None:
+        evaluated.discard("eval_regression")
+    else:
+        conditions.update(found)
+    return reconcile(engine, conditions, evaluated, now, protected)
