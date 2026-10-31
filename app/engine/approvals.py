@@ -28,6 +28,7 @@ from app.core.models import (
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.eligibility import fair_use, order_facts
+from app.engine.offer_state import open_offer
 from app.engine.proposals import proposal_hash_is_intact
 
 # A decision moves the case on only from these (an escalated or closed case stays put).
@@ -50,6 +51,13 @@ class Forbidden(ApprovalError):
 
 class AlreadyDecided(ApprovalError):
     code = "already_decided"
+
+
+class WaitingForCustomer(ApprovalError):
+    """An approver asked the customer to choose first (S8.10); nobody may approve until the
+    customer answers or the time runs out."""
+
+    code = "waiting_for_customer"
 
 
 class NotEligible(ApprovalError):
@@ -204,6 +212,8 @@ def decide(
     lock_case(session, proposal.case_id)
     if is_superseded(session, proposal.id):
         raise AlreadyDecided("this proposal was superseded by another remedy")
+    if decision == "approved" and open_offer(session, proposal.id, now) is not None:
+        raise WaitingForCustomer("waiting for the customer to choose")
     if decision == "approved" and proposal.proposed_by == ctx.user_id and not self_approved:
         # Four eyes: whoever proposed a remedy cannot approve it (any path). Rejecting your own
         # proposal stays allowed: it is a withdrawal, not a payout.
@@ -266,6 +276,8 @@ def auto_decide(
     if not proposal_hash_is_intact(proposal):
         return None
     if proposal.proposed_by is not None:  # a person proposed it: another person decides (S7.5)
+        return None
+    if open_offer(session, proposal.id, now) is not None:  # asked the customer first (S8.10)
         return None
     action_cls = get_action(proposal.action)
     if not action_cls.auto_approvable:  # refunds: never (PROJECT.md section 2)

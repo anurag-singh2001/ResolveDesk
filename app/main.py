@@ -11,6 +11,7 @@ from app.api import (
     routes_insights,
     routes_locations,
     routes_meta,
+    routes_offers,
     routes_orders,
     routes_platform,
     routes_policies,
@@ -41,6 +42,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_policies.router)
     app.include_router(routes_cases.router)
     app.include_router(routes_approvals.router)
+    app.include_router(routes_offers.router)
     app.include_router(routes_growth.router)
     app.include_router(routes_insights.router)
     app.include_router(routes_data_rights.router)

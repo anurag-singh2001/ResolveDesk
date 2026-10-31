@@ -22,10 +22,19 @@ from app.core.models import (
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
 from app.engine.agent_runner import resume_after_decision
-from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
+from app.engine.approvals import (
+    AlreadyDecided,
+    Forbidden,
+    NotEligible,
+    NotFound,
+    WaitingForCustomer,
+    decide,
+)
 from app.engine.case_messages import first_customer_message
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
+from app.engine.offer_state import queue_reasons
+from app.engine.offer_view import staff_offer
 from app.engine.release import check_release, release_refund
 from app.engine.switch import alternatives as switch_alternatives
 from app.engine.switch import switch_remedy
@@ -64,6 +73,10 @@ class PendingOut(BaseModel):
     # S8.3: the rule that set the amount (plain lines) and the cited sections as links.
     basis: list[str] = []
     sources: list[SourceOut] = []
+    # S8.10: the question put to the customer, if any ("open" means: waiting for the customer).
+    offer: dict | None = None
+    # S8.10: why a person sees this one now: customer_chose | no_customer_answer | None.
+    queue_reason: str | None = None
 
 
 def _citations(raw: object) -> list[CitationOut]:
@@ -138,6 +151,10 @@ def pending_approvals(
             select(User.id, User.display_name, User.erased_at).where(User.id.in_(proposers))
         ).all()
     }
+    # One clock for every read of an open question: the gate in decide() uses real time, so
+    # the dev-clock offset must not make the screen offer Approve while the gate says wait.
+    real_now = datetime.now(UTC)
+    offer_reasons = queue_reasons(db, [p.id for p, *_ in rows], real_now)
     for proposal, case, order, location_name in rows:
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         why = decision_sources(db, ctx, proposal, "en")  # staff read English
@@ -166,6 +183,8 @@ def pending_approvals(
                 citations=_citations(proposal.citations),
                 basis=why.basis,
                 sources=why.sources,
+                offer=staff_offer(db, proposal.id, real_now),
+                queue_reason=offer_reasons.get(proposal.id),
             )
         )
     return out
@@ -226,6 +245,8 @@ def post_decision(
         raise not_found() from None
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
+    except WaitingForCustomer:
+        raise HTTPException(status.HTTP_409_CONFLICT, "waiting for the customer") from None
     except AlreadyDecided:
         raise HTTPException(status.HTTP_409_CONFLICT, "already decided") from None
     except NotEligible as exc:
@@ -339,6 +360,8 @@ def post_switch(
         )
     except NotFound:
         raise not_found() from None
+    except WaitingForCustomer:
+        raise HTTPException(status.HTTP_409_CONFLICT, "waiting for the customer") from None
     except AlreadyDecided:
         raise HTTPException(status.HTTP_409_CONFLICT, "no longer pending") from None
     except Forbidden as exc:

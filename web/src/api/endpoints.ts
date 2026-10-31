@@ -14,6 +14,9 @@ import type {
   OutletInsight,
   Categories,
   Alternatives,
+  AskResult,
+  AskSuggestion,
+  CustomerOffer,
   DecisionResponse,
   SwitchResponse,
   DemoAccount,
@@ -152,6 +155,12 @@ export const api = {
   alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),
   switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string; self_approve_reason?: string }) =>
     request<SwitchResponse>(`/approvals/${enc(proposalId)}/switch`, { method: "POST", body }),
+  askSuggestion: (proposalId: string) => request<AskSuggestion>(`/approvals/${enc(proposalId)}/ask-customer`),
+  askCustomer: (proposalId: string, options: { action: string; amount_paise: number }[]) =>
+    request<AskResult>(`/approvals/${enc(proposalId)}/ask-customer`, { method: "POST", body: { options } }),
+  caseOffer: (id: string) => request<CustomerOffer>(`/cases/${enc(id)}/offer`),
+  chooseOffer: (id: string, option: string) =>
+    request<CustomerOffer>(`/cases/${enc(id)}/offer-choice`, { method: "PUT", body: { option } }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {
       method: "POST",

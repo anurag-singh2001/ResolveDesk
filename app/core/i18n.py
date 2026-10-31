@@ -1518,3 +1518,8 @@ def case_language(session, case) -> str:
     return normalize(
         session.scalar(select(Customer.preferred_language).where(Customer.id == case.customer_id))
     )
+
+
+from app.core.i18n_offer import OFFER_TEMPLATES  # noqa: E402  (S8.10 text, own module)
+
+TEMPLATES.update(OFFER_TEMPLATES)

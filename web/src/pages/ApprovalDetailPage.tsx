@@ -3,6 +3,7 @@ import { Link, useParams } from "react-router-dom";
 import { ApiError, errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { DecisionResponse, PendingApproval } from "../api/types";
+import { AskCustomer, WAITING_FOR_CUSTOMER, isWaitingForCustomer } from "../components/AskCustomer";
 import { RiskBadge } from "../components/badges";
 import { RemedyBasis, SourceLinks } from "../components/DecisionSources";
 import { SwitchRemedy } from "../components/SwitchRemedy";
@@ -74,6 +75,9 @@ export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: Pendin
   return (
     <div className="space-y-4">
       {error && <Alert tone={locked ? "warning" : "danger"}>{error}</Alert>}
+      {isWaitingForCustomer(proposal) && (
+        <Alert tone="info">{WAITING_FOR_CUSTOMER}. This can't be approved until the customer answers or the time runs out.</Alert>
+      )}
       {!proposal.eligible && !locked && (
         <Alert tone="warning">The checks did not pass, so this can't be approved. You can still reject it.</Alert>
       )}
@@ -101,7 +105,7 @@ export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: Pendin
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <Button variant="solid" onClick={() => setConfirming("approved")} disabled={!proposal.eligible}>
+              <Button variant="solid" onClick={() => setConfirming("approved")} disabled={!proposal.eligible || isWaitingForCustomer(proposal)}>
                 Approve
               </Button>
               <Button variant="outline" onClick={() => setConfirming("rejected")}>
@@ -290,6 +294,11 @@ export function ApprovalDetailPage() {
             <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Your decision</h2>
             <DecisionPanel proposal={p} onDone={() => setSettled(true)} onLocked={() => setSettled(true)} />
             {!settled && (
+              <div className="mt-4 border-t border-border pt-4">
+                <AskCustomer proposal={p} onAsked={reload} />
+              </div>
+            )}
+            {!settled && !isWaitingForCustomer(p) && (
               <div className="mt-4 border-t border-border pt-4">
                 <SwitchRemedy proposal={p} />
               </div>

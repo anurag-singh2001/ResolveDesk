@@ -83,6 +83,18 @@ If the proposed remedy is not the fair one (say a voucher where a partial refund
 - The customer only ever sees the result of the new proposal, never the one you replaced.
 - "Someone has already decided or switched this proposal" means another approver got there first; reload the queue.
 
+## Asking the customer first
+
+When you want the customer's view before anything is decided, click **Ask the customer** (outline button, under your decision). Read the policy cited above first. You get two options the rules allow right now, a voucher and a partial refund, each at its maximum; you can lower either amount. Click **Review question** and confirm with **Yes, ask the customer** (**Cancel** is selected first).
+
+- The proposal stays as it is and shows **Waiting for the customer**. It can't be approved until the customer answers or the time runs out (3 days by default). You can still reject it. Nothing is paid.
+- The customer sees the two options in their language, told plainly that it is a choice and that a team member reviews it.
+- When they pick, the case comes back to the queue as "The customer chose an option: review it", with a new proposal for that option. You or a colleague review it; the person who asked can't approve it, so a second person decides. Repeat-claim warnings still need a person.
+- If they do not answer, the case comes back as "The customer did not answer" and the original proposal is yours to decide.
+- If you asked the customer and are the only person who can approve the pick (for example the only HQ owner), nobody else can approve it. Use the override route (S8.8) or reject it. If another approver exists, the case is handed to them when the customer picks.
+- You can't ask for allergy, illness or foreign-object reports (the policy sends those straight to a manager), for privacy requests, or for a delivery-app order where only a voucher is possible. The screen tells you why.
+
+
 ## Cases to handle
 
 **Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of your own outlet only. The number next to the menu item is how many are waiting. The oldest wait comes first.

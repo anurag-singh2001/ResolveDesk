@@ -58,6 +58,8 @@ settings:
   voucher_percent: {kind: limit, default: 100}
   # Rs 150: the largest voucher approved without a person (decision 2026-10-26); lower only.
   voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  # Days a customer has to answer an "ask the customer" question (S8.10); then the case returns to staff.
+  customer_answer_days: {kind: limit, default: 3}
   # Fair use: at this many refunds/vouchers approved for the customer in 30 days, nothing
   # more is auto-approved (a person decides; never an automatic denial). Lower only.
   fair_use_max_grants_30d: {kind: limit, default: 3}
