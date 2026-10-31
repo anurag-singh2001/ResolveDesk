@@ -6,6 +6,7 @@ import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
 
 const queue: PrivacyQueue = {
   target_days: 30,
+  truncated: false,
   items: [
     {
       id: "r-1",
@@ -42,7 +43,7 @@ const dry: PrivacyDryRun = {
   request_id: "r-1",
   status: "pending_approval",
   remove: { messages: 3, name: 1, contact_fields: 2, profile_fields: 0, login: 1, marketing_consents: 1 },
-  keep: { orders: 5, refund_operations: 1, cases: 2, tickets: 2, proposals: 1, approvals: 1, executions: 1, consent_history: 2 },
+  keep: { orders: 5, refund_operations: 1, cases: 2, tickets: 2, proposals: 1, approvals: 1, executions: 1, consent_history: 2, completion_contact: 1 },
   deferred: null,
   payload_hash: "h".repeat(64),
   approval_token: "1.tok",
@@ -101,6 +102,20 @@ describe("privacy requests queue", () => {
     await user.click(within(await screen.findByTestId("pq-confirm")).getByRole("button", { name: /Erase now/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(/changed since you reviewed/);
     expect(screen.getByRole("button", { name: "Review again" })).toBeInTheDocument();
+  });
+
+  it("shows the held completion contact and says when the list is cut short", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("hq_owner") },
+      "GET /data-requests/queue": { body: { ...queue, truncated: true } },
+      "GET /data-requests/r-1/dry-run": { body: dry },
+    });
+    renderApp("/privacy-requests");
+    const user = userEvent.setup();
+    expect(await screen.findByText(/More are waiting/)).toBeInTheDocument();
+    await user.click((await screen.findAllByRole("button", { name: "Review" }))[0]);
+    expect(await screen.findByText(/held for the completion message/)).toBeInTheDocument();
   });
 
   it("uses no em dashes", () => {

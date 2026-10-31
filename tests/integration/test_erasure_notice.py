@@ -206,7 +206,7 @@ def test_after_seven_days_the_destination_is_removed_and_no_message_is_sent(
     assert _notice(app_engine, tid, rid) is None  # purged though never sent
     # If it completes after that, there is nowhere to send: recorded as expired, never as sent.
     with tenant_session(tid, app_engine) as s:
-        privacy.run_erasure(s, tid, rid, None, later)
+        privacy.run_erasure(s, tid, rid, None, later, guard=None)
     assert erasure_notice.send_completion_notice(app_engine, tid, rid, later) == "expired"
     assert outbox(tid) == [] and _outcome(app_engine, tid, rid) == "expired"
 
@@ -217,7 +217,7 @@ def test_a_completed_request_whose_seven_days_ran_out_expires(api, app_engine, t
     _erasable(app_engine, tid, made, cid)
     rid = uuid.UUID(_ask(api, auth)["id"])
     with tenant_session(tid, app_engine) as s:
-        privacy.run_erasure(s, tid, rid, None, datetime.now(UTC))
+        privacy.run_erasure(s, tid, rid, None, datetime.now(UTC), guard=None)
         s.execute(
             update(ErasureNotice)
             .where(ErasureNotice.request_id == rid)

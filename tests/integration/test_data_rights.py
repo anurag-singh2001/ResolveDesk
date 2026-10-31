@@ -507,7 +507,7 @@ def test_case_writes_serialize_with_erasure(app_engine, tid, made, people):  # n
             result["out"] = "refused"
 
     with tenant_session(tid, app_engine) as s:
-        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC))
+        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC), guard=None)
         assert done.status == "completed"
         t = threading.Thread(target=report)
         t.start()

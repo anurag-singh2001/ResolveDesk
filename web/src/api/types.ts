@@ -655,6 +655,7 @@ export interface PrivacyQueueItem {
 
 export interface PrivacyQueue {
   target_days: number;
+  truncated: boolean;
   items: PrivacyQueueItem[];
 }
 

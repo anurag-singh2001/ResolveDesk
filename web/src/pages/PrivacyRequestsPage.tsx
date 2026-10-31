@@ -22,6 +22,7 @@ const KEEP_LABEL: Record<string, string> = {
   approvals: "Approvals",
   executions: "Executions",
   consent_history: "Consent history",
+  completion_contact: "Phone or email held for the completion message (up to 7 days)",
 };
 
 function daysLeftText(item: PrivacyQueueItem): string {
@@ -161,6 +162,11 @@ export function PrivacyRequestsPage() {
             void reload();
           }}
         />
+      ) : null}
+      {data?.truncated ? (
+        <div className="mb-4">
+          <Alert tone="warning">Showing the oldest {data.items.length} requests. More are waiting; finish these to see them.</Alert>
+        </div>
       ) : null}
       {loading ? (
         <Loading label="Loading privacy requests…" />

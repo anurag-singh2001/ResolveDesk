@@ -419,7 +419,7 @@ def privacy_dry_run(
     token, expires = privacy_queue.issue_approval(
         ctx.tenant_id, req.id, ctx.user_id, body["payload_hash"], now
     )
-    privacy_queue.record_review(db, ctx.tenant_id, ctx.user_id, req)
+    privacy_queue.record_review(db, ctx.tenant_id, ctx.user_id, req, now)
     return body | {"approval_token": token, "expires_at": expires}
 
 

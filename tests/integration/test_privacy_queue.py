@@ -6,13 +6,17 @@ Runs for every tenant and names none.
 
 import uuid
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
-from sqlalchemy import select
+import pytest
+from fastapi import HTTPException
+from sqlalchemy import select, update
 
 from app.api.deps import get_clock
 from app.core.db import tenant_session
-from app.core.models import AuditEvent, Customer, DataRequest, Ticket
+from app.core.models import AuditEvent, Case, Customer, DataRequest, Ticket
 from app.core.tenant_config import load_tenant, tenant_dirs
+from app.engine import data_rights as privacy
 from app.engine import privacy_queue
 from app.engine.sweeper import sweep_tenant
 from tests.helpers import login
@@ -26,6 +30,7 @@ from tests.integration.test_data_rights import (
     staff,
 )
 
+GROWS = ("consent_history", "completion_contact")  # the erasure may change these two
 made = ret.made
 tid = ret.tid
 
@@ -113,7 +118,11 @@ def test_dry_run_is_counts_only_and_matches_the_erasure(
         after = privacy_queue.dry_run(s, tid, row, datetime.now(UTC))
     assert after["remove"]["name"] == 0 and after["remove"]["contact_fields"] == 0
     assert after["remove"]["messages"] == 0
-    assert after["keep"] == look["keep"]  # what is kept is still there
+    # What is kept is still there. Consent history may grow (the erasure switches consents
+    # off and records it), so it is compared as "at least", everything else exactly.
+    still = {k: v for k, v in after["keep"].items() if k not in GROWS}
+    assert still == {k: v for k, v in look["keep"].items() if k not in GROWS}
+    assert after["keep"]["consent_history"] >= look["keep"]["consent_history"]
 
 
 def test_approval_needs_the_dry_run_hash_and_a_genuine_token(
@@ -297,3 +306,160 @@ def test_review_and_approval_are_audited_without_personal_content(
     ):
         assert event in names
     assert "Real Person" not in str(rows)
+
+
+def _audit(app_engine, tid, rid, event):
+    with tenant_session(tid, app_engine) as s:
+        return s.execute(
+            select(AuditEvent.payload).where(
+                AuditEvent.entity_id == uuid.UUID(rid), AuditEvent.event == event
+            )
+        ).all()
+
+
+def test_dry_run_lists_the_held_completion_contact(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    r = api.post("/me/erasure-request", json={"notify_via": "email"}, headers=auth)
+    assert r.status_code == 201, r.text
+    look = _look(api, hq, r.json()["id"])
+    assert look["keep"]["completion_contact"] == 1  # the count only, never the address
+    assert "@" not in str(look)
+    with tenant_session(tid, app_engine) as s:
+        row = s.get(DataRequest, uuid.UUID(r.json()["id"]))
+        again = privacy_queue.dry_run(s, tid, row, datetime.now(UTC))
+    assert again["payload_hash"] == look["payload_hash"]  # the count is part of what is hashed
+
+
+@pytest.mark.parametrize("token", ["١٢٣.abc", "123.éé", "9" * 40 + ".x", ".", "x"])
+def test_hostile_tokens_are_409_never_500(api, app_engine, tid, made, people, tenant, slug, token):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    look = _look(api, hq, req["id"])
+    r = api.post(
+        f"/data-requests/{req['id']}/approve",
+        json={"payload_hash": look["payload_hash"], "approval_token": token},
+        headers=hq,
+    )
+    assert r.status_code == 409, r.text
+    assert _name(app_engine, tid, cid) == "Real Person"
+
+
+def test_a_token_issued_to_another_owner_is_refused(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    look = _look(api, hq, req["id"])
+    other, _ = privacy_queue.issue_approval(
+        tid, uuid.UUID(req["id"]), uuid.uuid4(), look["payload_hash"], datetime.now(UTC)
+    )  # minted for a different approver of this tenant
+    r = api.post(
+        f"/data-requests/{req['id']}/approve",
+        json={"payload_hash": look["payload_hash"], "approval_token": other},
+        headers=hq,
+    )
+    assert r.status_code == 409 and "not valid" in r.json()["detail"]
+    assert _name(app_engine, tid, cid) == "Real Person"
+
+
+def test_a_token_issued_while_deferred_is_stale_once_the_deferral_lifts(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    with tenant_session(tid, app_engine) as s:
+        s.execute(update(Case).where(Case.customer_id == cid).values(status="open"))
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    assert req["status"] == "deferred"
+    look = _look(api, hq, req["id"])
+    assert look["deferred"]["code"] == "open_case"
+    with tenant_session(tid, app_engine) as s:  # the case closes: erasure would now run
+        s.execute(update(Case).where(Case.customer_id == cid).values(status="closed"))
+    r = _approve_with(api, hq, req["id"], look)
+    assert r.status_code == 409 and "changed" in r.json()["detail"]
+    assert _name(app_engine, tid, cid) == "Real Person"
+    assert _approve_with(api, hq, req["id"], _look(api, hq, req["id"])).status_code == 200
+
+
+def test_a_guard_that_raises_rolls_back_and_releases_the_locks(api, app_engine, tid, made, people):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    rid = uuid.UUID(_request(api, auth)["id"])
+
+    def refuse(_req):
+        raise HTTPException(409, "no")
+
+    with pytest.raises(HTTPException), tenant_session(tid, app_engine) as s:
+        privacy.run_erasure(s, tid, rid, None, datetime.now(UTC), guard=refuse)
+    assert _name(app_engine, tid, cid) == "Real Person"
+    with tenant_session(tid, app_engine) as s:  # both rows lock at once: nothing is held
+        q = select(DataRequest.id).where(DataRequest.id == rid).with_for_update(nowait=True)
+        assert s.scalar(q)
+        q = select(Customer.id).where(Customer.id == cid).with_for_update(nowait=True)
+        assert s.scalar(q)
+        done = select(AuditEvent.id).where(
+            AuditEvent.event == "privacy.erasure_completed", AuditEvent.entity_id == rid
+        )
+        assert s.scalar(done) is None
+
+
+def test_only_the_staff_route_runs_erasure_and_never_opts_out_of_the_guard():
+    root = Path(__file__).resolve().parents[2] / "app"
+    users = {}
+    for f in root.rglob("*.py"):
+        text = f.read_text(encoding="utf-8")
+        if "run_erasure(" in text:
+            users[f.name] = text
+    assert set(users) == {"data_rights.py", "routes_data_rights.py"}
+    assert "guard=None" not in users["routes_data_rights.py"]
+
+
+def test_review_is_audited_once_per_approver_within_the_window(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    for _ in range(3):
+        _look(api, hq, req["id"])
+    assert len(_audit(app_engine, tid, req["id"], "privacy.erasure_reviewed")) == 1
+
+
+def test_approval_audit_carries_the_outcome(api, app_engine, tid, made, people, tenant, slug):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    done = _request(api, auth)
+    assert _approve_with(api, hq, done["id"], _look(api, hq, done["id"])).status_code == 200
+    rows = _audit(app_engine, tid, done["id"], "privacy.erasure_approved")
+    assert rows[0][0]["outcome"] == "completed"
+    cid2, auth2 = people("Second Person")
+    with tenant_session(tid, app_engine) as s:
+        ret._order(s, tid, made, SimpleId(cid2), 5)
+    held = _request(api, auth2)
+    assert _approve_with(api, hq, held["id"], _look(api, hq, held["id"])).status_code == 200
+    rows = _audit(app_engine, tid, held["id"], "privacy.erasure_approved")
+    assert rows[0][0]["outcome"] == "deferred"
+
+
+def test_queue_says_when_it_is_truncated(
+    api, app_engine, tid, made, people, tenant, slug, monkeypatch
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    _request(api, auth)
+    assert api.get("/data-requests/queue", headers=hq).json()["truncated"] is False
+    monkeypatch.setattr(privacy_queue, "QUEUE_LIMIT", 0)
+    body = api.get("/data-requests/queue", headers=hq).json()
+    assert body["truncated"] is True and body["items"] == []

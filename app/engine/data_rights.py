@@ -319,12 +319,15 @@ def run_erasure(
     request_id: uuid.UUID,
     actor_id: uuid.UUID | None,
     now: datetime,
-    guard: Callable[[DataRequest], None] | None = None,
+    *,
+    guard: Callable[[DataRequest], None] | None,
 ) -> DataRequest | None:
     """Approve and execute (or re-defer) a request. None if it does not exist. Idempotent: a
     completed request is returned unchanged. `guard` (the staff approval check, S8.5e) runs
     after the request and the customer are locked and before anything is checked or changed;
-    it raises to refuse, so an approval cannot go stale between its check and the redaction."""
+    it raises to refuse, so an approval cannot go stale between its check and the redaction.
+    `guard` is keyword-required: staff routes pass the approval check, and `guard=None` is an
+    explicit opt-out for system callers and tests (a test fails if app code opts out)."""
     req = s.scalar(
         select(DataRequest)
         .where(DataRequest.tenant_id == tenant_id, DataRequest.id == request_id)

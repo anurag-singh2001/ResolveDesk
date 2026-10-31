@@ -37,6 +37,7 @@ from app.core.models import (
     ConsentEvent,
     Customer,
     DataRequest,
+    ErasureNotice,
     Execution,
     RefundOperation,
     Ticket,
@@ -50,6 +51,7 @@ from app.engine import data_rights as privacy
 from app.engine.retention import MESSAGE_MARKER, NAME_MARKER
 
 APPROVAL_TTL = timedelta(minutes=30)
+QUEUE_LIMIT = 200
 DUE_SOON_FRACTION = 0.75
 DUE_SOON_EVENT = "privacy.erasure_due_soon"
 OVERDUE_EVENT = "privacy.erasure_overdue"
@@ -132,6 +134,13 @@ def dry_run(s: Session, tenant_id: uuid.UUID, req: DataRequest, now: datetime) -
                 ConsentEvent.tenant_id == tenant_id, ConsentEvent.customer_id == cid
             ),
         ),
+        # The phone or email held to send the one completion message (S8.8, up to 7 days).
+        "completion_contact": _count(
+            s,
+            select(func.count()).where(
+                ErasureNotice.tenant_id == tenant_id, ErasureNotice.request_id == req.id
+            ),
+        ),
     }
     block = privacy.erasure_block(s, tenant_id, cid, now)
     deferred = (
@@ -204,11 +213,12 @@ def check_approval(
     if not payload_hash or not token:
         raise StaleApproval("missing")
     exp_text, _, mac = token.partition(".")
-    if not exp_text.isdigit():
+    # isdigit() accepts non-ASCII digits that int() or compare_digest would choke on.
+    if not (exp_text.isascii() and exp_text.isdecimal()) or len(exp_text) > 12:
         raise StaleApproval("invalid")
     exp = int(exp_text)
     good = _mac(tenant_id, req.id, approver, payload_hash, exp)
-    if not hmac.compare_digest(good, mac):
+    if not hmac.compare_digest(good.encode(), mac.encode()):
         raise StaleApproval("invalid")
     if now.timestamp() >= exp:
         raise StaleApproval("expired")
@@ -216,7 +226,21 @@ def check_approval(
         raise StaleApproval("changed")
 
 
-def record_review(s: Session, tenant_id: uuid.UUID, actor: uuid.UUID, req: DataRequest) -> None:
+def record_review(
+    s: Session, tenant_id: uuid.UUID, actor: uuid.UUID, req: DataRequest, now: datetime
+) -> None:
+    """One `privacy.erasure_reviewed` row per approver and request within the approval's life,
+    so reloading the screen does not flood the trail."""
+    seen = s.scalar(
+        select(func.count()).where(
+            AuditEvent.event == "privacy.erasure_reviewed",
+            AuditEvent.entity_id == req.id,
+            AuditEvent.actor_id == str(actor),
+            AuditEvent.occurred_at >= now - APPROVAL_TTL,
+        )
+    )
+    if seen:
+        return
     audit.record(
         s,
         tenant_id,
@@ -232,6 +256,7 @@ def record_review(s: Session, tenant_id: uuid.UUID, actor: uuid.UUID, req: DataR
 def record_approval(
     s: Session, tenant_id: uuid.UUID, actor: uuid.UUID, req: DataRequest, payload_hash: str
 ) -> None:
+    """Audited with the outcome (`completed` or still `deferred`) so it is not misread."""
     audit.record(
         s,
         tenant_id,
@@ -240,7 +265,7 @@ def record_approval(
         event="privacy.erasure_approved",
         entity_type="data_request",
         entity_id=req.id,
-        payload={"payload_hash": payload_hash},
+        payload={"payload_hash": payload_hash, "outcome": req.status},
     )
 
 
@@ -256,8 +281,10 @@ def queue(s: Session, now: datetime) -> dict[str, Any]:
         .join(Customer, Customer.id == DataRequest.customer_id)
         .where(DataRequest.status.in_(OPEN))
         .order_by(DataRequest.created_at, DataRequest.id)
-        .limit(200)
+        .limit(QUEUE_LIMIT + 1)
     ).all()
+    truncated = len(rows) > QUEUE_LIMIT
+    rows = rows[:QUEUE_LIMIT]
     items = []
     for req, ref in rows:
         target = req.created_at + timedelta(days=days)
@@ -277,7 +304,7 @@ def queue(s: Session, now: datetime) -> dict[str, Any]:
                 "reason": privacy.reason_text(req.reason_code, req.deferred_until),
             }
         )
-    return {"target_days": days, "items": items}
+    return {"target_days": days, "truncated": truncated, "items": items}
 
 
 def flag_due(engine: Engine, tenant_id: uuid.UUID, now: datetime) -> list[str]:
