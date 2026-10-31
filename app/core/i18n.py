@@ -631,11 +631,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     "erase.keep.linked": {
         "en": "Other records linked to you by a reference number, such as offer lists, signals "
-        "and notes on decisions. Your language choice and home outlet also stay.",
+        "and notes on decisions. Your language choice and home outlet also stay",
         "hi-Latn": "Reference number se aapse jude anya records, jaise offer ki soochi, signals "
-        "aur faislon par notes. Aapki bhasha ka chunav aur home outlet bhi rehte hain.",
+        "aur faislon par notes. Aapki bhasha ka chunav aur home outlet bhi rehte hain",
         "hi": "संदर्भ संख्या से आपसे जुड़े अन्य रिकॉर्ड, जैसे ऑफ़र सूची, सिग्नल और फ़ैसलों पर नोट। "
-        "आपकी भाषा की पसंद और होम आउटलेट भी रहते हैं।",
+        "आपकी भाषा की पसंद और होम आउटलेट भी रहते हैं",
     },
     "erase.keep.linked.why": {
         "en": "They hold no name or contact details. They show how offers and decisions were made.",

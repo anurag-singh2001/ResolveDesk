@@ -32,7 +32,7 @@ KEY_NAME = re.compile(
 )
 # 13-19 digits, optionally grouped with single spaces or dashes, not part of a longer number
 # or a decimal fraction.
-CANDIDATE = re.compile(r"(?<![\w.])(?:\d[ -]?){12,18}\d(?![\w.])")
+CANDIDATE = re.compile(r"(?<![\w.-])(?:\d[ -]?){12,18}\d(?![\w.-])")
 # SQL pre-filter: only rows with a long digit run or a grouped one come back to Python.
 SQL_PREFILTER = r"[0-9]{13}|[0-9]{4}[ -][0-9]{4}[ -][0-9]{4}"
 
@@ -124,7 +124,8 @@ def test_no_stored_value_is_a_card_number_or_holds_a_card_field(app_engine, scan
             )
             for (blob,) in rows:
                 if card_like_numbers(blob):
-                    hits.append(f"{table}: a Luhn-valid 13-19 digit number")
+                    m = CANDIDATE.search(blob)
+                    hits.append(f"{table}: {blob[max(m.start() - 25, 0) : m.end() + 5]}")
                 keys = sensitive_keys(blob)
                 if keys:
                     hits.append(f"{table}: key {keys[0]}")
