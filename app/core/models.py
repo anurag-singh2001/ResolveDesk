@@ -685,6 +685,36 @@ class ProposalSupersession(TenantOwned, Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class ProposalOffer(TenantOwned, Base):
+    """An approver asked the customer to choose between two remedies (S8.10). One row per
+    proposal. The two options are stored as code-computed rows ({code, action, amount_paise});
+    the customer's answer is write-once (a trigger refuses a second one). While the question is
+    open (unanswered and before `expires_at`) the proposal cannot be approved. The proposal
+    itself stays immutable and undecided: a pick supersedes it with a new proposal."""
+
+    __tablename__ = "proposal_offers"
+    __table_args__ = (
+        _fk("proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("case_id", "cases", ondelete="CASCADE"),
+        _fk("asked_by", "users"),
+        _fk("new_proposal_id", "action_proposals"),
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_proposal_offers_proposal"),
+        CheckConstraint(
+            "(chosen_code IS NULL) = (chosen_at IS NULL)", name="ck_proposal_offers_answer"
+        ),
+    )
+
+    proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    asked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    asked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    options: Mapped[list] = mapped_column(JSONB, nullable=False)
+    chosen_code: Mapped[str | None] = mapped_column(String(32))
+    chosen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    new_proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
 class Approval(TenantOwned, Base):
     """One decision per proposal, bound to the hash the approver saw (hard rule 6)."""
 
