@@ -119,6 +119,33 @@ Two tables, filled automatically, nothing to switch on:
 - A run killed before it finishes loses its token counters (written once, at the end of the run), so usage totals are a floor, not exact.
 - Neither table holds prompt, reply or message text, and exception messages are not stored. Recording is best effort: if it fails, a warning with the exception class is logged and the run or job carries on.
 
+## Job scheduler (S9.3)
+
+The API can run the recurring jobs itself. It is OFF unless you set `SCHEDULER_ENABLED=true` (in `.env` or the host's environment); dev, test and prod all default to off, and tests never start it. Restart the API after changing any of these.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SCHEDULER_ENABLED` | false | master switch |
+| `SCHEDULER_SWEEP_INTERVAL_SECONDS` | 300 | crash-recovery sweep (job `sweep`); 0 = off |
+| `SCHEDULER_RETENTION_INTERVAL_SECONDS` | 86400 | retention check; 0 = off |
+| `SCHEDULER_RETENTION_APPLY` | false | false = DRY RUN only (job `retention_dry_run`). true really redacts (job `retention_apply`), irreversible: run `make retention` and read the numbers first |
+| `SCHEDULER_GROWTH_INTERVAL_SECONDS` | 86400 | growth nightly (job `growth_nightly`): stores signals only, sends nothing; 0 = off |
+| `SCHEDULER_TICK_SECONDS` | 30 | how often the loop looks at the clock |
+| `SCHEDULER_STARTUP_DELAY_SECONDS` | 60 | first run this long after boot |
+| `SCHEDULER_SHUTDOWN_GRACE_SECONDS` | 10 | how long a stop waits for running jobs |
+
+- Where to look: tenant jobs write `job_runs` (one row per tenant per run: `ok`, `failed`, `skipped`); a failure that is not tied to a tenant (for example the lease or the tenant list) writes `platform_job_runs` (the platform role sees counts through `platform_jobs_v`). Rows hold counts and an exception class, never text.
+- No overlap: if a run is still going when the next one is due, the tick is recorded as `skipped`. Skipped rows are written at most once per job per hour. With two app instances, a lease row in `job_leases` (renewed every 40 s, expires after 120 s without a heartbeat, deleted when the job ends) lets only one run a given job at a time; the other records `skipped`. A dead instance's lease can be taken over after it expires. A job that outlives its lease (database unreachable for 2 minutes) could be started twice; all three jobs are safe to repeat.
+- Catch-up after sleep: the scheduler only exists while the app process is awake. A free-tier host that sleeps when idle runs NOTHING while asleep, so daily jobs can be skipped for days. When the app wakes, the first run of each job comes `SCHEDULER_STARTUP_DELAY_SECONDS` after boot, then every interval; a long gap costs one run, never a burst of missed runs. For guaranteed timing use a host that stays up, or call `make sweep` / `make retention` from an external cron.
+- Stopping the app waits up to the grace period for running jobs; any tenant row still `running` after that is closed as `failed` with error `Shutdown`. A row left `running` by a killed process is closed as `Abandoned` after 6 hours by the next run of that job.
+- Pack refresh is not scheduled: it needs the owner database credential, so it stays `make refresh`.
+- If the scheduler cannot start (for example no database URL) the API still starts and logs `job scheduler not started: <error class>`.
+## Error log and alerts (S9.4)
+
+- Error log (`error_logs`): the API installs a logging handler on start (`ERROR_LOG_ENABLED`, default true). It records, per service, level, event code (the logger name), exception class and day, only a COUNT. It never reads the log message, so a name, phone or token cannot land there. Writes are rate limited: the first occurrence is written at once, repeats are counted in memory and written at most every `ERROR_LOG_FLUSH_SECONDS` (10); more than 200 distinct error types in a day collapse into one `overflow` row. The request thread only puts a small key on a bounded queue (full queue: the event is dropped and counted in a `dropped` row); one background thread writes, through its own one-connection engine. A database failure there is swallowed (a warning with the class name), never raised into a request. The app role cannot read `alerts` or `error_logs`: read them as the owner role, or through the platform routes. Nothing deletes old rows yet: trim by hand with the owner role (`DELETE FROM error_logs WHERE day < current_date - 90`).
+- Alerts (`alerts`): the scheduler job `alerts` (`SCHEDULER_ALERTS_INTERVAL_SECONDS`, 300, 0 = off; needs `SCHEDULER_ENABLED`) evaluates five rules: `job_failed` (the latest ok or failed run of a job is failed, within `ALERT_JOB_LOOKBACK_HOURS`), `provider_failure_rate` (failed calls over calls in the last `ALERT_WINDOW_HOURS` above `ALERT_PROVIDER_FAILURE_BPS`, with at least `ALERT_PROVIDER_MIN_CALLS` calls), `escalation_spike` (escalated cases opened in 24 h at least `ALERT_ESCALATION_MIN_COUNT` and above `ALERT_ESCALATION_RATIO_PCT` percent of the prior 7-day daily mean), `eval_regression` (latest `evals/reports/eval-*.md` against the previous: pass rate down by `ALERT_EVAL_DROP_POINTS`), `stuck_job` (a job `running` longer than `ALERT_STUCK_MINUTES`). One open alert per (rule, scope): it is refreshed while the condition holds and resolved when it clears. A rule that could not be read leaves its alerts as they are.
+- Reading: `GET /platform/alerts` and `GET /platform/logs` (platform admin token, audited). Nothing is emailed or posted; look at the portal.
+
 ## Safety reminders
 
 - Never run tests or evals against the demo/production database.
