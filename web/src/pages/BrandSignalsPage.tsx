@@ -7,7 +7,7 @@ import { NO_DATA, formatBp, formatBpShort } from "../lib/dashboard";
 import { useApi } from "../lib/useApi";
 
 /** The segment view is built on its own branch; this is its agreed route. */
-export const SEGMENTS_PATH = "/growth/segments";
+export const SEGMENTS_PATH = "/segments";
 
 const STATUS: Record<BrandSignal["status"], { tone: "danger" | "success" | "neutral"; text: string }> = {
   drop: { tone: "danger", text: "Repeat rate dropped" },

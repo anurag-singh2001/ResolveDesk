@@ -773,6 +773,8 @@ export interface CohortsResponse {
   small_cell_min: number;
   cells_hidden_below_min: boolean;
   groups: CohortGroup[];
+}
+
 // S11.4: brand-level repeat-rate readings (GET /growth/brand-signals). Aggregates only.
 export interface BrandSignal {
   brand_id: string;
@@ -793,6 +795,8 @@ export interface BrandSignalsResponse {
   baseline_start: string;
   definition: string;
   brands: BrandSignal[];
+}
+
 // GET /growth/calendar (S11.3a). Read-only. Money is integer paise; warnings are counts only.
 export interface CalendarCampaign {
   id: string;
