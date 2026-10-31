@@ -47,7 +47,9 @@ def test_unconfigured_is_404(path, monkeypatch):
         monkeypatch.delenv(name, raising=False)
     get_settings.cache_clear()
     client = TestClient(create_app())
-    assert client.get(f"/platform/{path}", headers={"Authorization": "Bearer x"}).status_code == 404
+    resp = client.get(f"/platform/{path}", headers={"Authorization": "Bearer x"})
+    assert resp.status_code == 404
+    assert resp.json()["detail"] == "platform admin not enabled"
     get_settings.cache_clear()
 
 
@@ -60,6 +62,7 @@ def test_both_tenants_appear_in_usage_and_jobs(papi, app_engine, tenants):  # no
     assert usage.status_code == 200 and jobs.status_code == 200
     assert slugs <= {r["tenant_slug"] for r in usage.json()}
     assert slugs <= {r["tenant_slug"] for r in jobs.json()}
+    assert all(0 <= r["finished_count"] <= r["run_count"] for r in jobs.json())
     for row in usage.json():
         assert row["call_count"] >= 0 and isinstance(row["cost_micro_paise"], int)
 

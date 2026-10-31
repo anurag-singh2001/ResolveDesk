@@ -49,6 +49,7 @@ def upgrade() -> None:
         SELECT o.slug::text AS tenant_slug, j.started_at::date AS day, j.job::text AS job,
                j.status::text AS status,
                count(*)::bigint AS run_count,
+               (count(*) FILTER (WHERE j.finished_at IS NOT NULL))::bigint AS finished_count,
                coalesce(sum((extract(epoch FROM (j.finished_at - j.started_at)) * 1000)::bigint)
                         FILTER (WHERE j.finished_at IS NOT NULL), 0)::bigint AS duration_ms_total,
                max(j.started_at) AS last_started_at

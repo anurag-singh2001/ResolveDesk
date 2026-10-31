@@ -48,7 +48,7 @@ export function JobsPage() {
                 </thead>
                 <tbody>
                   {[...groups.entries()].map(([key, rows]) => {
-                    const finished = sum(rows.filter((r) => r.status !== "running"), (r) => r.run_count);
+                    const finished = sum(rows, (r) => r.finished_count);
                     const ms = finished > 0 ? Math.floor(sum(rows, (r) => r.duration_ms_total) / finished) : null;
                     const last = rows.map((r) => r.last_started_at).filter((x): x is string => !!x).sort().pop() ?? null;
                     return (

@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { API_URL, ApiError } from "../api/client";
 
@@ -74,6 +74,10 @@ async function call(path: string, init: RequestInit): Promise<unknown> {
   return data;
 }
 
+/** The API's 404 for "platform admin not configured" carries this exact detail. */
+export const NOT_ENABLED_DETAIL = "platform admin not enabled";
+const isOff = (e: ApiError) => e.detail === NOT_ENABLED_DETAIL;
+
 export function PlatformProvider({ children }: { children: ReactNode }) {
   const [stored, setStored] = useState<Stored | null>(read);
   const [disabled, setDisabled] = useState(false);
@@ -97,12 +101,21 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       setStored(s);
       setNotice(null);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 404) setDisabled(true);
+      if (err instanceof ApiError && err.status === 404 && isOff(err)) setDisabled(true);
       throw err;
     }
   }, []);
 
   const token = stored?.token ?? null;
+  const expiresAt = stored?.expiresAt ?? null;
+  // A token that runs out while the page is open is dropped, not kept until the next 401.
+  useEffect(() => {
+    if (!token || !expiresAt) return;
+    const ms = new Date(expiresAt).getTime() - Date.now();
+    if (Number.isNaN(ms)) return;
+    const id = window.setTimeout(() => clear("Your session has ended. Please sign in again."), Math.max(0, Math.min(ms, 2 ** 31 - 1)));
+    return () => window.clearTimeout(id);
+  }, [token, expiresAt, clear]);
   const get = useCallback(
     async <T,>(path: string): Promise<T> => {
       if (!token) throw new ApiError(401, "not authenticated");
@@ -113,7 +126,8 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
           clear("Your session has ended. Please sign in again.");
-        } else if (err instanceof ApiError && err.status === 404) {
+        } else if (err instanceof ApiError && err.status === 404 && isOff(err)) {
+          // Only the server's feature-off answer means "not enabled"; any other 404 is an error.
           clear(null);
           setDisabled(true);
         }

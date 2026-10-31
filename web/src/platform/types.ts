@@ -10,5 +10,5 @@ export interface LlmUsageRow {
 }
 export interface JobRunRow {
   tenant_slug: string; day: string; job: string; status: string; run_count: number;
-  duration_ms_total: number; last_started_at: string | null;
+  finished_count: number; duration_ms_total: number; last_started_at: string | null;
 }

@@ -23,8 +23,8 @@ const usage = [
   { tenant_slug: "beta", day: "2026-10-29", provider: "groq", model: "m", purpose: "main", outcome: "fallback_used", run_count: 2, call_count: 2, failure_count: 0, tokens_in: 10, tokens_out: 10, cost_micro_paise: 0, latency_ms_total: 200 },
 ];
 const jobs = [
-  { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "ok", run_count: 6, duration_ms_total: 600, last_started_at: "2026-10-30T09:00:00Z" },
-  { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "failed", run_count: 1, duration_ms_total: 50, last_started_at: "2026-10-30T09:30:00Z" },
+  { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "ok", run_count: 6, finished_count: 6, duration_ms_total: 600, last_started_at: "2026-10-30T09:00:00Z" },
+  { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "failed", run_count: 1, finished_count: 1, duration_ms_total: 50, last_started_at: "2026-10-30T09:30:00Z" },
 ];
 
 const login = { "POST /platform/auth/login": { body: { access_token: "plat-tok", token_type: "bearer", expires_at: null } } };
@@ -96,11 +96,29 @@ describe("platform portal", () => {
   });
 
   it("shows a plain not-enabled page when the server answers 404", async () => {
-    mockFetch({});
+    mockFetch({ "POST /platform/auth/login": { status: 404, body: { detail: "platform admin not enabled" } } });
     renderApp("/platform");
     await signIn();
     expect(await screen.findByRole("heading", { name: "The platform portal is not enabled" })).toBeInTheDocument();
     expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
+  });
+
+  it("treats a 404 from a data route as an error, not as not enabled", async () => {
+    sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
+    mockFetch({ ...data, "GET /platform/tenants": { status: 404, body: { detail: "not found" } } });
+    renderApp("/platform");
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "The platform portal is not enabled" })).not.toBeInTheDocument();
+    expect(sessionStorage.getItem(PLATFORM_KEY)).not.toBeNull();
+  });
+
+  it("drops the token when it expires while the page is open", async () => {
+    const soon = new Date(Date.now() + 300).toISOString();
+    sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: soon }));
+    mockFetch(data);
+    renderApp("/platform/logs");
+    expect(await screen.findByRole("heading", { name: "Platform sign in" }, { timeout: 2000 })).toBeInTheDocument();
+    expect(sessionStorage.getItem(PLATFORM_KEY)).toBeNull();
   });
 
   it("shows a wrong-password message on 401 from login", async () => {

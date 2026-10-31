@@ -13,7 +13,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, text
 
-from app.api.deps import _bearer, not_found
+from app.api.deps import _bearer
 from app.config import get_settings, platform_admin_enabled
 from app.core.auth import AuthError
 from app.core.db import get_engine
@@ -25,10 +25,16 @@ from app.core.platform_auth import (
     read_platform_token,
 )
 
+NOT_ENABLED_DETAIL = "platform admin not enabled"  # the portal tells "off" from any other 404
+
+
+def _off() -> HTTPException:
+    return HTTPException(status.HTTP_404_NOT_FOUND, NOT_ENABLED_DETAIL)
+
 
 def _feature_on() -> None:
     if not platform_admin_enabled(get_settings()):
-        raise not_found()
+        raise _off()
 
 
 PLATFORM_ROLE = "resolvedesk_platform"
@@ -94,6 +100,7 @@ class JobRunRow(BaseModel):
     job: str
     status: str
     run_count: int
+    finished_count: int
     duration_ms_total: int
     last_started_at: datetime | None
 
@@ -116,7 +123,7 @@ def require_platform(
     except WrongPrincipal:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "platform admin only") from None
     except PlatformDisabled:
-        raise not_found() from None
+        raise _off() from None
     except AuthError:
         raise unauthorized from None
 
@@ -126,7 +133,7 @@ def platform_login(body: PlatformLoginIn) -> PlatformTokenOut:  # real time, not
     try:
         issued = authenticate_platform(body.email, body.password)
     except PlatformDisabled:
-        raise not_found() from None
+        raise _off() from None
     except PlatformLocked:
         raise HTTPException(
             status.HTTP_429_TOO_MANY_REQUESTS, "too many failed logins, try again later"
@@ -226,7 +233,8 @@ def job_runs(
         engine,
         actor,
         "GET /platform/jobs",
-        "SELECT tenant_slug, day, job, status, run_count, duration_ms_total, last_started_at "
+        "SELECT tenant_slug, day, job, status, run_count, finished_count, duration_ms_total, "
+        "last_started_at "
         "FROM platform_job_runs_v ORDER BY tenant_slug, day, job, status",
     )
     return [JobRunRow(**r) for r in rows]
