@@ -716,3 +716,61 @@ export interface MetricsQuery {
   location_id?: string;
   brand_id?: string;
 }
+
+// --- Segments and cohorts (S11.2): aggregates only, no customer identity ---------------------
+export interface SegmentCell {
+  segment: string;
+  suppressed: boolean; // fewer customers than the small-cell minimum: numbers withheld
+  in_segment: number | null;
+  share_bp: number | null;
+  orders: number | null;
+  total_spend_paise: number | null;
+  aov_paise: number | null;
+  contactable_whatsapp: number | null;
+  own_channel: number | null;
+  aggregator_only: number | null;
+  aggregator_only_not_contactable: number | null;
+}
+
+export interface SegmentGroup {
+  id: string | null;
+  name: string;
+  customers: number;
+  segments: SegmentCell[];
+}
+
+export interface SegmentsResponse {
+  as_of: string;
+  lapsed_days: number;
+  new_days: number;
+  small_cell_min: number;
+  cells_hidden_below_min: boolean;
+  groups: SegmentGroup[];
+}
+
+export interface CohortCell {
+  month: number;
+  measurable: boolean;
+  returned: number | null;
+  return_bp: number | null;
+}
+
+export interface CohortRow {
+  cohort_month: string;
+  suppressed: boolean;
+  size: number | null;
+  cells: CohortCell[];
+}
+
+export interface CohortGroup {
+  id: string | null;
+  name: string;
+  cohorts: CohortRow[];
+}
+
+export interface CohortsResponse {
+  as_of: string;
+  small_cell_min: number;
+  cells_hidden_below_min: boolean;
+  groups: CohortGroup[];
+}
