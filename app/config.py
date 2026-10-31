@@ -83,6 +83,19 @@ class Settings(BaseSettings):
     # Lockout: this many failed logins for one tenant+email within the window -> 429.
     login_max_failures: int = Field(default=5, ge=1)
     login_window_minutes: int = Field(default=15, ge=1)
+    # In-app job scheduler (S9.3). OFF by default (dev, test and prod alike): a deployment opts in.
+    # Per job, an interval in seconds; 0 switches that job off. Pack refresh is 0 by default and
+    # also needs APP_ENV=dev and MIGRATION_DATABASE_URL (it writes with the owner role).
+    scheduler_enabled: bool = False
+    scheduler_tick_seconds: float = Field(default=30.0, gt=0)
+    scheduler_startup_delay_seconds: float = Field(default=60.0, ge=0)  # first run after boot
+    scheduler_shutdown_grace_seconds: float = Field(default=20.0, ge=0)
+    scheduler_sweep_interval_seconds: int = Field(default=300, ge=0)
+    scheduler_retention_interval_seconds: int = Field(default=86_400, ge=0)
+    scheduler_growth_interval_seconds: int = Field(default=86_400, ge=0)
+    scheduler_pack_refresh_interval_seconds: int = Field(default=0, ge=0)
+    # Retention stays a dry run unless this is set: redaction cannot be undone.
+    scheduler_retention_apply: bool = False
     # Platform admin (S9.1): one operator principal, configured only here (never in the DB).
     # The feature is ON only when email, bcrypt hash AND the platform DB URL are all set; any
     # missing piece and every /platform route answers 404 (fail closed).

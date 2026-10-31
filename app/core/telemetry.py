@@ -14,10 +14,11 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import Engine, update
+from sqlalchemy.orm import Session
 
 from app.config import Settings, get_settings
 from app.core.db import tenant_session
-from app.core.models import JobRun, LlmUsage
+from app.core.models import JobRun, LlmUsage, PlatformJobRun
 
 log = logging.getLogger(__name__)
 
@@ -156,3 +157,110 @@ def run_job[T](
         counts = {}
     finish_job(engine, tenant_id, job_id, "ok", counts)
     return result
+
+
+# --- Platform-level jobs (S9.3): no tenant, so a separate table without RLS ---------------
+
+
+def start_platform_job(engine: Engine, job: str, status: str = "running") -> uuid.UUID | None:
+    """A row in platform_job_runs ('running', or 'skipped' for a tick that did not run).
+    None when it could not be written."""
+    try:
+        with Session(engine) as session, session.begin():
+            now = datetime.now(UTC)
+            row = PlatformJobRun(
+                job=job,
+                status=status,
+                started_at=now,
+                finished_at=now if status != "running" else None,
+            )
+            session.add(row)
+            session.flush()
+            return row.id
+    except Exception as exc:
+        log.warning("could not record start of platform job %s: %s", job, type(exc).__name__)
+        return None
+
+
+def finish_platform_job(
+    engine: Engine,
+    job_id: uuid.UUID | None,
+    status: str,
+    counts: dict[str, Any] | None = None,
+    error_class: str | None = None,
+) -> None:
+    if job_id is None:
+        return
+    for attempt in (1, 2):
+        try:
+            with Session(engine) as session, session.begin():
+                row = session.get(PlatformJobRun, job_id)
+                if row is None:
+                    return
+                row.status = status
+                row.finished_at = datetime.now(UTC)
+                row.counts = _int_counts(counts)
+                row.error_class = error_class[:80] if error_class else None
+            return
+        except Exception as exc:
+            log.warning(
+                "could not record end of platform job (try %s): %s", attempt, type(exc).__name__
+            )
+
+
+def run_platform_job[T](
+    engine: Engine,
+    job: str,
+    fn: Callable[[], T],
+    counts_of: Callable[[T], dict[str, Any]] | None = None,
+) -> T:
+    """`run_job` for a job that belongs to no tenant."""
+    job_id = start_platform_job(engine, job)
+    try:
+        result = fn()
+    except BaseException as exc:
+        finish_platform_job(engine, job_id, "failed", error_class=type(exc).__name__)
+        raise
+    try:
+        counts = counts_of(result) if counts_of else {}
+    except Exception:
+        counts = {}
+    finish_platform_job(engine, job_id, "ok", counts)
+    return result
+
+
+def record_tenant_skips(engine: Engine, tenant_ids: list[uuid.UUID], job: str) -> None:
+    """A scheduled tick that did not run (previous run still going, or another process holds
+    the job): one 'skipped' job_runs row per tenant. Best effort."""
+    for tid in tenant_ids:
+        try:
+            with tenant_session(tid, engine) as session:
+                now = datetime.now(UTC)
+                session.add(
+                    JobRun(
+                        tenant_id=tid, job=job, status="skipped", started_at=now, finished_at=now
+                    )
+                )
+        except Exception as exc:
+            log.warning("could not record skip of job %s: %s", job, type(exc).__name__)
+
+
+def close_running_jobs(
+    engine: Engine, tenant_ids: list[uuid.UUID], job: str, since: datetime, error_class: str
+) -> None:
+    """Shutdown: rows of this job opened since `since` and still 'running' become failed."""
+    for tid in tenant_ids:
+        try:
+            with tenant_session(tid, engine) as session:
+                session.execute(
+                    update(JobRun)
+                    .where(
+                        JobRun.tenant_id == tid,
+                        JobRun.job == job,
+                        JobRun.status == "running",
+                        JobRun.started_at >= since,
+                    )
+                    .values(status="failed", finished_at=datetime.now(UTC), error_class=error_class)
+                )
+        except Exception as exc:
+            log.warning("could not close running job %s: %s", job, type(exc).__name__)
