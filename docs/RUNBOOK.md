@@ -130,15 +130,15 @@ The API can run the recurring jobs itself. It is OFF unless you set `SCHEDULER_E
 | `SCHEDULER_RETENTION_INTERVAL_SECONDS` | 86400 | retention check; 0 = off |
 | `SCHEDULER_RETENTION_APPLY` | false | false = DRY RUN only (job `retention_dry_run`). true really redacts (job `retention_apply`), irreversible: run `make retention` and read the numbers first |
 | `SCHEDULER_GROWTH_INTERVAL_SECONDS` | 86400 | growth nightly (job `growth_nightly`): stores signals only, sends nothing; 0 = off |
-| `SCHEDULER_PACK_REFRESH_INTERVAL_SECONDS` | 0 | pack refresh (`pack_refresh`), off by default; runs only with `APP_ENV=dev` and `MIGRATION_DATABASE_URL`, otherwise it is recorded as skipped |
 | `SCHEDULER_TICK_SECONDS` | 30 | how often the loop looks at the clock |
 | `SCHEDULER_STARTUP_DELAY_SECONDS` | 60 | first run this long after boot |
-| `SCHEDULER_SHUTDOWN_GRACE_SECONDS` | 20 | how long a stop waits for running jobs |
+| `SCHEDULER_SHUTDOWN_GRACE_SECONDS` | 10 | how long a stop waits for running jobs |
 
-- Where to look: tenant jobs write `job_runs` (one row per tenant per run: `ok`, `failed`, `skipped`); pack refresh and any failure that is not tied to a tenant write `platform_job_runs` (the platform role sees counts through `platform_jobs_v`). Rows hold counts and an exception class, never text.
-- No overlap: if a run is still going when the next one is due, the tick is recorded as `skipped`. With two app instances, a Postgres advisory lock lets only one run a given job at a time; the other records `skipped`. If that database connection drops mid-run the lock is lost, so two instances could briefly run the same (idempotent) job.
+- Where to look: tenant jobs write `job_runs` (one row per tenant per run: `ok`, `failed`, `skipped`); a failure that is not tied to a tenant (for example the lease or the tenant list) writes `platform_job_runs` (the platform role sees counts through `platform_jobs_v`). Rows hold counts and an exception class, never text.
+- No overlap: if a run is still going when the next one is due, the tick is recorded as `skipped`. Skipped rows are written at most once per job per hour. With two app instances, a lease row in `job_leases` (renewed every 40 s, expires after 120 s without a heartbeat, deleted when the job ends) lets only one run a given job at a time; the other records `skipped`. A dead instance's lease can be taken over after it expires. A job that outlives its lease (database unreachable for 2 minutes) could be started twice; all three jobs are safe to repeat.
 - Catch-up after sleep: the scheduler only exists while the app process is awake. A free-tier host that sleeps when idle runs NOTHING while asleep, so daily jobs can be skipped for days. When the app wakes, the first run of each job comes `SCHEDULER_STARTUP_DELAY_SECONDS` after boot, then every interval; a long gap costs one run, never a burst of missed runs. For guaranteed timing use a host that stays up, or call `make sweep` / `make retention` from an external cron.
 - Stopping the app waits up to the grace period for running jobs; any tenant row still `running` after that is closed as `failed` with error `Shutdown`. A row left `running` by a killed process is closed as `Abandoned` after 6 hours by the next run of that job.
+- Pack refresh is not scheduled: it needs the owner database credential, so it stays `make refresh`.
 - If the scheduler cannot start (for example no database URL) the API still starts and logs `job scheduler not started: <error class>`.
 ## Safety reminders
 

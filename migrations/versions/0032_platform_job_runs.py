@@ -1,4 +1,7 @@
-"""Platform-level job runs (S9.3).
+"""Platform-level job runs and job leases (S9.3).
+
+`job_leases`: one row per scheduled job name, the committed lease that lets only one app
+process run a job at a time (holder, expiry). Not tenant data; app role only.
 
 `platform_job_runs`: one row per platform job execution (pack refresh) and per scheduler-level
 skip. It is NOT tenant-owned (no tenant_id, no RLS), like platform_audit_events, so it holds
@@ -62,6 +65,27 @@ def upgrade() -> None:
     )
     op.execute(
         """
+        CREATE TABLE job_leases (
+            job varchar(40) PRIMARY KEY,
+            holder uuid NOT NULL,
+            expires_at timestamptz NOT NULL
+        )
+        """
+    )
+    op.execute("REVOKE ALL ON job_leases FROM PUBLIC")
+    op.execute(
+        f"""
+        DO $$ BEGIN
+            REVOKE ALL ON job_leases FROM {APP_ROLE};
+            GRANT SELECT, INSERT, UPDATE, DELETE ON job_leases TO {APP_ROLE};
+            IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = '{PLATFORM_ROLE}') THEN
+                REVOKE ALL ON job_leases FROM {PLATFORM_ROLE};
+            END IF;
+        END $$
+        """
+    )
+    op.execute(
+        """
         CREATE VIEW platform_jobs_v WITH (security_barrier = true, security_invoker = false) AS
         SELECT job::text AS job, status::text AS status,
                (started_at AT TIME ZONE 'UTC')::date AS day, count(*)::bigint AS runs
@@ -89,3 +113,4 @@ def upgrade() -> None:
 def downgrade() -> None:
     op.execute("DROP VIEW IF EXISTS platform_jobs_v")
     op.execute("DROP TABLE IF EXISTS platform_job_runs")
+    op.execute("DROP TABLE IF EXISTS job_leases")

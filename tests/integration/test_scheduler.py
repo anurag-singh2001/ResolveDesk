@@ -45,6 +45,7 @@ def tid(seeded, tenant, maint_engine, owner_engine):
             s.execute(delete(JobRun).where(JobRun.tenant_id == tid))
         with owner_engine.begin() as c:
             c.execute(text("DELETE FROM platform_job_runs"))
+            c.execute(text("DELETE FROM job_leases"))
 
     clean()
     yield tid
@@ -210,6 +211,54 @@ def test_one_runner_per_job_across_processes(app_engine, tid):
         assert again is True
 
 
+def test_no_transaction_stays_open_while_a_job_holds_the_lease(app_engine, tid):
+    with job_lock(app_engine, "quiet") as got:
+        assert got
+        with app_engine.connect() as c:  # the lease is committed: visible from elsewhere
+            assert (
+                c.execute(text("SELECT count(*) FROM job_leases WHERE job = 'quiet'")).scalar() == 1
+            )
+
+
+def test_a_stale_lease_is_taken_over(app_engine, tid, owner_engine):
+    with owner_engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO job_leases (job, holder, expires_at) "
+                "VALUES ('dead', gen_random_uuid(), now() - interval '1 minute')"
+            )
+        )
+    with job_lock(app_engine, "dead") as got:  # the holder died: its lease ran out
+        assert got is True
+    with owner_engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO job_leases (job, holder, expires_at) "
+                "VALUES ('alive', gen_random_uuid(), now() + interval '1 minute')"
+            )
+        )
+    with job_lock(app_engine, "alive") as got:  # a live lease is respected
+        assert got is False
+
+
+def test_the_lease_is_released_when_the_job_fails(app_engine, tid):
+    with pytest.raises(RuntimeError), job_lock(app_engine, "boom") as got:
+        assert got
+        raise RuntimeError("job failed")
+    with job_lock(app_engine, "boom") as again:
+        assert again is True
+
+
+def test_the_heartbeat_keeps_a_long_job_leased(app_engine, tid):
+    import time
+
+    with job_lock(app_engine, "long", ttl=0.6) as got:  # beats every 0.2 s
+        assert got
+        time.sleep(1.5)  # well past the ttl
+        with job_lock(app_engine, "long", ttl=0.6) as other:
+            assert other is False
+
+
 def test_a_second_instance_skips_while_the_first_holds_the_lock(app_engine, tid):
     clock, ran = Clock(), []
     s = make(
@@ -241,7 +290,6 @@ def test_real_jobs_run_and_are_recorded_per_tenant(app_engine, tid):
         scheduler_sweep_interval_seconds=100,
         scheduler_retention_interval_seconds=100,
         scheduler_growth_interval_seconds=100,
-        scheduler_pack_refresh_interval_seconds=100,
     )
     clock = Clock()
     s = make(app_engine, scheduled_jobs.build_jobs(settings, app_engine), clock, lock=job_lock)
@@ -257,8 +305,7 @@ def test_real_jobs_run_and_are_recorded_per_tenant(app_engine, tid):
         ("retention_dry_run", "ok"),
         ("growth_nightly", "ok"),
     }
-    # Platform-level: no tenant, and outside dev the owner-role refresh is not even attempted.
-    assert platform_rows(app_engine, "pack_refresh") == [("pack_refresh", "skipped", None)]
+    assert platform_rows(app_engine) == []  # nothing failed, so nothing platform-level
 
 
 @pytest.mark.parametrize("apply", [False, True])
@@ -332,3 +379,87 @@ def test_platform_job_runs_is_not_tenant_owned_and_the_app_role_cannot_delete(ap
         c.execute(text("DELETE FROM platform_job_runs"))
     with pytest.raises(DBAPIError), app_engine.begin() as c:
         c.execute(text("SELECT * FROM platform_jobs_v"))  # only the platform role reads the view
+
+
+def test_shutdown_closes_every_running_job_not_only_the_first(app_engine, tid):
+    clock, gate = Clock(), threading.Event()
+    started = {"a_job": threading.Event(), "b_job": threading.Event(), "c_job": threading.Event()}
+
+    def stuck(name):
+        def run():
+            start_job(app_engine, tid, name)
+            started[name].set()
+            gate.wait(10)
+
+        return run
+
+    jobs = [ScheduledJob(n, 100, stuck(n), lambda: [tid]) for n in started]
+    s = make(app_engine, jobs, clock, grace=0.05)
+
+    async def go():
+        clock.t += 10
+        await s.tick()
+        for ev in started.values():
+            assert await asyncio.to_thread(ev.wait, 10)
+        await s.stop()
+
+    try:
+        asyncio.run(go())
+        assert {j: (st, e) for j, st, e in job_rows(app_engine, tid)} == {
+            n: ("failed", "Shutdown") for n in started
+        }
+    finally:
+        gate.set()
+
+
+def test_skips_are_recorded_at_most_once_an_hour(app_engine, tid):
+    clock, gate, started = Clock(), threading.Event(), threading.Event()
+
+    def slow():
+        started.set()
+        gate.wait(10)
+
+    s = make(app_engine, [ScheduledJob("noisy", 1, slow, lambda: [tid])], clock)
+
+    async def go():
+        clock.t += 10
+        await s.tick()
+        assert await asyncio.to_thread(started.wait, 10)
+        for _ in range(5):  # five overlapping ticks within the hour
+            clock.t += 2
+            await s.tick()
+        clock.t += 3600  # an hour later it is worth another row
+        await s.tick()
+        gate.set()
+        await s.wait_idle()
+
+    asyncio.run(go())
+    assert job_rows(app_engine, tid, "noisy").count(("noisy", "skipped", None)) == 2
+
+
+def test_the_platform_role_reads_the_job_view_and_not_the_tables(app_engine, owner_engine, tid):
+    from sqlalchemy import create_engine, event
+
+    from app.config import get_settings
+    from app.core.db import ENGINE_OPTIONS
+    from app.core.telemetry import finish_platform_job, start_platform_job
+
+    finish_platform_job(app_engine, start_platform_job(app_engine, "view_job"), "failed", None, "X")
+    engine = create_engine(get_settings().test_migration_database_url, **ENGINE_OPTIONS)
+
+    @event.listens_for(engine, "connect")
+    def _switch(dbapi_conn, _record):
+        cur = dbapi_conn.cursor()
+        cur.execute("SET ROLE resolvedesk_platform")
+        cur.close()
+        dbapi_conn.commit()
+
+    try:
+        with engine.connect() as c:
+            rows = c.execute(text("SELECT job, status, runs FROM platform_jobs_v")).all()
+        assert ("view_job", "failed", 1) in [tuple(r) for r in rows]
+        for table in ("platform_job_runs", "job_leases"):
+            with pytest.raises(DBAPIError), engine.connect() as c:
+                c.execute(text(f"SELECT 1 FROM {table}"))
+    finally:
+        engine.dispose()

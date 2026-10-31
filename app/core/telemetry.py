@@ -208,27 +208,6 @@ def finish_platform_job(
             )
 
 
-def run_platform_job[T](
-    engine: Engine,
-    job: str,
-    fn: Callable[[], T],
-    counts_of: Callable[[T], dict[str, Any]] | None = None,
-) -> T:
-    """`run_job` for a job that belongs to no tenant."""
-    job_id = start_platform_job(engine, job)
-    try:
-        result = fn()
-    except BaseException as exc:
-        finish_platform_job(engine, job_id, "failed", error_class=type(exc).__name__)
-        raise
-    try:
-        counts = counts_of(result) if counts_of else {}
-    except Exception:
-        counts = {}
-    finish_platform_job(engine, job_id, "ok", counts)
-    return result
-
-
 def record_tenant_skips(engine: Engine, tenant_ids: list[uuid.UUID], job: str) -> None:
     """A scheduled tick that did not run (previous run still going, or another process holds
     the job): one 'skipped' job_runs row per tenant. Best effort."""
