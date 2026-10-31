@@ -32,6 +32,15 @@ async def lifespan(app: FastAPI):
     cleanly with the app. A scheduler that cannot start never stops the API."""
     scheduler = None
     s = get_settings()
+    uninstall_error_log = None
+    if s.error_log_enabled:
+        try:
+            from app.core.db import get_engine
+            from app.core.error_log import install_error_log_handler
+
+            uninstall_error_log = install_error_log_handler(get_engine(), s.error_log_flush_seconds)
+        except Exception as exc:  # logging must never stop the API
+            log.warning("error log not installed: %s", type(exc).__name__)
     if s.scheduler_enabled:
         try:
             from app.core.db import get_engine
@@ -56,6 +65,8 @@ async def lifespan(app: FastAPI):
     finally:
         if scheduler is not None:
             await asyncio.shield(scheduler.stop())
+        if uninstall_error_log is not None:
+            await asyncio.to_thread(uninstall_error_log)
 
 
 def create_app() -> FastAPI:

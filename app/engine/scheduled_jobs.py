@@ -22,6 +22,7 @@ from app.config import Settings
 from app.core.scheduler import ScheduledJob
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
+from app.engine.alerts import evaluate_alerts
 from app.engine.retention import purge_all
 from app.engine.sweeper import sweep_all
 from app.modules.growth.signals import run_nightly
@@ -55,6 +56,11 @@ def build_jobs(settings: Settings, engine: Engine) -> list[ScheduledJob]:
             settings.scheduler_retention_interval_seconds,
             lambda: purge_all(engine, apply=apply),
             all_tenant_ids,
+        ),
+        ScheduledJob(
+            "alerts",  # platform-level: reads counts only, writes the alerts table (S9.4)
+            settings.scheduler_alerts_interval_seconds,
+            lambda: evaluate_alerts(engine, all_tenant_ids(), settings),
         ),
         ScheduledJob(
             "growth_nightly",

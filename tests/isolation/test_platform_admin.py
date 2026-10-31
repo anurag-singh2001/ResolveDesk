@@ -36,6 +36,9 @@ VIEWS = [
     "platform_case_counts_v",
     "platform_approval_counts_v",
     "platform_activity_v",
+    "platform_jobs_v",
+    "platform_error_logs_v",
+    "platform_alerts_v",
 ]
 # Anything that could carry a person, a message or a row identity must never be a column.
 FORBIDDEN_FRAGMENTS = (
@@ -182,7 +185,7 @@ def test_tenant_user_cannot_call_platform_routes(papi, seeded, tenant):
     cfg = seeded[tenant.name]
     for user in cfg.users:
         headers = login(papi, cfg.slug, user.email)
-        for path in ("tenants", "cases", "approvals", "activity"):
+        for path in ("tenants", "cases", "approvals", "activity", "alerts", "logs"):
             assert papi.get(f"/platform/{path}", headers=headers).status_code == 403, user.email
 
 
@@ -253,6 +256,56 @@ def test_failed_login_and_denied_calls_write_no_platform_audit(papi, owner_engin
 
 
 # ---- the DB role -----------------------------------------------------------------------
+
+
+def test_alerts_and_logs_come_from_the_views_and_are_audited(papi, owner_engine):
+    with owner_engine.begin() as c:
+        c.execute(text("DELETE FROM alerts"))
+        c.execute(text("DELETE FROM error_logs"))
+        c.execute(
+            text(
+                "INSERT INTO alerts (rule, scope, status, value, threshold, opened_at, "
+                "last_seen_at) VALUES ('job_failed', 'x:y', 'open', 1, 0, now(), now())"
+            )
+        )
+        c.execute(
+            text(
+                "INSERT INTO error_logs (service, level, event_code, error_class, day, "
+                "occurrences, first_at, last_at) VALUES ('s', 'ERROR', 'app.s.c', 'E', "
+                "current_date, 3, now(), now())"
+            )
+        )
+    headers = _platform_headers(papi)
+    try:
+        alerts = papi.get("/platform/alerts", headers=headers)
+        logs = papi.get("/platform/logs", headers=headers)
+        assert alerts.status_code == logs.status_code == 200
+        assert [(a["rule"], a["status"]) for a in alerts.json()] == [("job_failed", "open")]
+        assert [(g["event_code"], g["occurrences"]) for g in logs.json()] == [("app.s.c", 3)]
+        with owner_engine.connect() as c:
+            routes = c.execute(
+                text("SELECT route FROM platform_audit_events ORDER BY occurred_at DESC LIMIT 2")
+            ).scalars().all()  # fmt: skip
+        assert set(routes) == {"GET /platform/alerts", "GET /platform/logs"}
+    finally:
+        with owner_engine.begin() as c:
+            c.execute(text("DELETE FROM alerts"))
+            c.execute(text("DELETE FROM error_logs"))
+
+
+def test_platform_role_cannot_read_alert_or_log_tables_directly(platform_engine):
+    for table in ("alerts", "error_logs"):
+        with pytest.raises(ProgrammingError), platform_engine.connect() as c:
+            c.execute(text(f"SELECT 1 FROM {table}"))
+    with platform_engine.connect() as c:
+        c.execute(text("SELECT * FROM platform_alerts_v")).all()
+        c.execute(text("SELECT * FROM platform_error_logs_v")).all()
+
+
+def test_app_role_cannot_read_the_alert_and_log_views(app_engine):
+    for view in ("platform_alerts_v", "platform_error_logs_v"):
+        with pytest.raises(ProgrammingError), app_engine.connect() as c:
+            c.execute(text(f"SELECT 1 FROM {view}"))
 
 
 def test_platform_role_attributes(platform_engine):

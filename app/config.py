@@ -94,6 +94,21 @@ class Settings(BaseSettings):
     scheduler_growth_interval_seconds: int = Field(default=86_400, ge=0)
     # Retention stays a dry run unless this is set: redaction cannot be undone.
     scheduler_retention_apply: bool = False
+    scheduler_alerts_interval_seconds: int = Field(default=300, ge=0)
+    # Error log and alerts (S9.4). The handler is installed with the app (lifespan); rate limit =
+    # at most one database write per distinct error per this many seconds (the rest is counted).
+    error_log_enabled: bool = True
+    error_log_flush_seconds: float = Field(default=10.0, ge=0)
+    # Alert rule thresholds. Whole numbers only: rates are in basis points (100 = 1%).
+    alert_window_hours: int = Field(default=1, ge=1)  # provider failure window
+    alert_provider_failure_bps: int = Field(default=2000, ge=1)
+    alert_provider_min_calls: int = Field(default=10, ge=1)  # too few calls: no verdict
+    alert_job_lookback_hours: int = Field(default=24, ge=1)  # a failed job older than this clears
+    alert_escalation_min_count: int = Field(default=5, ge=1)  # last 24h escalations at least
+    alert_escalation_ratio_pct: int = Field(default=300, ge=101)  # vs the prior 7-day daily mean
+    alert_eval_drop_points: int = Field(default=5, ge=1)  # pass-rate drop, percentage points
+    alert_stuck_minutes: int = Field(default=30, ge=1)  # a job 'running' longer than this
+    alert_eval_reports_dir: str = "evals/reports"
     # Platform admin (S9.1): one operator principal, configured only here (never in the DB).
     # The feature is ON only when email, bcrypt hash AND the platform DB URL are all set; any
     # missing piece and every /platform route answers 404 (fail closed).

@@ -140,6 +140,12 @@ The API can run the recurring jobs itself. It is OFF unless you set `SCHEDULER_E
 - Stopping the app waits up to the grace period for running jobs; any tenant row still `running` after that is closed as `failed` with error `Shutdown`. A row left `running` by a killed process is closed as `Abandoned` after 6 hours by the next run of that job.
 - Pack refresh is not scheduled: it needs the owner database credential, so it stays `make refresh`.
 - If the scheduler cannot start (for example no database URL) the API still starts and logs `job scheduler not started: <error class>`.
+## Error log and alerts (S9.4)
+
+- Error log (`error_logs`): the API installs a logging handler on start (`ERROR_LOG_ENABLED`, default true). It records, per service, level, event code (the logger name), exception class and day, only a COUNT. It never reads the log message, so a name, phone or token cannot land there. Writes are rate limited: the first occurrence is written at once, repeats are counted in memory and written at most every `ERROR_LOG_FLUSH_SECONDS` (10); more than 200 distinct error types in a day collapse into one `overflow` row. A database failure in the handler is swallowed (a warning with the class name), never raised into a request. Nothing deletes old rows yet: trim by hand with the owner role (`DELETE FROM error_logs WHERE day < current_date - 90`).
+- Alerts (`alerts`): the scheduler job `alerts` (`SCHEDULER_ALERTS_INTERVAL_SECONDS`, 300, 0 = off; needs `SCHEDULER_ENABLED`) evaluates five rules: `job_failed` (the latest ok or failed run of a job is failed, within `ALERT_JOB_LOOKBACK_HOURS`), `provider_failure_rate` (failed calls over calls in the last `ALERT_WINDOW_HOURS` above `ALERT_PROVIDER_FAILURE_BPS`, with at least `ALERT_PROVIDER_MIN_CALLS` calls), `escalation_spike` (escalated cases opened in 24 h at least `ALERT_ESCALATION_MIN_COUNT` and above `ALERT_ESCALATION_RATIO_PCT` percent of the prior 7-day daily mean), `eval_regression` (latest `evals/reports/eval-*.md` against the previous: pass rate down by `ALERT_EVAL_DROP_POINTS`), `stuck_job` (a job `running` longer than `ALERT_STUCK_MINUTES`). One open alert per (rule, scope): it is refreshed while the condition holds and resolved when it clears. A rule that could not be read leaves its alerts as they are.
+- Reading: `GET /platform/alerts` and `GET /platform/logs` (platform admin token, audited). Nothing is emailed or posted; look at the portal.
+
 ## Safety reminders
 
 - Never run tests or evals against the demo/production database.

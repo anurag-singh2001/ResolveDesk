@@ -72,6 +72,27 @@ class ActivityRow(BaseModel):
     last_system_event_at: datetime | None
 
 
+class AlertRow(BaseModel):
+    rule: str
+    scope: str
+    status: str
+    value: int
+    threshold: int
+    opened_at: datetime
+    last_seen_at: datetime
+    resolved_at: datetime | None
+
+
+class ErrorLogRow(BaseModel):
+    service: str
+    level: str
+    event_code: str
+    error_class: str
+    day: date
+    occurrences: int
+    last_at: datetime
+
+
 def get_platform_engine() -> Engine:
     """The aggregate-only connection. Tests override this dependency."""
     return get_engine(get_settings().platform_database_url)
@@ -174,3 +195,35 @@ def activity(
         "SELECT tenant_slug, last_system_event_at FROM platform_activity_v ORDER BY tenant_slug",
     )
     return [ActivityRow(**r) for r in rows]
+
+
+@router.get("/alerts")
+def alerts(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[AlertRow]:
+    """Open alerts first, then recently resolved ones (S9.4). Nothing is sent anywhere."""
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/alerts",
+        "SELECT rule, scope, status, value, threshold, opened_at, last_seen_at, resolved_at "
+        "FROM platform_alerts_v WHERE status = 'open' OR resolved_at > now() - interval '7 days' "
+        "ORDER BY (status = 'open') DESC, opened_at DESC LIMIT 200",
+    )
+    return [AlertRow(**r) for r in rows]
+
+
+@router.get("/logs")
+def logs(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[ErrorLogRow]:
+    """Error counts by service, level, event code and exception class, last 14 days (S9.4)."""
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/logs",
+        "SELECT service, level, event_code, error_class, day, occurrences, last_at "
+        "FROM platform_error_logs_v WHERE day >= (now() AT TIME ZONE 'UTC')::date - 14 "
+        "ORDER BY day DESC, occurrences DESC LIMIT 500",
+    )
+    return [ErrorLogRow(**r) for r in rows]
