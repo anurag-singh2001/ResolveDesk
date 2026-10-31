@@ -21,6 +21,8 @@ from app.core.models import (
     Consent,
     Customer,
     Location,
+    Membership,
+    MembershipLocation,
     PlaybookEntry,
     Signal,
     Transaction,
@@ -78,10 +80,22 @@ def make_signal(engine, tid, as_of):
     """A stored signal at the location with the largest lapsed audience (same for any tenant:
     the campaign steps don't depend on a drop having been planted)."""
     with tenant_session(tid, engine) as s:
-        best = max(
-            s.scalars(select(Location.id)),
-            key=lambda loc: len(camp.lapsed_audience(s, tid, loc, as_of)),
+        # Campaigns need a proposer and two different approvers (one hq_owner), so prefer an
+        # outlet where at least two non-hq staff can act; any outlet if none has that.
+        staffed = {
+            loc
+            for loc, n in s.execute(
+                select(MembershipLocation.location_id, func.count(Membership.user_id.distinct()))
+                .join(Membership, Membership.id == MembershipLocation.membership_id)
+                .where(Membership.role != "hq_owner")
+                .group_by(MembershipLocation.location_id)
+            )
+            if n >= 2
+        }
+        locations = [loc for loc in s.scalars(select(Location.id)) if loc in staffed] or list(
+            s.scalars(select(Location.id))
         )
+        best = max(locations, key=lambda loc: len(camp.lapsed_audience(s, tid, loc, as_of)))
         r = sig.read_location(s, tid, best, as_of)
         diagnosis = sig.template_diagnosis(sig.gather_evidence(s, tid, r))
         return sig.store_signal(s, tid, r, diagnosis, "template").id
@@ -458,12 +472,25 @@ def test_growth_api_end_to_end(api, app_engine, gt):
         )
         if other is None:
             pytest.skip("no second approver for this location")
-        made = api.post(f"/growth/signals/{sid}/campaign", json={}, headers=headers[hq])
+        proposer = next(
+            (
+                e
+                for e, c in ctxs.items()
+                if c.role != "hq_owner" and e != other and c.can_see_location(loc)
+            ),
+            None,
+        )
+        if proposer is None:
+            pytest.skip("no third staff user for this location")
+        made = api.post(f"/growth/signals/{sid}/campaign", json={}, headers=headers[proposer])
         if made.status_code == 422:
             pytest.skip("history too small for an audience at this scale")
         assert made.status_code == 201, made.text
         cid = made.json()["id"]
         approve = f"/growth/campaigns/{cid}/approve"
+        # The proposer cannot approve their own campaign.
+        own = api.post(approve, json={"decision": "approved"}, headers=headers[proposer])
+        assert own.status_code == 403, own.text
         yes = {"decision": "approved"}
         if outsider:  # out of scope looks like absent
             assert api.get(f"/growth/campaigns/{cid}", headers=headers[outsider]).status_code == 404
@@ -616,6 +643,20 @@ def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
     hq_email = next(u.email for u in cfg.users if u.role == "hq_owner")
     headers = login(api, cfg.slug, hq_email)
     signal_id = make_signal(app_engine, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        sig_loc = s.get(Signal, signal_id).location_id
+    approver = next(
+        (
+            u.email
+            for u in cfg.users
+            if u.role not in ("customer", "hq_owner")
+            and ctx_of(app_engine, tid, u.email).can_see_location(sig_loc)
+        ),
+        None,
+    )
+    if approver is None:
+        pytest.skip("no second staff user for this location")
+    approver_headers = login(api, cfg.slug, approver)
     try:
         deps.advance_clock(timedelta(days=15))
         made = api.post(f"/growth/signals/{signal_id}/campaign", json={}, headers=headers)
@@ -624,7 +665,7 @@ def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
         assert made.status_code == 201, made.text
         cid = uuid.UUID(made.json()["id"])
         yes = api.post(f"/growth/campaigns/{cid}/approve", json={"decision": "approved"},
-                       headers=headers)  # fmt: skip
+                       headers=approver_headers)  # fmt: skip
         assert yes.status_code == 200, yes.text
     finally:
         deps.reset_clock()
