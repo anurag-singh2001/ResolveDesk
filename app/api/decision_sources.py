@@ -73,6 +73,8 @@ def _render(code: str, p: dict, lang: str) -> list[str]:
         return lines
     if code == "approver_set":
         return [t("basis.approver_set", lang)]
+    if code == "customer_chose":
+        return [t("basis.customer_chose", lang)]
     return []
 
 

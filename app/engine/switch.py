@@ -35,6 +35,7 @@ from app.engine.approvals import (
     AlreadyDecided,
     NotEligible,
     NotFound,
+    WaitingForCustomer,
     _order_id,
     decide,
     evaluate_proposal,
@@ -43,6 +44,7 @@ from app.engine.approvals import (
     scoped_proposal,
 )
 from app.engine.eligibility import order_facts
+from app.engine.offer_state import open_offer
 from app.engine.privacy import PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal, proposal_hash_is_intact
 from app.engine.routing import _lowest_user, case_brand
@@ -143,6 +145,8 @@ def switch_remedy(
     NotEligible (422: not an allowed remedy, amount outside the rule's range, or a code check
     failed)."""
     old, case = _pending_proposal(session, ctx, proposal_id)
+    if open_offer(session, old.id, now) is not None:
+        raise WaitingForCustomer("waiting for the customer to choose")
     options = _ranges(session, old, case)
     if action not in options:
         raise NotEligible([f"{action} is not an allowed remedy for this case"])
