@@ -788,10 +788,10 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "ऑफ़र और प्रमोशन",
     },
     "consent.h.intro": {
-        "en": "You choose whether we send you offers. Every switch starts off.",
+        "en": "You choose whether we send you offers. You can change a switch at any time.",
         "hi-Latn": "Offers bhejein ya nahin, yeh aap chunte hain. "
-        "Har switch band se shuru hota hai.",
-        "hi": "ऑफ़र भेजें या नहीं, यह आप चुनते हैं। हर स्विच बंद से शुरू होता है।",
+        "Aap kabhi bhi switch badal sakte hain.",
+        "hi": "ऑफ़र भेजें या नहीं, यह आप चुनते हैं। आप कभी भी स्विच बदल सकते हैं।",
     },
     "consent.h.history": {
         "en": "History of your choices",

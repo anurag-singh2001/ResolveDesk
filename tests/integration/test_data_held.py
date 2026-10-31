@@ -11,7 +11,7 @@ import pytest
 
 from app.core.db import tenant_session
 from app.core.i18n import LANGUAGES, TEMPLATES
-from app.core.models import Customer, Ticket, TicketMessage
+from app.core.models import Consent, Customer, Ticket, TicketMessage
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant, tenant_dirs
@@ -86,6 +86,31 @@ def test_each_item_has_purpose_retention_and_the_customers_own_count(
     other = _by_key(api.get("/me/data-held", headers=auth_b).json())
     assert other["orders"]["count"] == 3 and other["messages"]["count"] == 5
     assert other["consents"]["count"] == 0 and other["remedies"]["count"] == 0
+
+
+def test_offer_choices_count_the_choice_on_record_not_the_history(
+    api,
+    app_engine,
+    tid,
+    people,  # noqa: F811
+):
+    """Seeded customers have a choice (a consent row) with no history event behind it; the page
+    must not say "0 on record" while the offers switch shows On."""
+    cid, auth = people()
+    with tenant_session(tid, app_engine) as s:
+        for purpose in ("marketing", "service"):
+            s.add(
+                Consent(
+                    tenant_id=tid,
+                    customer_id=cid,
+                    channel="whatsapp",
+                    purpose=purpose,
+                    granted=True,
+                )
+            )
+    items = _by_key(api.get("/me/data-held", headers=auth).json())
+    assert items["consents"]["count"] == 1  # the one offers choice; "service" has no switch
+    assert "1" in items["consents"]["summary"]
 
 
 def test_retention_comes_from_tenant_settings(api, app_engine, tid, people):  # noqa: F811

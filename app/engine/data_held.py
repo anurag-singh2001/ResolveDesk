@@ -17,7 +17,7 @@ from app.core.i18n import normalize, t
 from app.core.models import (
     ActionProposal,
     Case,
-    ConsentEvent,
+    Consent,
     Customer,
     Execution,
     Payment,
@@ -25,6 +25,7 @@ from app.core.models import (
     TicketMessage,
     Transaction,
 )
+from app.engine import data_rights as privacy
 from app.engine.retention import retention_days
 
 # Facts the page states are decided in CODE, never by a tenant override (safety review B1).
@@ -108,9 +109,13 @@ def _counts(db: Session, customer: Customer) -> dict[str, int]:
                 exists().where(Execution.proposal_id == ActionProposal.id),
             ),
         ),
+        # The choices as they stand now (the rows the privacy page shows), not the history:
+        # seeded customers have a choice recorded with no event behind it.
         "consents": _count(
             db,
-            select(func.count()).select_from(ConsentEvent).where(ConsentEvent.customer_id == cid),
+            select(func.count())
+            .select_from(Consent)
+            .where(Consent.customer_id == cid, Consent.purpose.in_(privacy.PURPOSES)),
         ),
     }
 

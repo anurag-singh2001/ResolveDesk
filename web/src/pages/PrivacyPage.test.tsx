@@ -12,7 +12,7 @@ function consents(granted: boolean, withHistory = false): Consents {
       language: "en",
       headings: {
         title: "Offers and promotions",
-        intro: "You choose whether we send you offers. Every switch starts off.",
+        intro: "You choose whether we send you offers. You can change a switch at any time.",
         history: "History of your choices",
         note: "Turning offers off never changes the help you get with an order.",
         on: "On",
