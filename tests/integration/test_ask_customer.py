@@ -251,8 +251,9 @@ def test_asking_stores_the_offer_audits_codes_and_amounts_and_blocks_approval(as
                 AuditEvent.entity_id == cid, AuditEvent.event == "case.options_offered"
             )
         ).one()
-    assert set(audit.payload) == {"proposal_id", "options"}
-    assert all(set(o) == {"code", "amount_paise"} for o in audit.payload["options"])
+        payload = audit.payload
+    assert set(payload) == {"proposal_id", "options"}
+    assert all(set(o) == {"code", "amount_paise"} for o in payload["options"])
     # Switching to another remedy is also held while the customer is being asked.
     sw = ask["api"].post(
         f"/approvals/{pid}/switch",
@@ -276,21 +277,39 @@ def test_a_second_question_on_the_same_proposal_is_refused(ask):
 
 def test_customers_cannot_ask_and_unknown_or_decided_proposals_fail(ask):
     _, pid = ask["new_pending"]()
-    assert _ask(ask, pid, headers=ask["me"]).status_code == 403
+    assert (
+        _ask(
+            ask, pid, [{"action": "free_item_voucher"}, {"action": "refund"}], headers=ask["me"]
+        ).status_code
+        == 403
+    )
     assert _suggest(ask, pid, headers=ask["me"]).status_code == 403
-    assert _ask(ask, uuid.uuid4()).status_code == 404
+    assert (
+        _ask(ask, uuid.uuid4(), [{"action": "free_item_voucher"}, {"action": "refund"}]).status_code
+        == 404
+    )
     done = ask["api"].post(
         f"/approvals/{pid}/decision", headers=ask["hq"], json={"decision": "rejected"}
     )
     assert done.status_code == 200
-    assert _ask(ask, pid).status_code == 409  # not pending any more
+    assert (
+        _ask(ask, pid, [{"action": "free_item_voucher"}, {"action": "refund"}]).status_code == 409
+    )  # not pending any more
 
 
 def test_staff_outside_the_orders_scope_get_404(ask):
     if ask["out_of_scope"] is None:
         pytest.skip("every manager of this tenant can see the order")
     _, pid = ask["new_pending"]()
-    assert _ask(ask, pid, headers=ask["out_of_scope"]).status_code == 404
+    assert (
+        _ask(
+            ask,
+            pid,
+            [{"action": "free_item_voucher"}, {"action": "refund"}],
+            headers=ask["out_of_scope"],
+        ).status_code
+        == 404
+    )
     assert _suggest(ask, pid, headers=ask["out_of_scope"]).status_code == 404
     assert _offer_row(ask, pid) is None
 
@@ -459,6 +478,7 @@ def test_a_pick_must_be_one_of_the_stored_options_and_works_once(ask):
 
 
 def test_a_pick_supersedes_the_old_proposal_and_needs_a_person(ask):
+    ask["set_total"](RS_149)  # keeps the refund inside a location manager's approval limit
     cid, pid = ask["new_pending"]()
     assert _ask(ask, pid).status_code == 201
     row = _offer_row(ask, pid)
