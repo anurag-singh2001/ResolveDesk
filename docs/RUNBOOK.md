@@ -119,6 +119,27 @@ Two tables, filled automatically, nothing to switch on:
 - A run killed before it finishes loses its token counters (written once, at the end of the run), so usage totals are a floor, not exact.
 - Neither table holds prompt, reply or message text, and exception messages are not stored. Recording is best effort: if it fails, a warning with the exception class is logged and the run or job carries on.
 
+## Job scheduler (S9.3)
+
+The API can run the recurring jobs itself. It is OFF unless you set `SCHEDULER_ENABLED=true` (in `.env` or the host's environment); dev, test and prod all default to off, and tests never start it. Restart the API after changing any of these.
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `SCHEDULER_ENABLED` | false | master switch |
+| `SCHEDULER_SWEEP_INTERVAL_SECONDS` | 300 | crash-recovery sweep (job `sweep`); 0 = off |
+| `SCHEDULER_RETENTION_INTERVAL_SECONDS` | 86400 | retention check; 0 = off |
+| `SCHEDULER_RETENTION_APPLY` | false | false = DRY RUN only (job `retention_dry_run`). true really redacts (job `retention_apply`), irreversible: run `make retention` and read the numbers first |
+| `SCHEDULER_GROWTH_INTERVAL_SECONDS` | 86400 | growth nightly (job `growth_nightly`): stores signals only, sends nothing; 0 = off |
+| `SCHEDULER_PACK_REFRESH_INTERVAL_SECONDS` | 0 | pack refresh (`pack_refresh`), off by default; runs only with `APP_ENV=dev` and `MIGRATION_DATABASE_URL`, otherwise it is recorded as skipped |
+| `SCHEDULER_TICK_SECONDS` | 30 | how often the loop looks at the clock |
+| `SCHEDULER_STARTUP_DELAY_SECONDS` | 60 | first run this long after boot |
+| `SCHEDULER_SHUTDOWN_GRACE_SECONDS` | 20 | how long a stop waits for running jobs |
+
+- Where to look: tenant jobs write `job_runs` (one row per tenant per run: `ok`, `failed`, `skipped`); pack refresh and any failure that is not tied to a tenant write `platform_job_runs` (the platform role sees counts through `platform_jobs_v`). Rows hold counts and an exception class, never text.
+- No overlap: if a run is still going when the next one is due, the tick is recorded as `skipped`. With two app instances, a Postgres advisory lock lets only one run a given job at a time; the other records `skipped`. If that database connection drops mid-run the lock is lost, so two instances could briefly run the same (idempotent) job.
+- Catch-up after sleep: the scheduler only exists while the app process is awake. A free-tier host that sleeps when idle runs NOTHING while asleep, so daily jobs can be skipped for days. When the app wakes, the first run of each job comes `SCHEDULER_STARTUP_DELAY_SECONDS` after boot, then every interval; a long gap costs one run, never a burst of missed runs. For guaranteed timing use a host that stays up, or call `make sweep` / `make retention` from an external cron.
+- Stopping the app waits up to the grace period for running jobs; any tenant row still `running` after that is closed as `failed` with error `Shutdown`. A row left `running` by a killed process is closed as `Abandoned` after 6 hours by the next run of that job.
+- If the scheduler cannot start (for example no database URL) the API still starts and logs `job scheduler not started: <error class>`.
 ## Safety reminders
 
 - Never run tests or evals against the demo/production database.
