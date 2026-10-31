@@ -45,8 +45,15 @@ def tid(seeded_history, tenant, maint_engine, owner_engine):
     clean()
 
 
-def run(app_engine, tid, **kw):
-    return evaluate_alerts(app_engine, [tid], get_settings(), **kw)
+def quiet_settings():
+    """Audit events cannot be deleted, so earlier test runs on the same DB leave real
+    `case.escalated` rows that would fire the spike rule. Only the spike tests opt in."""
+    return get_settings().model_copy(update={"alert_escalation_min_count": 10**9})
+
+
+def run(app_engine, tid, *, spike=False, **kw):
+    settings = get_settings() if spike else quiet_settings()
+    return evaluate_alerts(app_engine, [tid], settings, **kw)
 
 
 _OWNER = []
@@ -197,9 +204,9 @@ def _far_future():
 def test_escalation_spike_fires_against_a_quiet_week_and_clears_when_it_passes(app_engine, tid):
     now = _far_future()
     _escalated(app_engine, tid, get_settings().alert_escalation_min_count, now - timedelta(hours=2))
-    run(app_engine, tid, now=now)
+    run(app_engine, tid, spike=True, now=now)
     assert [r for r, _ in open_rules()] == ["escalation_spike"]
-    run(app_engine, tid, now=now + timedelta(days=2))  # outside the 24h window now
+    run(app_engine, tid, spike=True, now=now + timedelta(days=2))  # outside the 24h window now
     assert open_rules() == []
 
 
@@ -209,7 +216,7 @@ def test_a_busy_normal_week_is_not_a_spike(app_engine, tid):
     for d in range(2, 9):  # every prior day had as many as today
         _escalated(app_engine, tid, n, now - timedelta(days=d, hours=1))
     _escalated(app_engine, tid, n, now - timedelta(hours=2))
-    assert run(app_engine, tid, now=now)["opened"] == 0
+    assert run(app_engine, tid, spike=True, now=now)["opened"] == 0
 
 
 REPORT = (
@@ -324,8 +331,8 @@ def test_the_rules_read_only_the_tenants_they_are_given(app_engine, tid, seeded_
     ]
     assert others
     fail_job(app_engine, tid, "s94_job")
-    assert evaluate_alerts(app_engine, others, get_settings())["opened"] == 0
-    assert evaluate_alerts(app_engine, [tid], get_settings())["opened"] == 1
+    assert evaluate_alerts(app_engine, others, quiet_settings())["opened"] == 0
+    assert evaluate_alerts(app_engine, [tid], quiet_settings())["opened"] == 1
 
 
 # --- error log ---------------------------------------------------------------------------
@@ -650,7 +657,7 @@ def test_one_tenants_failed_read_leaves_only_its_alerts_alone(app_engine, tid, s
     )
     fail_job(app_engine, tid, "s94_job")
     fail_job(app_engine, other, "s94_job")
-    evaluate_alerts(app_engine, [tid, other], get_settings())
+    evaluate_alerts(app_engine, [tid, other], quiet_settings())
     assert len(open_rules()) == 2
     fail_job(app_engine, tid, "s94_job", "ok")
     fail_job(app_engine, other, "s94_job", "ok")
@@ -664,7 +671,7 @@ def test_one_tenants_failed_read_leaves_only_its_alerts_alone(app_engine, tid, s
 
     alerts_mod.TENANT_RULES["job_failed"] = flaky
     try:
-        evaluate_alerts(app_engine, [tid, other], get_settings())
+        evaluate_alerts(app_engine, [tid, other], quiet_settings())
     finally:
         alerts_mod.TENANT_RULES["job_failed"] = real
     assert len(open_rules()) == 1  # this tenant's cleared, the unreadable one's stays
