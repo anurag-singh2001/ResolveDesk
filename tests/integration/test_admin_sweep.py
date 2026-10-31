@@ -16,6 +16,7 @@ REPORT_KEYS = {
     "verified",
     "ai_reruns",
     "replies_resumed",
+    "erasure_requests_flagged",
     "grievances_flagged",
     "erasure_notices",
     "owners_assigned",
