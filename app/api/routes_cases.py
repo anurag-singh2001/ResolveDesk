@@ -742,16 +742,16 @@ def rerun_ai(
     return RerunOut(status=outcome)
 
 
-class RemedyOptionOut(BaseModel):
+class StaffRemedyOptionOut(BaseModel):
     action: str
     min_paise: int
     max_paise: int
 
 
-class RemedyOptionsOut(BaseModel):
+class StaffRemedyOptionsOut(BaseModel):
     categories: list[str]
     category: str | None
-    options: list[RemedyOptionOut]
+    options: list[StaffRemedyOptionOut]
     note: str | None
 
 
@@ -771,15 +771,15 @@ def get_remedy_options(
     case_id: uuid.UUID,
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
-) -> RemedyOptionsOut:
+) -> StaffRemedyOptionsOut:
     """The category list and the remedies the vertical pack's rules allow for this case now,
     with the amount range in paise. Staff in scope only, on a case that needs a person."""
     case = _staff_case_needing_person(db, ctx, case_id)
     found = staff_decisions.remedy_options(db, case)
-    return RemedyOptionsOut(
+    return StaffRemedyOptionsOut(
         categories=found.categories,
         category=found.category,
-        options=[RemedyOptionOut(**vars(o)) for o in found.options],
+        options=[StaffRemedyOptionOut(**vars(o)) for o in found.options],
         note=found.note,
     )
 
@@ -794,7 +794,7 @@ def categorise_case(
     body: CategoriseIn,
     ctx: TenantContext = Depends(require_staff),
     db: Session = Depends(tenant_db),
-) -> RemedyOptionsOut:
+) -> StaffRemedyOptionsOut:
     case = _staff_case_needing_person(db, ctx, case_id)
     try:
         case = staff_decisions.categorise(db, ctx, case, body.category, datetime.now(UTC))

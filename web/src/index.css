@@ -82,7 +82,6 @@
     font-family: "Montserrat", ui-sans-serif, system-ui, sans-serif;
     font-weight: 500;
     letter-spacing: -0.025em;
-    text-transform: capitalize;
     color: var(--highlight);
   }
 
