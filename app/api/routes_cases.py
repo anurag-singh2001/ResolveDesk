@@ -40,6 +40,7 @@ from app.engine.case_status import case_status
 from app.engine.case_timeline import case_timeline
 from app.engine.cases import CaseNotFound, InvalidCategory, NotAwaitingInfo, add_reply, open_case
 from app.engine.dispatch import executable
+from app.engine.offer_state import REASON_WAITING, queue_reasons
 from app.engine.remedy_choice import (
     ChoiceClosed,
     InvalidChoice,
@@ -434,6 +435,11 @@ def cases_to_handle(
         .order_by(ActionProposal.created_at, ActionProposal.id)
     ):
         pending[proposal.case_id] = proposal
+    # S8.10: a case whose customer is being asked is not in the queue yet; one that came back
+    # (the customer chose, or ran out of time) says so.
+    by_proposal = queue_reasons(db, [p.id for p in pending.values()], now)
+    offer_reason = {case_id: by_proposal.get(p.id) for case_id, p in pending.items()}
+    rows = [r for r in rows if offer_reason.get(r[0].id) != REASON_WAITING]
     owner_ids = {c.owner_user_id for c, _, _ in rows if c.owner_user_id}
     # An erased user's account is dead (DPDP): never show their name on a case.
     names = {
@@ -455,7 +461,9 @@ def cases_to_handle(
         proposal = pending.get(case.id)
         if kind == "awaiting_approval":
             since = proposal.created_at if proposal else case.opened_at
-            code = reason_code(case.status, case.category, None, "", False)
+            code = offer_reason.get(case.id) or reason_code(
+                case.status, case.category, None, "", False
+            )
         else:
             since, event, raw, ai_failed = escalated_at.get(
                 case.id, (case.opened_at, None, "", False)
