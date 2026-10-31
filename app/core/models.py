@@ -1177,6 +1177,7 @@ COMMERCE_MODELS = [
     Consent,
     ConsentEvent,
     DataRequest,
+    ErasureNotice,
 ]
 # Cases, proposals, approvals, executions and the refund ledger: they reference commerce rows,
 # so reseeding history (dev only) clears them first.
