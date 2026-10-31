@@ -151,7 +151,10 @@ def pending_approvals(
             select(User.id, User.display_name, User.erased_at).where(User.id.in_(proposers))
         ).all()
     }
-    offer_reasons = queue_reasons(db, [p.id for p, *_ in rows], now)
+    # One clock for every read of an open question: the gate in decide() uses real time, so
+    # the dev-clock offset must not make the screen offer Approve while the gate says wait.
+    real_now = datetime.now(UTC)
+    offer_reasons = queue_reasons(db, [p.id for p, *_ in rows], real_now)
     for proposal, case, order, location_name in rows:
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
         why = decision_sources(db, ctx, proposal, "en")  # staff read English
@@ -180,7 +183,7 @@ def pending_approvals(
                 citations=_citations(proposal.citations),
                 basis=why.basis,
                 sources=why.sources,
-                offer=staff_offer(db, proposal.id, now),
+                offer=staff_offer(db, proposal.id, real_now),
                 queue_reason=offer_reasons.get(proposal.id),
             )
         )

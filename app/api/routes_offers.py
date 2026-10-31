@@ -88,7 +88,6 @@ def post_ask_customer(
             ctx,
             proposal_id,
             [o.model_dump() for o in body.options],
-            datetime.now(UTC),
         )
     except NotFound:
         raise not_found() from None
@@ -157,9 +156,8 @@ def put_offer_choice(
     of the stored options. It does not pay anything: a team member reviews it."""
     _customer_only(ctx)
     case = visible_case(db, ctx, case_id)
-    now = datetime.now(UTC)
     try:
-        ask_customer.choose(db, ctx, case.id, body.option, now)
+        ask_customer.choose(db, ctx, case.id, body.option)
     except NotFound:
         raise not_found() from None
     except ask_customer.OfferClosed as exc:
@@ -168,4 +166,4 @@ def put_offer_choice(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     except NotEligible as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
-    return CustomerOfferOut(**customer_offer(db, case, now))
+    return CustomerOfferOut(**customer_offer(db, case, datetime.now(UTC)))

@@ -41,6 +41,7 @@ BACKFILL_BATCH = 200
 # a model or the customer, so the API returns only one of these fixed codes and labels.
 REASON_LABELS = {
     "needs_approval": "Waiting for a staff decision",
+    "safety_review": "Possible safety report: a manager must review it first",
     "customer_chose": "The customer chose an option: review it",
     "no_customer_answer": "The customer did not answer: decide on the original request",
     "ai_unavailable": "The AI could not finish this case",

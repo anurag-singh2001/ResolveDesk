@@ -295,7 +295,7 @@ export interface PendingApproval {
   basis?: string[]; // which rule set the amount (S8.3)
   sources?: DecisionSource[]; // cited sections as links (S8.3)
   offer?: StaffOffer | null; // S8.10: the question put to the customer, if any
-  queue_reason?: "customer_chose" | "no_customer_answer" | null; // S8.10
+  queue_reason?: "customer_chose" | "no_customer_answer" | "safety_review" | null; // S8.10
 }
 
 /** S8.10: what an approver sees of a question put to the customer. */
@@ -328,7 +328,7 @@ export interface AskResult {
 
 /** S8.10: what the customer sees. Text comes from server templates in the case language. */
 export interface CustomerOffer {
-  state: "none" | "open" | "chosen" | "expired";
+  state: "none" | "open" | "chosen" | "expired" | "review";
   heading: string;
   intro: string;
   expires_note: string;

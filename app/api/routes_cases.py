@@ -437,7 +437,7 @@ def cases_to_handle(
         pending[proposal.case_id] = proposal
     # S8.10: a case whose customer is being asked is not in the queue yet; one that came back
     # (the customer chose, or ran out of time) says so.
-    by_proposal = queue_reasons(db, [p.id for p in pending.values()], now)
+    by_proposal = queue_reasons(db, [p.id for p in pending.values()], datetime.now(UTC))
     offer_reason = {case_id: by_proposal.get(p.id) for case_id, p in pending.items()}
     rows = [r for r in rows if offer_reason.get(r[0].id) != REASON_WAITING]
     owner_ids = {c.owner_user_id for c, _, _ in rows if c.owner_user_id}

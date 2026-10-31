@@ -22,28 +22,41 @@ answer, and only then act.
 import re
 import uuid
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import exists, or_, select
 from sqlalchemy.orm import Session
 
 from app.actions.base import AmountRange
 from app.core import audit, events
-from app.core.models import ActionProposal, Approval, Case, ProposalOffer, ProposalSupersession
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    Membership,
+    MembershipBrand,
+    MembershipLocation,
+    ProposalOffer,
+    ProposalSupersession,
+    User,
+)
 from app.core.tenancy import TenantContext
 from app.engine.approvals import (
+    AlreadyDecided,
     ApprovalError,
     NotEligible,
     NotFound,
     evaluate_proposal,
     is_superseded,
     lock_case,
+    scoped_proposal,
 )
 from app.engine.case_messages import customer_messages
 from app.engine.eligibility import order_facts
-from app.engine.offer_state import is_open, offer_for_proposal
+from app.engine.offer_state import REASON_SAFETY, is_open, offer_for_proposal
 from app.engine.privacy import PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal
+from app.engine.routing import case_brand, case_location
 from app.engine.switch import _hand_to_hq, _order_id, _pending_proposal, _ranges
 
 OFFERABLE = ("free_item_voucher", "refund")  # the two kinds a customer can read and choose
@@ -120,6 +133,8 @@ def blocked_reason(session: Session, proposal: ActionProposal, case: Case) -> st
     """Why this proposal can't be put to the customer, or None."""
     if case.category == PRIVACY_CATEGORY:
         return "Privacy requests never get a payout."
+    if session.scalar(select(ProposalOffer.id).where(ProposalOffer.new_proposal_id == proposal.id)):
+        return "The customer already chose this option when asked; review it instead."
     if is_safety_case(session, case):
         return (
             "An allergy, illness or foreign-object report goes straight to a manager. The policy "
@@ -135,7 +150,11 @@ def suggestion(
 ) -> tuple[ActionProposal, list[OfferedOption], str | None, int]:
     """The default two options (a voucher and a partial refund, each at its maximum) when both
     are allowed, the reason asking is blocked (if so), and the answer window in days."""
-    proposal, case = _pending_proposal(session, ctx, proposal_id)
+    proposal = scoped_proposal(session, ctx, proposal_id)  # scope first, 404 otherwise
+    decided = session.scalar(select(Approval.id).where(Approval.proposal_id == proposal.id))
+    if decided is not None or is_superseded(session, proposal.id):
+        raise AlreadyDecided("this proposal is no longer pending")
+    case = session.get(Case, proposal.case_id)
     days = answer_days(session, proposal)
     existing = offer_for_proposal(session, proposal.id)
     if existing is not None:
@@ -190,12 +209,13 @@ def ask_customer(
     ctx: TenantContext,
     proposal_id: uuid.UUID,
     requested: list[dict],
-    now: datetime,
+    now: datetime | None = None,
 ) -> ProposalOffer:
     """Raises NotFound (404: out of scope, other tenant), AlreadyDecided (409: not pending),
     CannotAsk (409: allergen/illness/privacy, already asked, nothing allowed), NotEligible (422:
     an option outside the rule)."""
     proposal, case = _pending_proposal(session, ctx, proposal_id)
+    now = now or datetime.now(UTC)  # taken after the case lock, so it is the moment we hold it
     if offer_for_proposal(session, proposal.id) is not None:
         raise CannotAsk("The customer was already asked about this proposal.")
     reason = blocked_reason(session, proposal, case)
@@ -243,8 +263,72 @@ def proposal_is_pending(session: Session, proposal_id: uuid.UUID) -> bool:
     return decided is None and not is_superseded(session, proposal_id)
 
 
+def _other_approver(
+    session: Session, case: Case, asker: uuid.UUID, roles: tuple[str, ...]
+) -> uuid.UUID | None:
+    """The lowest-id active staff member in the order's scope, other than the asker."""
+    location_id, brand_id = case_location(session, case), case_brand(session, case)
+    for role in roles:
+        query = (
+            select(Membership.user_id)
+            .join(User, User.id == Membership.user_id)
+            .where(Membership.role == role, User.erased_at.is_(None), Membership.user_id != asker)
+            .order_by(Membership.user_id)
+            .limit(1)
+        )
+        if brand_id is not None:
+            has_brands = exists().where(MembershipBrand.membership_id == Membership.id)
+            has_this = exists().where(
+                MembershipBrand.membership_id == Membership.id,
+                MembershipBrand.brand_id == brand_id,
+            )
+            query = query.where(or_(~has_brands, has_this))
+        if role != "hq_owner":
+            if location_id is None:
+                continue
+            query = query.join(
+                MembershipLocation, MembershipLocation.membership_id == Membership.id
+            ).where(MembershipLocation.location_id == location_id)
+        found = session.scalar(query)
+        if found is not None:
+            return found
+    return None
+
+
+def _hand_to_other_person(
+    session: Session, ctx: TenantContext, case: Case, asker: uuid.UUID, needs_hq: bool, now
+) -> None:
+    """Four-eyes: the asker proposed the picked remedy, so they can't approve it. If they own
+    the case (or nobody does), hand it to another eligible person when one exists. When none
+    does, the case waits: a sole hq_owner uses the S8.8 override route or rejects."""
+    if case.owner_user_id not in (None, asker):
+        return
+    roles = ("hq_owner",) if needs_hq else ("location_manager", "franchisee_owner", "hq_owner")
+    other = _other_approver(session, case, asker, roles)
+    if other is None:
+        return
+    previous = case.owner_user_id
+    case.owner_user_id = other
+    case.owner_assigned_at = now
+    audit.record(
+        session,
+        ctx.tenant_id,
+        actor_type="system",
+        actor_id=None,
+        event="case.owner_assigned",
+        entity_type="case",
+        entity_id=case.id,
+        payload={
+            "owner_user_id": str(other),
+            "previous_owner_user_id": str(previous) if previous else None,
+            "auto": True,
+            "why": "the person who asked the customer cannot approve the pick",
+        },
+    )
+
+
 def choose(
-    session: Session, ctx: TenantContext, case_id: uuid.UUID, code: str, now: datetime
+    session: Session, ctx: TenantContext, case_id: uuid.UUID, code: str, now: datetime | None = None
 ) -> ProposalOffer:
     """The customer's pick (the caller checked they own the case). Raises OfferClosed (409:
     nothing open, answered already, timed out, proposal decided), InvalidPick (422: not one of
@@ -252,6 +336,7 @@ def choose(
     case = lock_case(session, case_id)  # same lock as deciding and switching
     if case is None:
         raise NotFound("case not found")
+    now = now or datetime.now(UTC)  # after the lock, so deadline and decisions agree
     offer = current_offer(session, case.id)
     if offer is None or not is_open(offer, now):
         raise OfferClosed("there is no open question on this case")
@@ -261,6 +346,22 @@ def choose(
     picked = next((o for o in offer.options if o["code"] == code), None)
     if picked is None:
         raise InvalidPick("that is not one of the options offered")
+    if is_safety_case(session, case):
+        # The customer wrote something since the question was asked (say, that they were ill):
+        # no payout proposal is made. The question closes and the case goes to a person.
+        offer.closed_reason = REASON_SAFETY
+        audit.record(
+            session,
+            ctx.tenant_id,
+            actor_type="system",
+            actor_id=None,
+            event="case.options_closed",
+            entity_type="case",
+            entity_id=case.id,
+            payload={"reason": REASON_SAFETY, "proposal_id": str(old.id)},
+        )
+        session.flush()
+        return offer
     action, amount = picked["action"], int(picked["amount_paise"])
     ranges = {n: r for n, (_, r) in _ranges(session, old, case).items() if n in OFFERABLE}
     cls_by_name = {n: c for n, (c, _) in _ranges(session, old, case).items()}
@@ -324,6 +425,8 @@ def choose(
         case.id,
         {"proposal_id": str(new.id), "auto_approved": False, "supersedes": str(old.id)},
     )
-    if result.checks.get("needs_hq"):
+    needs_hq = bool(result.checks.get("needs_hq"))
+    if needs_hq:
         _hand_to_hq(session, ctx, case, now)
+    _hand_to_other_person(session, ctx, case, offer.asked_by, needs_hq, now)
     return offer

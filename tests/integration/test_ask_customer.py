@@ -613,3 +613,204 @@ def test_no_answer_returns_the_case_to_a_person_with_the_proposal_undecided(ask)
         approver = ask["scoped_ctx"] or ask["hq_ctx"]
         approval = decide(s, approver, pid, "approved", datetime.now(UTC))
         assert approval.decision == "approved"
+
+
+# --- safety review hardening ----------------------------------------------------------------
+
+
+def _customer_ctx(a):
+    cfg = a["cfg"]
+    email = [u.email for u in cfg.users if u.role == "customer"][0]
+    with tenant_session(a["tid"], a["engine"]) as s:
+        uid = s.scalar(select(User.id).where(User.email == email))
+        return load_context(s, a["tid"], uid)
+
+
+def _add_customer_message(a, cid, body):
+    with tenant_session(a["tid"], a["engine"]) as s:
+        ticket = s.scalar(select(Ticket).where(Ticket.case_id == cid))
+        s.add(
+            TicketMessage(
+                tenant_id=a["tid"],
+                ticket_id=ticket.id,
+                author="customer",
+                body=body,
+                sent_at=datetime.now(UTC),
+            )
+        )
+
+
+def test_a_safety_report_written_before_the_pick_stops_the_payout_proposal(ask):
+    ask["set_total"](RS_149)
+    cid, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    code = _offer_row(ask, pid).options[0]["code"]
+    _add_customer_message(ask, cid, "It also made me sick, I was vomiting.")
+    resp = ask["api"].put(f"/cases/{cid}/offer-choice", headers=ask["me"], json={"option": code})
+    assert resp.status_code == 200 and resp.json()["state"] == "review"
+    row = _offer_row(ask, pid)
+    assert row.chosen_code is None and row.new_proposal_id is None
+    assert row.closed_reason == "safety_review"
+    with tenant_session(ask["tid"], ask["engine"]) as s:
+        others = s.scalars(
+            select(ActionProposal.id).where(ActionProposal.case_id == cid, ActionProposal.id != pid)
+        ).all()
+        assert others == []  # no payout proposal was made
+    queue = ask["api"].get("/cases/queue", headers=ask["hq"]).json()
+    item = next(i for i in queue if i["case_id"] == str(cid))
+    assert item["reason_code"] == "safety_review" and item["proposal_id"] == str(pid)
+    again = ask["api"].put(f"/cases/{cid}/offer-choice", headers=ask["me"], json={"option": code})
+    assert again.status_code == 409
+
+
+def test_the_asker_owning_the_case_hands_it_to_another_person_when_one_exists(ask):
+    ask["set_total"](RS_149)
+    cid, pid = ask["new_pending"]()
+    asker = ask["hq_ctx"].user_id
+    with tenant_session(ask["tid"], ask["engine"]) as s:
+        case = s.get(Case, cid)
+        case.owner_user_id = asker
+    assert _ask(ask, pid).status_code == 201
+    row = _offer_row(ask, pid)
+    code = next(o["code"] for o in row.options if o["action"] == "free_item_voucher")
+    ok = ask["api"].put(f"/cases/{cid}/offer-choice", headers=ask["me"], json={"option": code})
+    assert ok.status_code == 200, ok.text
+    with tenant_session(ask["tid"], ask["engine"]) as s:
+        owner = s.get(Case, cid).owner_user_id
+    if ask["scoped_ctx"] is None:
+        assert (
+            owner == asker
+        )  # nobody else can approve: it waits (sole hq_owner uses S8.8 or rejects)
+    else:
+        assert owner is not None and owner != asker
+
+
+def test_a_proposal_made_from_a_pick_cannot_be_put_to_the_customer_again(ask):
+    ask["set_total"](RS_149)
+    cid, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    code = _offer_row(ask, pid).options[0]["code"]
+    ask["api"].put(f"/cases/{cid}/offer-choice", headers=ask["me"], json={"option": code})
+    new_id = _offer_row(ask, pid).new_proposal_id
+    sug = _suggest(ask, new_id).json()
+    assert sug["can_ask"] is False and "already chose" in sug["blocked_reason"]
+    resp = _ask(ask, new_id, [{"action": "free_item_voucher"}, {"action": "refund"}])
+    assert resp.status_code == 409
+
+
+def test_the_customers_case_view_hides_the_held_amount_while_the_question_is_open(ask):
+    cid, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    view = ask["api"].get(f"/cases/{cid}", headers=ask["me"]).json()
+    assert view["amount_paise"] is None and view["proposal_id"] is None
+    assert view["stage"] == "awaiting_approval"
+
+
+def test_the_screen_and_the_gate_use_one_clock(ask):
+    from app.api.deps import get_clock
+
+    _, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    far_future = datetime.now(UTC) + timedelta(days=30)
+    ask["api"].app.dependency_overrides[get_clock] = lambda: far_future
+    try:
+        listed = [
+            p
+            for p in ask["api"].get("/approvals", headers=ask["hq"]).json()
+            if p["proposal_id"] == str(pid)
+        ]
+    finally:
+        ask["api"].app.dependency_overrides.pop(get_clock, None)
+    assert listed[0]["offer"]["state"] == "open"  # the gate says waiting, so the screen does too
+    blocked = ask["api"].post(
+        f"/approvals/{pid}/decision", headers=ask["hq"], json={"decision": "approved"}
+    )
+    assert blocked.status_code == 409
+
+
+def test_the_database_refuses_an_offer_with_a_bad_deadline(ask):
+    from sqlalchemy.exc import IntegrityError
+
+    _, pid = ask["new_pending"]()
+    now = datetime.now(UTC)
+    with pytest.raises(IntegrityError), tenant_session(ask["tid"], ask["engine"]) as s:
+        case_id = s.get(ActionProposal, pid).case_id
+        s.add(
+            ProposalOffer(
+                tenant_id=ask["tid"],
+                proposal_id=pid,
+                case_id=case_id,
+                asked_by=ask["hq_ctx"].user_id,
+                asked_at=now,
+                expires_at=now,  # not after asked_at
+                options=[],
+            )
+        )
+        s.flush()
+
+
+def test_a_pick_and_a_rejection_at_the_same_moment_have_one_winner(ask):
+    import threading
+
+    ask["set_total"](RS_149)
+    cid, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    code = _offer_row(ask, pid).options[0]["code"]
+    me = _customer_ctx(ask)
+    barrier = threading.Barrier(2)
+    outcome: dict[str, object] = {}
+
+    def pick():
+        barrier.wait()
+        try:
+            with tenant_session(ask["tid"], ask["engine"]) as s:
+                ask_customer.choose(s, me, cid, code)
+            outcome["pick"] = "ok"
+        except Exception as exc:
+            outcome["pick"] = exc
+
+    def reject():
+        barrier.wait()
+        try:
+            with tenant_session(ask["tid"], ask["engine"]) as s:
+                decide(s, ask["hq_ctx"], pid, "rejected", datetime.now(UTC))
+            outcome["reject"] = "ok"
+        except Exception as exc:
+            outcome["reject"] = exc
+
+    threads = [threading.Thread(target=pick), threading.Thread(target=reject)]
+    [t.start() for t in threads]
+    [t.join(120) for t in threads]
+    won = [k for k, v in outcome.items() if v == "ok"]
+    assert len(won) == 1, outcome
+    row = _offer_row(ask, pid)
+    with tenant_session(ask["tid"], ask["engine"]) as s:
+        proposals = s.scalars(select(ActionProposal.id).where(ActionProposal.case_id == cid)).all()
+        old_decision = s.scalar(select(Approval.decision).where(Approval.proposal_id == pid))
+    if won == ["pick"]:
+        assert isinstance(outcome["reject"], AlreadyDecided)
+        assert row.new_proposal_id is not None and old_decision is None and len(proposals) == 2
+    else:
+        assert isinstance(outcome["pick"], ask_customer.OfferClosed)
+        assert row.new_proposal_id is None and old_decision == "rejected" and len(proposals) == 1
+
+
+def test_a_balance_that_shrank_after_asking_is_rechecked_and_refused_safely(ask):
+    ask["set_total"](RS_149)
+    cid, pid = ask["new_pending"]()
+    assert _ask(ask, pid).status_code == 201
+    row = _offer_row(ask, pid)
+    refund = next(o for o in row.options if o["action"] == "refund")
+    ask["set_total"](3000)  # the order is worth far less now than when the question was asked
+    resp = ask["api"].put(
+        f"/cases/{cid}/offer-choice", headers=ask["me"], json={"option": refund["code"]}
+    )
+    assert resp.status_code == 422, resp.text
+    after = _offer_row(ask, pid)
+    assert after.chosen_code is None and after.new_proposal_id is None
+    with tenant_session(ask["tid"], ask["engine"]) as s:
+        assert (
+            len(s.scalars(select(ActionProposal.id).where(ActionProposal.case_id == cid)).all())
+            == 1
+        )
+        assert ask_customer.proposal_is_pending(s, pid)

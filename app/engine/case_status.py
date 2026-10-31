@@ -24,6 +24,7 @@ from app.core.money import format_inr
 from app.core.settings_resolver import effective_settings
 from app.engine.approvals import not_superseded
 from app.engine.needs import latest_question
+from app.engine.offer_state import open_offer
 from app.engine.privacy import PRIVACY_CATEGORY, customer_message
 
 STAGES = (
@@ -87,6 +88,10 @@ def case_status(
             return CaseStatus("closed", t("status.apology_closed", lang))
         return CaseStatus("investigating", t("status.investigating", lang))
 
+    if open_offer(session, proposal.id, datetime.now(UTC)) is not None:
+        # A team member asked the customer to choose (S8.10): the held amount is not a promise,
+        # so it is not shown. The offer itself carries the two options.
+        return CaseStatus("awaiting_approval", t("offer.status.waiting", lang))
     amount = proposal.amount_paise
     common = {"action": proposal.action, "amount_paise": amount, "proposal_id": str(proposal.id)}
     approval = session.scalar(select(Approval).where(Approval.proposal_id == proposal.id))

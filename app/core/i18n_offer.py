@@ -57,6 +57,13 @@ OFFER_TEMPLATES: dict[str, dict[str, str]] = {
         ),
         "hi": ("धन्यवाद। हमें आपका चुनाव मिल गया है। टीम का एक सदस्य इसे देखेगा। अभी कुछ तय नहीं हुआ है।"),
     },
+    "offer.status.review": {
+        "en": "Thank you. A team member will look at your case first. Nothing is decided yet.",
+        "hi-Latn": (
+            "Shukriya. Team ka ek sadasya pehle aapke case ko dekhega. Abhi kuch tay nahi hua hai."
+        ),
+        "hi": "धन्यवाद। टीम का एक सदस्य पहले आपके केस को देखेगा। अभी कुछ तय नहीं हुआ है।",
+    },
     "offer.status.expired": {
         "en": "We did not hear back, so a team member will look at your case.",
         "hi-Latn": "Jawab nahi aaya, isliye team ka ek sadasya aapke case ko dekhega.",

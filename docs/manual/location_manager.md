@@ -91,6 +91,7 @@ When you want the customer's view before anything is decided, click **Ask the cu
 - The customer sees the two options in their language, told plainly that it is a choice and that a team member reviews it.
 - When they pick, the case comes back to the queue as "The customer chose an option: review it", with a new proposal for that option. You or a colleague review it; the person who asked can't approve it, so a second person decides. Repeat-claim warnings still need a person.
 - If they do not answer, the case comes back as "The customer did not answer" and the original proposal is yours to decide.
+- If you asked the customer and are the only person who can approve the pick (for example the only HQ owner), nobody else can approve it. Use the override route (S8.8) or reject it. If another approver exists, the case is handed to them when the customer picks.
 - You can't ask for allergy, illness or foreign-object reports (the policy sends those straight to a manager), for privacy requests, or for a delivery-app order where only a voucher is possible. The screen tells you why.
 
 

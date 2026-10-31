@@ -62,6 +62,8 @@ def customer_offer(session: Session, case: Case, now: datetime) -> dict:
             "expires_at": offer.expires_at,
             "status_text": t("offer.status.waiting", lang),
         }
+    if offer.closed_reason is not None:
+        return {**none, "state": "review", "status_text": t("offer.status.review", lang)}
     if offer.chosen_code is not None:
         return {**none, "state": "chosen", "status_text": t("offer.status.chosen", lang)}
     if is_expired(offer, now):

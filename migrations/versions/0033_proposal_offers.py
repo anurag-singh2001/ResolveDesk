@@ -55,6 +55,9 @@ def upgrade() -> None:
         sa.Column("chosen_code", sa.String(32), nullable=True),
         sa.Column("chosen_at", sa.DateTime(timezone=True), nullable=True),
         sa.Column("new_proposal_id", sa.UUID(), nullable=True),
+        # Set instead of an answer when the offer is closed without a pick (a safety report
+        # arrived while the customer was answering): the case goes to a person.
+        sa.Column("closed_reason", sa.String(24), nullable=True),
         sa.PrimaryKeyConstraint("id"),
         sa.ForeignKeyConstraint(
             ["tenant_id", "proposal_id"],
@@ -74,6 +77,14 @@ def upgrade() -> None:
         sa.UniqueConstraint("tenant_id", "proposal_id", name="uq_proposal_offers_proposal"),
         sa.CheckConstraint(
             "(chosen_code IS NULL) = (chosen_at IS NULL)", name="ck_proposal_offers_answer"
+        ),
+        sa.CheckConstraint(
+            "(chosen_code IS NULL) = (new_proposal_id IS NULL)", name="ck_proposal_offers_pick"
+        ),
+        sa.CheckConstraint("expires_at > asked_at", name="ck_proposal_offers_deadline"),
+        sa.CheckConstraint(
+            "closed_reason IS NULL OR (chosen_code IS NULL AND closed_reason = 'safety_review')",
+            name="ck_proposal_offers_closed",
         ),
     )
     op.create_index("ix_proposal_offers_tenant_id", "proposal_offers", ["tenant_id"])
@@ -95,6 +106,13 @@ def upgrade() -> None:
                OR NEW.expires_at IS DISTINCT FROM OLD.expires_at
                OR NEW.options IS DISTINCT FROM OLD.options THEN
                 RAISE EXCEPTION 'proposal_offers: the question is immutable';
+            END IF;
+            IF (OLD.chosen_code IS NOT NULL OR OLD.closed_reason IS NOT NULL)
+               AND (NEW.closed_reason IS DISTINCT FROM OLD.closed_reason
+                    OR NEW.chosen_code IS DISTINCT FROM OLD.chosen_code
+                    OR NEW.chosen_at IS DISTINCT FROM OLD.chosen_at
+                    OR NEW.new_proposal_id IS DISTINCT FROM OLD.new_proposal_id) THEN
+                RAISE EXCEPTION 'proposal_offers: the answer is write-once';
             END IF;
             IF OLD.chosen_code IS NOT NULL
                AND (NEW.chosen_code IS DISTINCT FROM OLD.chosen_code

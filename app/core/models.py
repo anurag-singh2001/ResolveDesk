@@ -702,6 +702,14 @@ class ProposalOffer(TenantOwned, Base):
         CheckConstraint(
             "(chosen_code IS NULL) = (chosen_at IS NULL)", name="ck_proposal_offers_answer"
         ),
+        CheckConstraint(
+            "(chosen_code IS NULL) = (new_proposal_id IS NULL)", name="ck_proposal_offers_pick"
+        ),
+        CheckConstraint("expires_at > asked_at", name="ck_proposal_offers_deadline"),
+        CheckConstraint(
+            "closed_reason IS NULL OR (chosen_code IS NULL AND closed_reason = 'safety_review')",
+            name="ck_proposal_offers_closed",
+        ),
     )
 
     proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
@@ -713,6 +721,7 @@ class ProposalOffer(TenantOwned, Base):
     chosen_code: Mapped[str | None] = mapped_column(String(32))
     chosen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     new_proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(24))
 
 
 class Approval(TenantOwned, Base):
