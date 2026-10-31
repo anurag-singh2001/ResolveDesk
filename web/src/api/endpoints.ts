@@ -7,6 +7,7 @@ import type {
   ClockState,
   Business,
   Campaign,
+  CalendarResponse,
   Case,
   GrowthSignal,
   LocationRef,
@@ -161,6 +162,7 @@ export const api = {
     if (q.brand_id) p.set("brand_id", q.brand_id);
     return request<MetricsResponse>(`/insights/metrics?${p.toString()}`);
   },
+  growthCalendar: () => request<CalendarResponse>("/growth/calendar"),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>

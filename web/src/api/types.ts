@@ -716,3 +716,28 @@ export interface MetricsQuery {
   location_id?: string;
   brand_id?: string;
 }
+
+// GET /growth/calendar (S11.3a). Read-only. Money is integer paise; warnings are counts only.
+export interface CalendarCampaign {
+  id: string;
+  status: string;
+  location_id: string;
+  location_name: string;
+  brands: { id: string; name: string }[];
+  audience_n: number;
+  treatment_n: number;
+  holdout_n: number;
+  budget_paise: number;
+  start: string;
+  window_end: string;
+  window_days: number;
+  // Treatment members per send state; every state stays apart (never one "sent" total).
+  send_counts: Record<string, number>;
+  overlap_customers: number;
+  frequency_cap_customers: number;
+}
+
+export interface CalendarResponse {
+  as_of: string;
+  campaigns: CalendarCampaign[];
+}
