@@ -3,14 +3,23 @@ equal what `decide_remedy` actually allows on a sample order; a setting change s
 its date; a customer sees no setting keys, staff do; one tenant's rules never leak into another's.
 Categories and options are read from each tenant's own pack (no tenant is named)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from app.core.db import tenant_session
 from app.core.i18n import LANGUAGES
-from app.core.models import Case, Customer, Fulfilment, LineItem, TenantSetting, Transaction, User
+from app.core.models import (
+    Case,
+    Customer,
+    Fulfilment,
+    LineItem,
+    TenantSetting,
+    Transaction,
+    User,
+    VerticalPackRow,
+)
 from app.core.money import format_inr, percent_of
 from app.core.settings_resolver import effective_settings, tenant_pack
 from app.core.tenancy import tenant_id_for
@@ -188,3 +197,30 @@ def test_a_pack_stored_before_a_setting_existed_still_loads(api, sample, monkeyp
     r = api.get("/policies/rules-summary", headers=login(api, cfg.slug, hq.email))
     assert r.status_code == 200, r.text
     assert "voucher_percent" not in {row["key"] for row in r.json()["settings"]}
+
+
+def test_in_force_since_is_not_the_pack_refresh_time(app_engine, owner_engine, sample):
+    """`make refresh` rewrites the pack row; that must not become "in force since"."""
+    _, tid, _ = sample
+    now = datetime.now(UTC)
+    with tenant_session(tid, app_engine) as s:
+        before = build_rules_summary(s, "en", now, staff=False)
+        slug = tenant_pack(s).slug
+    refreshed = now + timedelta(days=400)
+    with owner_engine.begin() as conn:
+        old = conn.execute(
+            select(VerticalPackRow.updated_at).where(VerticalPackRow.slug == slug)
+        ).scalar_one()
+        conn.execute(
+            update(VerticalPackRow).where(VerticalPackRow.slug == slug).values(updated_at=refreshed)
+        )
+    try:
+        with tenant_session(tid, app_engine) as s:
+            after = build_rules_summary(s, "en", now, staff=False)
+        assert after.in_force_since == before.in_force_since
+        assert after.in_force_since != refreshed.date()
+    finally:
+        with owner_engine.begin() as conn:
+            conn.execute(
+                update(VerticalPackRow).where(VerticalPackRow.slug == slug).values(updated_at=old)
+            )

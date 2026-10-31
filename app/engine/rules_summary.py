@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.actions.base import Facts, get_action
 from app.core.business_time import business_date
 from app.core.i18n import TEMPLATES, format_date, normalize, t
-from app.core.models import TenantSetting, VerticalPackRow
+from app.core.models import PolicyDocument, TenantSetting, VerticalPackRow
 from app.core.money import format_inr
 from app.core.settings_resolver import effective_settings, tenant_pack
 from app.core.verticals import RefundPercentOption, VerticalPack, option_code, rule_options
@@ -239,7 +239,21 @@ def build_rules_summary(
     ).one()
     pack_updated = business_date(pack_row.updated_at, settings)
     stamps = [business_date(overrides[k].updated_at, settings) for k in used if k in overrides]
-    since = max([pack_updated, *stamps])
+    # "In force since" must be a real date. pack_row.updated_at is only when the pack was last
+    # refreshed from its files (every `make refresh`), so it is NOT used. The dates that mean
+    # something: when the policies in force took effect, and when an owner last changed a setting
+    # these rules use. With neither, the pack's first load.
+    docs_from = session.scalars(
+        select(PolicyDocument.effective_from).where(
+            PolicyDocument.brand_id.is_(None),
+            PolicyDocument.location_id.is_(None),
+            PolicyDocument.effective_from <= today,
+            (PolicyDocument.effective_to.is_(None)) | (PolicyDocument.effective_to > today),
+        )
+    ).all()
+    since = max(
+        [*docs_from, *stamps] or [business_date(pack_row.created_at, settings)],
+    )
     detail = []
     if staff:
         detail = [

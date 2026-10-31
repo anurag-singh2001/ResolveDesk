@@ -9,6 +9,7 @@ import { SwitchRemedy } from "../components/SwitchRemedy";
 import { Alert, Badge, Button, Card, Dl, EmptyState, ErrorState, Field, Loading, PageHeader, inputClass } from "../components/ui";
 import { age, categoryLabel, formatDateTime, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
+import { voucherAboveOrder } from "../lib/approvals";
 import { useApi } from "../lib/useApi";
 
 export const NEEDS_SENIOR = "This is over your approval limit or outside your outlets, so it needs a senior approver.";
@@ -16,7 +17,13 @@ export const ALREADY_DECIDED = "Someone has already decided this proposal.";
 
 type Pending = "approved" | "rejected" | null;
 
-export function DecisionPanel({ proposal, onDone }: { proposal: PendingApproval; onDone?: (r: DecisionResponse) => void }) {
+/** Stored reasons from the rule path start with "deterministic rule: "; people don't need that. */
+export function plainReason(reason: string | null | undefined): string {
+  const text = (reason ?? "").replace(/^deterministic rule:\s*/i, "").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : "-";
+}
+
+export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: PendingApproval; onDone?: (r: DecisionResponse) => void; onLocked?: () => void }) {
   const [confirming, setConfirming] = useState<Pending>(null);
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
@@ -37,6 +44,7 @@ export function DecisionPanel({ proposal, onDone }: { proposal: PendingApproval;
       else if (err instanceof ApiError && err.status === 409) {
         setError(ALREADY_DECIDED);
         setLocked(true);
+        onLocked?.();
       } else setError(errorMessage(err));
       setConfirming(null);
     } finally {
@@ -111,6 +119,8 @@ export function ApprovalDetailPage() {
   const { proposalId = "" } = useParams();
   // There is no single-proposal endpoint in the contract, so read the queue and pick ours.
   const { data, error, loading, reload } = useApi(() => api.approvals(500), [proposalId]);
+  // Once decided (or found already decided) there is nothing left to approve, reject or switch.
+  const [settled, setSettled] = useState(false);
 
   if (loading) return <Loading label="Loading proposal…" />;
   if (error) return <ErrorState error={error} onRetry={reload} />;
@@ -155,6 +165,15 @@ export function ApprovalDetailPage() {
         }
         actions={<RiskBadge risk={p.risk} />}
       />
+      {voucherAboveOrder(p) && !settled && (
+        <div className="mb-4">
+          <Alert tone="warning">
+            <span data-testid="over-total-warning">
+              This voucher ({formatPaise(p.amount_paise)}) is more than the order total ({formatPaise(p.order_total_paise)}), so it can't be approved. Reject it, or switch to a smaller remedy.
+            </span>
+          </Alert>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
@@ -169,8 +188,12 @@ export function ApprovalDetailPage() {
 
           <Card className="p-4 sm:p-5">
             <h2 className="font-montserrat text-sm font-semibold text-foreground">Why this was proposed</h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{p.reason || "-"}</p>
-            <RemedyBasis lines={p.basis} />
+            {/* The plain basis lines say it; the stored reason is engineer wording ("deterministic rule: ...") and shows only when there is no basis. */}
+            {p.basis && p.basis.length > 0 ? (
+              <RemedyBasis lines={p.basis} />
+            ) : (
+              <p className="mt-2 whitespace-pre-wrap text-sm text-foreground">{plainReason(p.reason)}</p>
+            )}
             {p.sources && p.sources.length > 0 ? (
               <div className="mt-4">
                 <h3 className="text-xs font-medium text-muted-foreground">Policy cited</h3>
@@ -265,10 +288,12 @@ export function ApprovalDetailPage() {
           </Card>
           <Card className="p-4 sm:p-5">
             <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Your decision</h2>
-            <DecisionPanel proposal={p} />
-            <div className="mt-4 border-t border-border pt-4">
-              <SwitchRemedy proposal={p} />
-            </div>
+            <DecisionPanel proposal={p} onDone={() => setSettled(true)} onLocked={() => setSettled(true)} />
+            {!settled && (
+              <div className="mt-4 border-t border-border pt-4">
+                <SwitchRemedy proposal={p} />
+              </div>
+            )}
           </Card>
         </div>
       </div>

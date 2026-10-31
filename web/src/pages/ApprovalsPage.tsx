@@ -1,5 +1,7 @@
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/endpoints";
+import type { PendingApproval } from "../api/types";
+import { approvalFlag } from "../lib/approvals";
 import { RiskBadge } from "../components/badges";
 import { Badge, Button, Card, EmptyState, ErrorState, Loading, PageHeader, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { age, categoryLabel, humanize } from "../lib/format";
@@ -14,6 +16,15 @@ const SORTS: [string, string][] = [
 ];
 const SELECT =
   "rounded-md border border-input bg-background px-2 py-1.5 text-sm text-foreground focus:border-ring focus:outline-none focus:ring-1 focus:ring-ring";
+
+function FlagBadge({ p, className }: { p: PendingApproval; className?: string }) {
+  const flag = approvalFlag(p);
+  return flag ? (
+    <Badge tone={flag.tone} className={className}>
+      {flag.label}
+    </Badge>
+  ) : null;
+}
 
 export function ApprovalsPage() {
   // Filters live in the URL so a reload (or a shared link) keeps them.
@@ -106,7 +117,10 @@ export function ApprovalsPage() {
                         <div className="text-sm font-medium text-foreground">{categoryLabel(p.category)}</div>
                         <div className="font-mono text-xs text-muted-foreground">{p.order_ref ?? "n/a"}</div>
                       </div>
-                      <RiskBadge risk={p.risk} />
+                      <div className="flex flex-col items-end gap-1">
+                        <RiskBadge risk={p.risk} />
+                        <FlagBadge p={p} />
+                      </div>
                     </div>
                     <div className="mt-3 flex items-end justify-between">
                       <span className="text-xs text-muted-foreground">
@@ -142,11 +156,7 @@ export function ApprovalsPage() {
                   <tr key={p.proposal_id} className="hover:bg-muted">
                     <td className={`${tdClass} font-medium`}>
                       {categoryLabel(p.category)}
-                      {!p.eligible && (
-                        <Badge tone="danger" className="ml-2">
-                          Checks failed
-                        </Badge>
-                      )}
+                      <FlagBadge p={p} className="ml-2" />
                     </td>
                     <td className={`${tdClass} font-mono text-xs text-muted-foreground`}>{p.order_ref ?? "n/a"}</td>
                     {showOutlet && <td className={tdClass}>{p.location_name ?? "n/a"}</td>}

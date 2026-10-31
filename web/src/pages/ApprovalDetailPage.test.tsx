@@ -152,4 +152,47 @@ describe("approval detail", () => {
     expect(screen.getByRole("button", { name: "Reject" })).toBeEnabled();
     expect(screen.getByText("amount exceeds cap")).toBeInTheDocument();
   });
+
+  it("shows the plain basis line only, never the engineer wording of the stored reason", async () => {
+    setup({ body: {} }, {
+      ...proposal,
+      reason: "deterministic rule: customer chose a 50% refund",
+      basis: ["The customer chose a 50% refund."],
+    });
+    expect(await screen.findByTestId("remedy-basis")).toHaveTextContent("The customer chose a 50% refund.");
+    expect(screen.queryByText(/deterministic rule/i)).toBeNull();
+  });
+
+  it("strips the engineer prefix when there is no basis line", async () => {
+    setup({ body: {} }, { ...proposal, reason: "deterministic rule: customer chose a 50% refund", basis: [] });
+    expect(await screen.findByText("Customer chose a 50% refund")).toBeInTheDocument();
+    expect(screen.queryByText(/deterministic rule/i)).toBeNull();
+  });
+
+  it("removes Approve, Reject and Switch remedy once a decision is made", async () => {
+    setup({ body: { proposal_id: "p-1", decision: "approved", expires_at: "2026-01-01T00:00:00Z", execution: "queued" } });
+    await screen.findByRole("button", { name: "Switch remedy" });
+    await approve();
+    expect(await screen.findByText("Approved.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reject" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Switch remedy" })).toBeNull();
+  });
+
+  it("warns when a pending voucher is worth more than its order", async () => {
+    setup({ body: {} }, {
+      ...proposal,
+      action: "free_item_voucher",
+      amount_paise: 15000,
+      order_total_paise: 14900,
+      eligible: false,
+      errors: ["voucher exceeds what the customer paid for the order"],
+      checks: { value_paise: 15000, order_total_paise: 14900 },
+    });
+    const warning = await screen.findByTestId("over-total-warning");
+    expect(warning).toHaveTextContent("more than the order total");
+    expect(warning).toHaveTextContent("₹150.00");
+    expect(warning).toHaveTextContent("₹149.00");
+    expect(screen.getByRole("button", { name: "Approve" })).toBeDisabled();
+  });
 });
