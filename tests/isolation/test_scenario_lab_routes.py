@@ -110,7 +110,7 @@ def test_bad_names_and_other_tenants_are_not_found(lab_client):
     assert client.get("/platform/lab/scenarios/nobody/x", headers=h).status_code == 404
     assert client.get(f"/platform/lab/scenarios/{slug}/..%2Fx", headers=h).status_code == 404
     assert client.get(f"/platform/lab/scenarios/{slug}/no-such-one", headers=h).status_code == 404
-    r = client.put(f"/platform/lab/scenarios/{slug}/..", json={"yaml": "id: x"}, headers=h)
+    r = client.put(f"/platform/lab/scenarios/{slug}/%2E%2E", json={"yaml": "id: x"}, headers=h)
     assert r.status_code in (404, 422)
     assert (
         client.get("/platform/lab/scenarios", params={"tenant": "nobody"}, headers=h).status_code

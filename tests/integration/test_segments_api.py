@@ -300,14 +300,18 @@ def test_small_cohorts_are_hidden_for_non_hq_only(api, planted, maint_engine):
         plant(loc, brand, phone=f"93000000{i:02d}")
     full = _at(api, hq, loc, COH)
     assert len(full["cohorts"]) == 6 and not any(r["suppressed"] for r in full["cohorts"])
-    newest = full["cohorts"][-1]["size"]
+    # The planted customers sit in the month of the newest order. The final row is the month of
+    # "as of" (local midnight after it), which is a still-empty month when that order falls on
+    # the last day of a month, so take the last cohort that has anyone in it.
+    at = max(i for i, r in enumerate(full["cohorts"]) if r["size"])
+    newest = full["cohorts"][at]["size"]
     assert newest >= 3
     scoped = _scoped_headers_at(api, cfg, loc)
     _override(maint_engine, tid, "small_cell_min", newest + 1)
     rows = _at(api, scoped, loc, COH)["cohorts"]
-    assert rows[-1]["suppressed"] and rows[-1]["size"] is None and rows[-1]["cells"] == []
+    assert rows[at]["suppressed"] and rows[at]["size"] is None and rows[at]["cells"] == []
     assert all(r["suppressed"] or r["size"] >= newest + 1 for r in rows)
-    assert not _at(api, hq, loc, COH)["cohorts"][-1]["suppressed"]
+    assert not _at(api, hq, loc, COH)["cohorts"][at]["suppressed"]
 
 
 def test_cohort_cells_are_months_after_first_order_and_never_ahead_of_the_data(

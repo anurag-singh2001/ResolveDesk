@@ -53,6 +53,7 @@ def test_hq_lists_every_campaign_with_dates_and_counts(cal, app_engine):
     rows = resp.json()["campaigns"]
     with tenant_session(tid, app_engine) as s:
         stored = {c.id: c for c in s.scalars(select(Campaign))}
+        s.expunge_all()  # keep the loaded rows usable after the session closes
     assert {uuid.UUID(r["id"]) for r in rows} == set(stored)
     for r in rows:
         c = stored[uuid.UUID(r["id"])]
@@ -129,4 +130,10 @@ def test_customers_and_anonymous_are_refused(cal):
     api, cfg, tid, headers, staff, hq = cal
     assert api.get(URL).status_code == 401
     customer = next(u for u in cfg.users if u.role == "customer")
-    assert api.get(URL, headers=login(api, cfg.slug, customer.email)).status_code == 403
+    # Tokens are minted on the real clock; with the data-time override active they look expired.
+    held = api.app.dependency_overrides.pop(get_clock)
+    try:
+        token = login(api, cfg.slug, customer.email)
+    finally:
+        api.app.dependency_overrides[get_clock] = held
+    assert api.get(URL, headers=token).status_code == 403

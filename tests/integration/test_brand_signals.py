@@ -76,10 +76,11 @@ def planted(seeded_history, tenant, app_engine, maint_engine):
             if bi == 0:  # recent: 40 different customers, one order each = 0% repeat
                 for k in range(40):
                     order(brand, custs[20 + k], recent_start + timedelta(days=k % 20, hours=2))
-            else:  # recent: holds at 50%
+            else:  # recent: holds at 50%. Fresh customers (no order in this brand in the prior
+                # 28 days, else their first recent order would itself count as a repeat).
                 for k in range(20):
-                    order(brand, custs[k], recent_start + timedelta(days=k % 15, hours=2))
-                    order(brand, custs[k], recent_start + timedelta(days=k % 15 + 2, hours=2))
+                    order(brand, custs[20 + k], recent_start + timedelta(days=k % 15, hours=2))
+                    order(brand, custs[20 + k], recent_start + timedelta(days=k % 15 + 2, hours=2))
         names = [b.id for b in brands]
     yield tid, names
     clear()
@@ -137,16 +138,21 @@ def test_needs_a_token(api):
 
 def test_only_hq_gets_brand_signals_everyone_else_gets_404(api, seeded_history, tenant):
     cfg = seeded_history[tenant.name]
+    enabled = bool(cfg.feature_flags.get("growth"))
     for user in cfg.users:
         resp = api.get("/growth/brand-signals", headers=login(api, cfg.slug, user.email))
-        if user.role == "hq_owner":
+        if user.role == "customer":  # staff-only gate comes first, whatever the flag
+            assert resp.status_code == 403, user.email
+        elif user.role == "hq_owner" and enabled:
             assert resp.status_code == 200, user.email
-        else:
+        else:  # not HQ, or the growth flag is off (routes are 404 then)
             assert resp.status_code == 404, user.email
 
 
 def test_hq_sees_its_own_brands_only_with_aggregates_only(api, seeded_history, tenant):
     cfg = seeded_history[tenant.name]
+    if not cfg.feature_flags.get("growth"):
+        pytest.skip("growth is off for this tenant")
     hq = _users(cfg, "hq_owner")[0]
     body = api.get("/growth/brand-signals", headers=login(api, cfg.slug, hq.email)).json()
     assert body["definition"]
