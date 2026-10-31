@@ -26,6 +26,11 @@ const jobs = [
   { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "ok", run_count: 6, finished_count: 6, duration_ms_total: 600, last_started_at: "2026-10-30T09:00:00Z" },
   { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "failed", run_count: 1, finished_count: 1, duration_ms_total: 50, last_started_at: "2026-10-30T09:30:00Z" },
 ];
+const alerts = [
+  { rule: "job_failed", scope: "sweep", status: "open", value: 3, threshold: 1, opened_at: "2026-10-30T09:00:00Z", last_seen_at: "2026-10-30T09:30:00Z", resolved_at: null },
+  { rule: "escalation_spike", scope: "alpha", status: "resolved", value: 9, threshold: 5, opened_at: "2026-10-29T09:00:00Z", last_seen_at: "2026-10-29T10:00:00Z", resolved_at: "2026-10-29T11:00:00Z" },
+];
+const logs = [{ service: "api", level: "error", event_code: "request.failed", error_class: "ValueError", day: "2026-10-30", occurrences: 4, last_at: "2026-10-30T09:30:00Z" }];
 
 const login = { "POST /platform/auth/login": { body: { access_token: "plat-tok", token_type: "bearer", expires_at: null } } };
 const data = {
@@ -35,6 +40,8 @@ const data = {
   "GET /platform/activity": { body: activity },
   "GET /platform/ai-usage": { body: usage },
   "GET /platform/jobs": { body: jobs },
+  "GET /platform/alerts": { body: alerts },
+  "GET /platform/logs": { body: logs },
 };
 
 async function signIn() {
@@ -83,7 +90,7 @@ describe("platform portal", () => {
     expect(within(row).getByText("7")).toBeInTheDocument();
     expect(within(row).getByText("2")).toBeInTheDocument();
     expect(screen.getByText("No activity yet")).toBeInTheDocument();
-    expect(screen.getByText(/Alerts are not built yet/)).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "Logs and alerts" }).length).toBe(2);
   });
 
   it.each([401, 403])("clears the token and returns to sign in on %s", async (status) => {
@@ -129,6 +136,17 @@ describe("platform portal", () => {
     expect(sessionStorage.getItem(PLATFORM_KEY)).toBeNull();
   });
 
+  it("lists alerts and error counts on Logs and alerts", async () => {
+    sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
+    mockFetch(data);
+    renderApp("/platform/logs");
+    expect(await screen.findByRole("heading", { name: "Logs and alerts" })).toBeInTheDocument();
+    const alert = (await screen.findByText("Job failed", { selector: "td" })).closest("tr")!;
+    expect(within(alert).getByText("Open")).toBeInTheDocument();
+    const log = screen.getByText("ValueError").closest("tr")!;
+    expect(within(log).getByText("4")).toBeInTheDocument();
+  });
+
   it("lists job run totals", async () => {
     sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
     mockFetch(data);
@@ -150,14 +168,11 @@ describe("platform portal", () => {
     expect(screen.getAllByText("100.0%").length).toBeGreaterThan(0);
   });
 
-  it.each([
-    ["/platform/logs", "Logs and alerts"],
-    ["/platform/lab", "Scenario lab"],
-  ])("shows a plain coming-soon state on %s", async (path, title) => {
+  it("shows a plain coming-soon state on the scenario lab", async () => {
     sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
     const { calls } = mockFetch(data);
-    renderApp(path);
-    expect(await screen.findByRole("heading", { name: title })).toBeInTheDocument();
+    renderApp("/platform/lab");
+    expect(await screen.findByRole("heading", { name: "Scenario lab" })).toBeInTheDocument();
     expect(screen.getByText("Coming soon")).toBeInTheDocument();
     expect(calls.length).toBe(0);
   });

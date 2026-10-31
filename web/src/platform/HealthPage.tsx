@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Alert, EmptyState, ErrorState, Loading, PageHeader, tableClass, tableWrapClass, tdClass, thClass, numClass, cx } from "../components/ui";
 import { formatDateTime, humanize } from "../lib/format";
 import { useApi } from "../lib/useApi";
@@ -70,7 +71,7 @@ export function HealthPage() {
           </Section>
 
           <Section title="Alerts">
-            <Alert tone="info">Alerts are not built yet, so none are shown. This page does not guess at them.</Alert>
+            <Alert tone="info">Alerts are on the <Link to="/platform/logs" className="underline">Logs and alerts</Link> page.</Alert>
           </Section>
         </>
       )}

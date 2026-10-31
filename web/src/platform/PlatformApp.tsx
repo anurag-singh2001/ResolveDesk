@@ -8,6 +8,7 @@ import { Alert, Button, EmptyState, Field, PageHeader, cx, inputClass } from "..
 import { AiPage } from "./AiPage";
 import { HealthPage } from "./HealthPage";
 import { JobsPage } from "./JobsPage";
+import { LogsPage } from "./LogsPage";
 import { PlatformProvider, usePlatform } from "./session";
 
 export const NOT_ENABLED = "The platform portal is not enabled";
@@ -107,7 +108,7 @@ function Shell() {
         <Routes>
           <Route path="/platform" element={<HealthPage />} />
           <Route path="/platform/jobs" element={<JobsPage />} />
-          <Route path="/platform/logs" element={<ComingSoon title="Logs and alerts" what="A scrubbed error log and alerts you can acknowledge are planned." />} />
+          <Route path="/platform/logs" element={<LogsPage />} />
           <Route path="/platform/ai" element={<AiPage />} />
           <Route path="/platform/lab" element={<ComingSoon title="Scenario lab" what="Running scenarios from here is planned." />} />
           <Route path="*" element={<EmptyState title="Page not found">That portal page does not exist.</EmptyState>} />
