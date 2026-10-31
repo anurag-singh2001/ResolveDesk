@@ -18,6 +18,7 @@ REPORT_KEYS = {
     "replies_resumed",
     "grievances_flagged",
     "erasure_notices",
+    "owners_assigned",
     "pruned_threads",
     "events_published",
 }
