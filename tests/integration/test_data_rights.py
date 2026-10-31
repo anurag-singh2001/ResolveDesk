@@ -259,8 +259,11 @@ def _request(api, auth):
 
 def _approve(api, hq, request_id):
     look = api.get(f"/data-requests/{request_id}/dry-run", headers=hq)  # the approval needs it
-    assert look.status_code == 200, look.text
-    approval = {k: look.json()[k] for k in ("payload_hash", "approval_token")}
+    # A completed request has no dry run; approving it again is the idempotent no-op.
+    assert look.status_code in (200, 409), look.text
+    approval = (
+        {k: look.json()[k] for k in ("payload_hash", "approval_token")} if look.is_success else {}
+    )
     r = api.post(f"/data-requests/{request_id}/approve", json=approval, headers=hq)
     assert r.status_code == 200, r.text
     return r.json()
