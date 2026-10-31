@@ -258,7 +258,13 @@ def _request(api, auth):
 
 
 def _approve(api, hq, request_id):
-    r = api.post(f"/data-requests/{request_id}/approve", headers=hq)
+    look = api.get(f"/data-requests/{request_id}/dry-run", headers=hq)  # the approval needs it
+    # A completed request has no dry run; approving it again is the idempotent no-op.
+    assert look.status_code in (200, 409), look.text
+    approval = (
+        {k: look.json()[k] for k in ("payload_hash", "approval_token")} if look.is_success else {}
+    )
+    r = api.post(f"/data-requests/{request_id}/approve", json=approval, headers=hq)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -501,7 +507,7 @@ def test_case_writes_serialize_with_erasure(app_engine, tid, made, people):  # n
             result["out"] = "refused"
 
     with tenant_session(tid, app_engine) as s:
-        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC))
+        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC), guard=None)
         assert done.status == "completed"
         t = threading.Thread(target=report)
         t.start()

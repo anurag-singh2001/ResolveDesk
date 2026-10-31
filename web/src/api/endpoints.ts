@@ -29,6 +29,8 @@ import type {
   StaffRemedyOptions,
   ProposedRemedy,
   PrivacyContact,
+  PrivacyDryRun,
+  PrivacyQueue,
   PolicyDoc,
   RulesSummary,
   PolicySectionDetail,
@@ -87,6 +89,13 @@ export const api = {
   requestErasure: (notifyVia?: "phone" | "email") =>
     request<ErasureRequest>("/me/erasure-request", { method: "POST", body: notifyVia ? { notify_via: notifyVia } : {} }),
   erasureInfo: () => request<ErasureInfo>("/me/erasure-info"),
+  privacyQueue: () => request<PrivacyQueue>("/data-requests/queue"),
+  privacyDryRun: (id: string) => request<PrivacyDryRun>(`/data-requests/${enc(id)}/dry-run`),
+  approveErasure: (id: string, d: PrivacyDryRun) =>
+    request<unknown>(`/data-requests/${enc(id)}/approve`, {
+      method: "POST",
+      body: { payload_hash: d.payload_hash, approval_token: d.approval_token },
+    }),
   withdrawErasure: () => request<ErasureRequest>("/me/erasure-request/cancel", { method: "POST" }),
   categories: () => request<Categories>("/meta/categories"),
   preferences: () => request<Preferences>("/me/preferences"),

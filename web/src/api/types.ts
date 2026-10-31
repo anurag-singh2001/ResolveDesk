@@ -637,3 +637,36 @@ export interface ProposedRemedy {
   status: "awaiting_approval" | "approved" | "executed" | "rejected" | "expired";
   needs_hq: boolean;
 }
+
+export interface PrivacyQueueItem {
+  id: string;
+  kind: string;
+  customer_ref: string;
+  status: "pending_approval" | "deferred";
+  stage: "received" | "deferred";
+  received_at: string;
+  target_at: string;
+  days_left: number;
+  overdue: boolean;
+  deferred_until: string | null;
+  reason_code: string | null;
+  reason: string | null;
+}
+
+export interface PrivacyQueue {
+  target_days: number;
+  truncated: boolean;
+  items: PrivacyQueueItem[];
+}
+
+/** What approving an erasure would do, as counts only, with the approval bound to it. */
+export interface PrivacyDryRun {
+  request_id: string;
+  status: string;
+  remove: Record<string, number>;
+  keep: Record<string, number>;
+  deferred: { code: string; until: string | null; reason: string } | null;
+  payload_hash: string;
+  approval_token: string;
+  expires_at: string;
+}

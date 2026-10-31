@@ -3,6 +3,7 @@ customer is found from the token's user id, never from an id in the request (har
 Staff cannot call /me/* for a customer. Erasure is requested here and executed by code once an
 hq_owner approves it."""
 
+import logging
 import uuid
 from datetime import UTC, datetime
 from typing import Literal
@@ -12,7 +13,7 @@ from pydantic import BaseModel
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_db_engine, get_tenant_context, not_found, tenant_db
+from app.api.deps import get_clock, get_db_engine, get_tenant_context, not_found, tenant_db
 from app.core import audit
 from app.core.i18n import normalize
 from app.core.models import (
@@ -27,10 +28,18 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import consent_benefits, data_export, data_held, erasure_info, erasure_notice
+from app.engine import (
+    consent_benefits,
+    data_export,
+    data_held,
+    erasure_info,
+    erasure_notice,
+    privacy_queue,
+)
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["privacy"])
 
 
@@ -380,26 +389,94 @@ def list_data_requests(
     return [StaffRequestOut(**_request_out(r).model_dump(), customer_ref=ref) for r, ref in rows]
 
 
+@router.get("/data-requests/queue")
+def privacy_queue_list(
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> dict:
+    """The owner's queue of open erasure requests (S8.5e). Customers are masked references."""
+    _hq(ctx)
+    return privacy_queue.queue(db, now)
+
+
+@router.get("/data-requests/{request_id}/dry-run")
+def privacy_dry_run(
+    request_id: uuid.UUID,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> dict:
+    """What approving would remove and keep, as counts, plus the hash and a short-lived approval
+    token bound to it. Looking is audited (no personal content)."""
+    _hq(ctx)
+    req = db.get(DataRequest, request_id)  # RLS: another tenant's request is absent
+    if req is None:
+        raise not_found()
+    if req.status not in privacy_queue.OPEN:
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request is no longer open")
+    body = privacy_queue.dry_run(db, ctx.tenant_id, req, now)
+    token, expires = privacy_queue.issue_approval(
+        ctx.tenant_id, req.id, ctx.user_id, body["payload_hash"], now
+    )
+    privacy_queue.record_review(db, ctx.tenant_id, ctx.user_id, req, now)
+    return body | {"approval_token": token, "expires_at": expires}
+
+
+class ApproveIn(BaseModel):
+    payload_hash: str | None = None
+    approval_token: str | None = None
+
+
+STALE = {
+    "missing": "review what will be erased first: an approval needs the dry run",
+    "invalid": "this approval is not valid; review the request again",
+    "expired": "this approval expired; review the request again",
+    "changed": "the request or the customer's data changed since you reviewed it; review again",
+}
+
+
 @router.post("/data-requests/{request_id}/approve")
 def approve_data_request(
     request_id: uuid.UUID,
     background: BackgroundTasks,
+    body: ApproveIn | None = None,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
     engine: Engine = Depends(get_db_engine),
+    now: datetime = Depends(get_clock),
 ) -> DataRequestOut:
-    """Approve an erasure: code re-checks the guards, then redacts or stays deferred with the
-    reason. Safe to call again on a deferred request (it re-checks) or a completed one. Once it
-    is completed, the one completion message is sent after this request commits (never before
-    the erasure succeeded; sending it again is a no-op)."""
+    """Approve an erasure. The approval must carry the dry run's hash and its unexpired token;
+    if the request or the customer's data changed since, it is refused (409) and nothing is
+    erased. Then code re-checks the guards, then redacts or stays deferred with the reason.
+    Safe to call again on a completed request. Once it is completed, the one completion message
+    is sent after this request commits (never before the erasure succeeded; sending it again is
+    a no-op)."""
     _hq(ctx)
-    req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, datetime.now(UTC))
+    body = body or ApproveIn()
+    checked: list[bool] = []
+
+    def guard(req: DataRequest) -> None:
+        try:
+            privacy_queue.check_approval(
+                db, ctx.tenant_id, req, ctx.user_id, body.payload_hash, body.approval_token, now
+            )
+        except privacy_queue.StaleApproval as e:
+            # The 409 rolls the transaction back, so the refusal goes to the log (ids and a
+            # code only, no personal data).
+            log.warning("erasure approval refused: %s request=%s", e.code, request_id)
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE[e.code]) from None
+        checked.append(True)
+
+    req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, now, guard=guard)
     if req is None:
         raise not_found()
     if req.status == "withdrawn":
         raise HTTPException(
             status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
         )
+    if checked and body.payload_hash:
+        privacy_queue.record_approval(db, ctx.tenant_id, ctx.user_id, req, body.payload_hash)
     if req.status == "completed" and req.completion_message is None:
         background.add_task(erasure_notice.send_completion_notice, engine, ctx.tenant_id, req.id)
     return _request_out(req)

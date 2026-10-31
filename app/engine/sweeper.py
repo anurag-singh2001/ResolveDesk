@@ -48,6 +48,7 @@ from app.engine.executor import TERMINAL
 from app.engine.graph import AI_UNAVAILABLE, NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
 from app.engine.privacy import flag_due_soon
+from app.engine.privacy_queue import flag_due as flag_erasure_due
 from app.engine.routing import assign_owner, backfill_owners
 from app.engine.verifier import FINAL
 
@@ -68,6 +69,7 @@ class SweepReport:
     ai_reruns: list[str] = field(default_factory=list)
     owners_assigned: list[str] = field(default_factory=list)
     erasure_notices: list[str] = field(default_factory=list)
+    erasure_requests_flagged: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
 
@@ -169,6 +171,10 @@ def sweep_tenant(
         report.owners_assigned = _backfill_owners(engine, tenant_id, now)
     except Exception:
         log.exception("could not backfill case owners for tenant %s", tenant_id)
+    try:
+        report.erasure_requests_flagged = flag_erasure_due(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not flag due erasure requests for tenant %s", tenant_id)
     try:  # erasure completion messages: send or retry, and drop destinations past 7 days
         report.erasure_notices = sweep_notices(engine, tenant_id, now)
     except Exception:

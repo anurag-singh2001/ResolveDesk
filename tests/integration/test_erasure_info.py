@@ -406,7 +406,9 @@ def test_withdraw_and_approve_at_the_same_time_never_both_win(app_engine, tid, m
         def approve():
             gate.wait()
             with tenant_session(tid, app_engine) as s:
-                out["a"] = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC)).status
+                out["a"] = privacy.run_erasure(
+                    s, tid, req_id, None, datetime.now(UTC), guard=None
+                ).status
 
         ts = [threading.Thread(target=withdraw), threading.Thread(target=approve)]
         [x.start() for x in ts]
