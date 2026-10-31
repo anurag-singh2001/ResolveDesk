@@ -70,8 +70,9 @@ settings:
   # amount, with a written reason (owner decision M3, Rs 500). Lower only.
   switch_self_approve_max_paise: {kind: limit, default: 50000}
   # Campaigns need two approvers (one an hq_owner) when their budget is at or above this; 0 =
-  # every campaign (owner decision M4, 2026-10-31). A cheaper one then needs one hq_owner.
-  campaign_dual_approval_min_paise: {kind: value, default: 0}
+  # every campaign (owner decision M4, 2026-10-31). A limit with default 0: no override can raise
+  # it, so every campaign needs two approvers. Read at tenant level only.
+  campaign_dual_approval_min_paise: {kind: limit, default: 0}
   # Order sources (transactions.source) placed through a third-party delivery app. The app
   # refunds those orders, so the refund option is hidden and a refund proposal is refused.
   aggregator_order_sources: {kind: value, default: [swiggy, zomato]}

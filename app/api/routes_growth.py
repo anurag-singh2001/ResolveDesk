@@ -198,6 +198,8 @@ def approve_campaign(
         _, ready = camp.decide(db, ctx, campaign_id, body.decision, datetime.now(UTC))
     except camp.NotFound:
         raise not_found() from None
+    except camp.Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
     except camp.AlreadyDecided as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
     except camp.Expired as exc:

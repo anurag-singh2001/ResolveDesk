@@ -21,7 +21,6 @@ _SAMPLE = {
     "remedy": "x",
     "days": 30,
     "years": 7,
-    "hours": 48,
     "reference": "A1B2C3D4",
     "n": 3,
     "percent": 50,
@@ -172,3 +171,10 @@ def test_the_contact_is_labelled_privacy_and_grievance_never_dpo():
     for key, variants in TEMPLATES.items():
         for text in variants.values():
             assert "data protection officer" not in text.lower(), key
+
+
+def test_the_response_line_promises_only_what_the_system_does():
+    """B3: nothing sends a 48-hour acknowledgement, so no text may promise one."""
+    for lang, text in TEMPLATES["held.contact.target"].items():
+        assert "{days}" in text and "{hours}" not in text and "48" not in text, lang
+    assert "straight away" in TEMPLATES["held.contact.target"]["en"]

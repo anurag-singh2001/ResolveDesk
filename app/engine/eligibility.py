@@ -94,10 +94,18 @@ def fair_use(
     return FairUse(int(session.scalar(query)), settings["fair_use_max_grants_30d"])
 
 
+# Always delivery apps, whatever a tenant sets: a setting can add sources but never remove these
+# (both tenants' policies say these apps refund their own orders).
+AGGREGATOR_SOURCES_FLOOR = frozenset({"swiggy", "zomato"})
+
+
 def is_aggregator_order(order: Transaction, settings: dict) -> bool:
-    """Placed through a third-party delivery app. The channel is the order's `source`; which
-    sources are aggregators is a setting (`aggregator_order_sources`), not a tenant branch."""
-    return order.source in (settings.get("aggregator_order_sources") or [])
+    """Placed through a third-party delivery app. The channel is the order's `source`; the
+    sources that count are the code floor plus the setting `aggregator_order_sources`, compared
+    case-insensitively, so an override can add a delivery app but cannot hide swiggy or zomato."""
+    configured = settings.get("aggregator_order_sources") or []
+    names = AGGREGATOR_SOURCES_FLOOR | {str(x).strip().lower() for x in configured}
+    return str(order.source or "").strip().lower() in names
 
 
 def order_facts(

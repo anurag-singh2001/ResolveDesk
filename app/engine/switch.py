@@ -77,9 +77,18 @@ class SwitchResult:
     self_approved: str | None = None  # "downgrade" | "owner_override" when the author approved
 
 
-def is_downgrade(old: ActionProposal, new: ActionProposal) -> bool:
+def is_downgrade(old: ActionProposal, new: ActionProposal, caller: uuid.UUID) -> bool:
     """The new remedy cannot cost more than the old one: the same action for a smaller amount,
-    or a refund (cash) switched to a voucher worth no more. Anything else is an upgrade."""
+    or a refund (cash) switched to a voucher worth no more. Anything else is an upgrade.
+
+    The baseline must be somebody else's proposal. If the caller authored `old` (their own
+    earlier switch, or a proposal they made), cutting it proves nothing: a person could raise
+    an amount, wait, then "downgrade" their own raise and approve it alone. A proposal's
+    author is never the engine's None, so `old` is the nearest proposal in the chain not
+    authored by the caller exactly when `old.proposed_by != caller`; otherwise there is none
+    and this is not a downgrade."""
+    if old.proposed_by == caller:
+        return False
     if old.amount_paise is None or new.amount_paise is None:
         return False
     if new.action == old.action:
@@ -225,7 +234,7 @@ def switch_remedy(
         limit = facts.settings.get("switch_self_approve_max_paise", 0)
         if needs_hq_hand:
             waiting = "hq_owner"  # created, not approved: the limit check stays what it was
-        elif is_downgrade(old, new):
+        elif is_downgrade(old, new, ctx.user_id):
             self_basis = "downgrade"
         elif override and new.amount_paise is not None and new.amount_paise <= limit:
             self_basis = "owner_override"

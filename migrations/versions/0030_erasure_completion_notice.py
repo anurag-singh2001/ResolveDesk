@@ -11,9 +11,9 @@ INSERT, SELECT, UPDATE and DELETE it (it deletes its own rows); RLS keeps it to 
 `data_requests` also gets a (tenant_id, id) unique key so the outbox can use the composite
 foreign key every tenant-owned table uses.
 
-Number 0032 with down_revision 0027 is deliberate: the coordinator renumbers when merging.
+Number 0030 with down_revision 0027 is deliberate: the coordinator renumbers when merging.
 
-Revision ID: 0032
+Revision ID: 0030
 Revises: 0027
 Create Date: 2026-10-31
 """
@@ -27,7 +27,7 @@ from migrations.rls import disable_rls, enable_rls
 
 APP_ROLE = "resolvedesk_app"
 
-revision: str = "0032"
+revision: str = "0030"
 down_revision: str | None = "0027"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None

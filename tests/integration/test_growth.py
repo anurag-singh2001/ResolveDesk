@@ -104,6 +104,16 @@ def approvers(engine, cfg, tid, location_id):
     return hq, other
 
 
+def third_party(engine, cfg, tid, location_id, *others):
+    """A staff user who may act on the location and is none of `others`: campaigns are proposed
+    by someone who then cannot approve them (four eyes)."""
+    taken = {c.user_id for c in others}
+    for c in staff_ctxs(engine, cfg, tid):
+        if c.user_id not in taken and c.can_see_location(location_id) and c.role != "customer":
+            return c
+    pytest.skip("tenant has no third staff user for this location")
+
+
 def propose_for(engine, tid, signal_id, ctx, now=None, **kw):
     with tenant_session(tid, engine) as s:
         c = camp.propose(s, ctx, signal_id, now or datetime.now(UTC), **kw)
@@ -270,7 +280,9 @@ def test_nothing_is_sent_until_both_approve_then_exactly_once(app_engine, gt):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     # No approvals, then one, then the same person again: still nothing goes out.
@@ -314,7 +326,9 @@ def test_tampered_or_expired_campaigns_do_not_send(app_engine, maint_engine, gt)
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     now = datetime.now(UTC)
@@ -356,7 +370,9 @@ def test_verdict_after_window_and_playbook_entry(app_engine, gt):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     with tenant_session(tid, app_engine) as s, pytest.raises(NotReady):
@@ -482,7 +498,7 @@ def approved_campaign(engine, cfg, tid, as_of, approve_both=True):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(engine, tid, signal_id, hq)
+        cid, _ = propose_for(engine, tid, signal_id, third_party(engine, cfg, tid, loc, hq, other))
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     decide_as(engine, tid, hq, cid)
@@ -639,3 +655,42 @@ def test_the_signal_job_measures_up_to_the_latest_data_not_an_empty_window(api, 
     with tenant_session(tid, app_engine) as s:
         slugs = {s.get(Location, uuid.UUID(x["location_id"])).slug for x in found.json()}
     assert slugs == planted
+
+
+def test_the_proposer_cannot_approve_their_own_campaign(app_engine, gt):
+    cfg, tid, as_of = gt
+    signal_id = make_signal(app_engine, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        loc = s.get(Signal, signal_id).location_id
+    hq, other = approvers(app_engine, cfg, tid, loc)
+    try:
+        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+    except ProposalError:
+        pytest.skip("history too small for an audience at this scale")
+    with pytest.raises(camp.Forbidden):
+        decide_as(app_engine, tid, hq, cid)  # the author may not approve
+    with tenant_session(tid, app_engine) as s:
+        assert s.get(Campaign, cid).status == "pending_approval"
+        assert camp.approvals_of(s, s.get(Campaign, cid)) == []
+    # Withdrawing (rejecting) their own proposal stays allowed.
+    assert decide_as(app_engine, tid, hq, cid, decision="rejected") is False
+    with tenant_session(tid, app_engine) as s:
+        assert s.get(Campaign, cid).status == "rejected"
+
+
+def test_no_override_can_lower_the_two_approver_rule(gt):
+    """B2: a limit with default 0: a tenant, brand or location value cannot raise it."""
+    from app.core.settings_resolver import resolve
+    from app.core.verticals import load_pack
+
+    cfg, _, _ = gt
+    pack = load_pack(cfg.vertical_pack)
+    spec = pack.settings["campaign_dual_approval_min_paise"]
+    assert spec.kind == "limit" and spec.default == 0
+    for org, brand, loc in (
+        ({"campaign_dual_approval_min_paise": 10**9}, {}, {}),
+        ({}, {"campaign_dual_approval_min_paise": 10**9}, {}),
+        ({}, {}, {"campaign_dual_approval_min_paise": 10**9}),
+    ):
+        got = resolve(pack.settings, org, brand, loc)
+        assert got["campaign_dual_approval_min_paise"] == 0

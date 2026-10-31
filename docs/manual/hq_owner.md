@@ -102,7 +102,7 @@ Where the business has Growth switched on, a **Growth** menu item appears. It li
 repeat-customer rate has dropped (**Refresh signals** re-runs the check; HQ only). For a signal
 click **Propose win-back campaign**: you see the audience, the **holdout** (customers deliberately
 not contacted, so the result can be judged fairly), the budget and who has approved so far.
-Nothing is sent until **two different people** approve and **at least one is an HQ owner** (every campaign, unless the business has raised the threshold in settings); you
+Nothing is sent until **two different people** approve and **at least one is an HQ owner** (every campaign; the person who proposed it cannot be one of the two); you
 can't approve twice. If the system refuses, its reason is shown. After the campaign has run,
 **Measure result** shows the verdict (worked, did not work, or inconclusive) and the lesson
 saved to the playbook. "Possible causes" are hints, not confirmed facts.

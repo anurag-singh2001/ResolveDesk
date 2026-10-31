@@ -450,9 +450,9 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "{n} रिकॉर्ड में",
     },
     "held.not_kept.card_numbers": {
-        "en": "We never see or store your card number, CVV or UPI PIN.",
-        "hi-Latn": "Hum aapka card number, CVV ya UPI PIN na dekhte hain, na rakhte hain.",
-        "hi": "हम आपका कार्ड नंबर, CVV या UPI PIN न देखते हैं, न रखते हैं।",
+        "en": "We do not store your card number, CVV or UPI PIN.",
+        "hi-Latn": "Hum aapka card number, CVV ya UPI PIN nahin rakhte.",
+        "hi": "हम आपका कार्ड नंबर, CVV या UPI PIN नहीं रखते।",
     },
     "held.not_kept.upi_details": {
         "en": "We do not keep your UPI details.",
@@ -466,11 +466,11 @@ TEMPLATES: dict[str, dict[str, str]] = {
     },
     # Our own targets, not a legal deadline (owner decision P2).
     "held.contact.target": {
-        "en": "We confirm we have your message within {hours} hours and aim to reply within "
+        "en": "You can see we received your request here straight away. We aim to reply within "
         "{days} days.",
-        "hi-Latn": "Hum {hours} ghante ke andar bata dete hain ki aapka sandesh mil gaya aur "
+        "hi-Latn": "Aap yahin turant dekh sakte hain ki hamein aapka anurodh mil gaya. Hum "
         "{days} din ke andar jawab dene ka lakshya rakhte hain.",
-        "hi": "हम {hours} घंटे के भीतर बता देते हैं कि आपका संदेश मिल गया और {days} दिन के भीतर "
+        "hi": "आप यहीं तुरंत देख सकते हैं कि हमें आपका अनुरोध मिल गया। हम {days} दिन के भीतर "
         "जवाब देने का लक्ष्य रखते हैं।",
     },
     "held.h.title": {
@@ -791,12 +791,14 @@ TEMPLATES: dict[str, dict[str, str]] = {
     # ---- erasure completion message (S8.8, owner decision P4). Hindi awaits native review ----
     "erase.notice.sent_to": {
         "en": "When it is done we will tell you once, at the contact you choose. We keep that "
-        "contact for up to {days} days, only to send this message, and then delete it.",
+        "contact only to send this message, and delete it once the message is sent or, at the "
+        "latest, at our next clean-up after {days} days.",
         "hi-Latn": "Kaam poora hone par hum aapko ek baar, aapke chune hue sampark par bata "
-        "denge. Hum yeh sampark sirf is sandesh ke liye {days} din tak rakhte hain, phir mita "
-        "dete hain.",
+        "denge. Hum yeh sampark sirf is sandesh ke liye rakhte hain, aur sandesh bhejne ke baad "
+        "ya {days} din ke baad agli safai mein mita dete hain.",
         "hi": "काम पूरा होने पर हम आपको एक बार, आपके चुने हुए संपर्क पर बता देंगे। हम यह संपर्क "
-        "सिर्फ़ इस संदेश के लिए {days} दिन तक रखते हैं, फिर मिटा देते हैं।",
+        "सिर्फ़ इस संदेश के लिए रखते हैं, और संदेश भेजने के बाद या {days} दिन बाद अगली सफ़ाई "
+        "में मिटा देते हैं।",
     },
     "erase.notice.none": {
         "en": "We have no phone number or email for you, so we cannot tell you when it is "

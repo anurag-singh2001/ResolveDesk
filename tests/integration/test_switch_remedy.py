@@ -690,3 +690,55 @@ def test_a_superseded_proposal_does_not_block_closing_the_case(sw):
     with tenant_session(sw["tid"], sw["engine"]) as s:
         # Old: superseded, never decided. New: rejected. Nothing is owed.
         assert payout_unsettled(s, s.get(Case, case_id)) is False
+
+
+def test_cutting_your_own_proposal_is_not_a_downgrade(sw):
+    """Four eyes cannot be beaten by raising an amount and then 'downgrading' the raise."""
+    _, old = sw["new_pending"]()
+    raised = _switch(sw, sw["mgr"], old, action="free_item_voucher", amount_paise=9000).json()
+    assert raised["decision"] is None
+    again = _switch(
+        sw,
+        sw["mgr"],
+        raised["proposal_id"],
+        action="free_item_voucher",
+        amount_paise=7000,
+        approve=True,
+    ).json()
+    assert again["decision"] is None and again["waiting_for"] == "second_person"
+    assert again["self_approved"] is None
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        new = uuid.UUID(again["proposal_id"])
+        assert s.scalar(select(Approval.id).where(Approval.proposal_id == new)) is None
+
+
+def test_a_proposal_the_caller_authored_is_not_a_baseline(sw):
+    case_id, _ = sw["new_pending"]()
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        mine = create_proposal(
+            s,
+            sw["tid"],
+            case_id=case_id,
+            action="free_item_voucher",
+            params={"transaction_id": str(sw["order_id"]), "value_paise": 9000, "reason": "x"},
+            reason="p",
+            proposed_by=sw["mgr_ctx"].user_id,
+        ).id
+    r = _switch(
+        sw, sw["mgr"], mine, action="free_item_voucher", amount_paise=5000, approve=True
+    ).json()
+    assert r["decision"] is None and r["waiting_for"] == "second_person"
+
+
+def test_someone_else_may_cut_a_raise_and_approve_it(sw):
+    _, old = sw["new_pending"]()
+    raised = _switch(sw, sw["hq"], old, action="free_item_voucher", amount_paise=9000).json()
+    cut = _switch(
+        sw,
+        sw["mgr"],
+        raised["proposal_id"],
+        action="free_item_voucher",
+        amount_paise=7000,
+        approve=True,
+    ).json()
+    assert cut["decision"] == "approved" and cut["self_approved"] == "downgrade"

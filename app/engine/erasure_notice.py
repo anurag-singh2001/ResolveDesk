@@ -6,7 +6,8 @@ Rules, in the order they matter:
   (hard rule 7).
 - The customer's contact is wiped by the erasure, so the destination is copied at request
   time into an `erasure_notices` row: one row per request, this purpose only, deleted when the
-  send reaches a final state (sent, failed, unknown) or 7 days after the request, whichever is
+  send reaches a final state (sent, failed, unknown) or, at the latest, at the first sweep after
+  7 days from the request, whichever is
   first. It is the only place a destination outlives the erasure. It is never logged, audited
   or put in the receipt.
 - The send goes out through the tenant's messaging connector with a stable key, outside any
@@ -204,15 +205,25 @@ def sweep_notices(engine: Engine, tenant_id: uuid.UUID, now: datetime | None = N
                 ErasureNotice.tenant_id == tenant_id,
                 ErasureNotice.expires_at <= now,
                 ErasureNotice.request_id.in_(
-                    select(DataRequest.id).where(DataRequest.status != "completed")
+                    select(DataRequest.id).where(
+                        DataRequest.tenant_id == tenant_id, DataRequest.status != "completed"
+                    )
                 ),
             )
         )
         pending = list(
             s.scalars(
                 select(ErasureNotice.request_id)
-                .join(DataRequest, DataRequest.id == ErasureNotice.request_id)
-                .where(DataRequest.status == "completed", DataRequest.completion_message.is_(None))
+                .join(
+                    DataRequest,
+                    (DataRequest.id == ErasureNotice.request_id)
+                    & (DataRequest.tenant_id == ErasureNotice.tenant_id),
+                )
+                .where(
+                    ErasureNotice.tenant_id == tenant_id,
+                    DataRequest.status == "completed",
+                    DataRequest.completion_message.is_(None),
+                )
             )
         )
     done = []

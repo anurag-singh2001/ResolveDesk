@@ -474,7 +474,6 @@ export interface PrivacyContact {
   name: string;
   email: string;
   response_target_days: number;
-  acknowledge_hours: number;
   response_text: string;
 }
 

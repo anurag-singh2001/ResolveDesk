@@ -64,8 +64,7 @@ const contactLine = {
   name: "Privacy desk",
   email: "privacy@example.test",
   response_target_days: 30,
-  acknowledge_hours: 48,
-  response_text: "We confirm we have your message within 48 hours and aim to reply within 30 days.",
+  response_text: "You can see we received your request here straight away. We aim to reply within 30 days.",
 };
 
 const deferred: ErasureRequest = {
@@ -135,13 +134,13 @@ const erasureInfo: ErasureInfo = {
   ],
   wait: ["A member of our team approves each request first.", "You have a case that is still being handled."],
   provisional_label: "provisional",
-  timing: "We confirm we have your message within 48 hours and aim to reply within 30 days.",
+  timing: "You can see we received your request here straight away. We aim to reply within 30 days.",
   target_days: 30,
   completion_notice: {
     channels: ["phone", "email"],
     default: "phone",
     labels: { phone: "My phone", email: "My email" },
-    text: "When it is done we will tell you once, at the contact you choose. We keep that contact for up to 7 days, only to send this message, and then delete it.",
+    text: "When it is done we will tell you once, at the contact you choose. We keep that contact only to send this message, and delete it once the message is sent or, at the latest, at our next clean-up after 7 days.",
     choose: "Where should we tell you?",
   },
   contact: contactLine,
@@ -187,8 +186,7 @@ function held(notKept: string[] = []): DataHeld {
       name: "Privacy desk",
       email: "privacy@example.test",
       response_target_days: 30,
-      acknowledge_hours: 48,
-      response_text: "We confirm we have your message within 48 hours and aim to reply within 30 days.",
+          response_text: "You can see we received your request here straight away. We aim to reply within 30 days.",
     },
   };
 }
@@ -276,7 +274,7 @@ describe("privacy page", () => {
     expect(screen.getByTestId("erase-keep")).toHaveTextContent("provisional");
     expect(screen.getByTestId("erase-wait")).toHaveTextContent("case that is still being handled");
     expect(screen.getByTestId("erase-timing")).toHaveTextContent("30 days");
-    expect(screen.getByTestId("erase-timing")).toHaveTextContent("48 hours");
+    expect(screen.getByTestId("erase-timing")).toHaveTextContent("straight away");
   });
 
   it("needs a confirm step with Cancel focused first, and sends nothing until confirmed", async () => {
@@ -304,7 +302,7 @@ describe("privacy page", () => {
     const { calls } = setup();
     renderApp("/privacy");
     fireEvent.click(await screen.findByRole("button", { name: "Request erasure" }));
-    expect(await screen.findByTestId("erase-notice")).toHaveTextContent("up to 7 days");
+    expect(await screen.findByTestId("erase-notice")).toHaveTextContent("after 7 days");
     fireEvent.change(screen.getByLabelText("Where should we tell you?"), { target: { value: "email" } });
     fireEvent.click(screen.getByRole("button", { name: "Yes, request erasure" }));
     await screen.findByTestId("erasure-status");
@@ -347,7 +345,7 @@ describe("privacy page", () => {
     const contacts = screen.getAllByTestId("privacy-contact");
     expect(contacts).toHaveLength(2);
     expect(contacts[0]).toHaveTextContent("Privacy and grievance contact: Privacy desk, privacy@example.test");
-    expect(contacts[0]).toHaveTextContent("48 hours");
+    expect(contacts[0]).toHaveTextContent("straight away");
   });
 
   it("hides the what-we-do-not-keep line unless the server sends a backed claim", async () => {
@@ -356,7 +354,7 @@ describe("privacy page", () => {
     await screen.findByTestId("held-orders");
     expect(screen.queryByTestId("held-not-kept")).not.toBeInTheDocument();
     first.unmount();
-    setup("customer", null, ["We never see or store your card number, CVV or UPI PIN."]);
+    setup("customer", null, ["We do not store your card number, CVV or UPI PIN."]);
     renderApp("/privacy");
     expect(await screen.findByTestId("held-not-kept")).toHaveTextContent("card number, CVV or UPI PIN");
   });

@@ -1,6 +1,6 @@
 """P5 (owner decision, S8.8): nothing that looks like a card number, CVV or UPI PIN is stored.
 
-The privacy page may say "we never see or store your card number, CVV or UPI PIN" only while
+The privacy page may say "we do not store your card number, CVV or UPI PIN" only while
 this test passes; `data_held.CONFIRMED_NOT_KEPT` lists `card_numbers` on that basis. The UPI ID
 claim (`upi_details`) is NOT made: a gateway refund payload can carry the payer's UPI ID, and
 this test does not prove otherwise.
@@ -11,15 +11,21 @@ like a card, CVV or PIN field. A scanner that cannot fail is useless, so the uni
 bottom show it does catch a card number, a spaced one, a CVV key and a PIN key.
 """
 
+import dataclasses
+import json
 import re
 
 import pytest
 from sqlalchemy import text
 
+from app.connectors import mock_connectors  # noqa: F401  (registers the mock connectors)
+from app.connectors.base import get_connector
 from app.core.db import tenant_session
 from app.core.tenancy import tenant_id_for
 from app.core.tenant_config import load_tenant
 from app.engine import data_held
+from app.engine.dispatch import system_context
+from mocks.registry import get_mock, merchant_id_for, reset_mocks
 
 # Tables we do not scan: policy text and its embedding (floats look like long digit runs and
 # policy files carry no customer data).
@@ -28,13 +34,16 @@ COLUMN_NAME = re.compile(
     r"(card_?(number|no|num)|\bpan\b|cvv|cvc|upi_?pin|\bpin\b|net_?banking)", re.I
 )
 KEY_NAME = re.compile(
-    r'"(card_?(number|no|num)|cvv|cvc|cvv2|upi_?pin|pin|card_?pin|expiry|exp_?date)"\s*:', re.I
+    r'"(card_?(number|no|num)|pan|cvv|cvc|cvv2|upi_?pin|pin|card_?pin|expiry|exp_?date)"\s*:', re.I
 )
 # 13-19 digits, optionally grouped with single spaces or dashes, not part of a longer number
 # or a decimal fraction.
-CANDIDATE = re.compile(r"(?<![\w.-])(?:\d[ -]?){12,18}\d(?![\w.-])")
-# SQL pre-filter: only rows with a long digit run or a grouped one come back to Python.
-SQL_PREFILTER = r"[0-9]{13}|[0-9]{4}[ -][0-9]{4}[ -][0-9]{4}"
+# Letters, digits, dots and dashes around it mean it is part of something else (a uuid, a float);
+# an underscore does not ("card_4111111111111111" is still a card number).
+CANDIDATE = re.compile(r"(?<![A-Za-z0-9.-])(?:\d[ -]?){12,18}\d(?![A-Za-z0-9.-])")
+# SQL pre-filter: any 13 digits, with single spaces or dashes allowed between them, so 4-4-4-4
+# and 4-6-5 (15 digit) groupings both come back to Python for the real check.
+SQL_PREFILTER = r"[0-9]([ -]?[0-9]){12}"
 
 
 def luhn_ok(digits: str) -> bool:
@@ -65,6 +74,10 @@ def test_scanner_catches_what_it_is_meant_to_catch():
     assert card_like_numbers("paid with 4111111111111111 ok")
     assert card_like_numbers("card 4111 1111 1111 1111")
     assert card_like_numbers("card 4111-1111-1111-1111")
+    assert card_like_numbers("amex 3782 822463 10005")  # 4-6-5 grouping, 15 digits
+    assert card_like_numbers("card_4111111111111111")  # underscore-attached
+    assert card_like_numbers('{"pan":"4111111111111111"}')
+    assert re.search(SQL_PREFILTER, "3782 822463 10005")
     assert sensitive_keys('{"cvv": "123"}') == ["cvv"]
     assert sensitive_keys('{"upi_pin": "1234"}') == ["upi_pin"]
     assert COLUMN_NAME.search("card_number") and COLUMN_NAME.search("cvv")
@@ -136,3 +149,40 @@ def test_the_card_number_claim_is_confirmed_in_code_but_the_upi_id_claim_is_not(
     # This file is the evidence for the first; nothing proves the second.
     assert "card_numbers" in data_held.CONFIRMED_NOT_KEPT
     assert "upi_details" not in data_held.CONFIRMED_NOT_KEPT
+
+
+def _provider_records(tenant_id) -> str:
+    """Everything the mock providers hold for the tenant after a gateway-style refund, a
+    status message and a voucher: the request, its status and any provider payload."""
+    out = []
+    for name in ("payment", "messaging", "vouchers"):
+        for op in get_mock(name).operations(merchant_id_for(tenant_id)):
+            out.append(json.dumps(dataclasses.asdict(op), default=str))
+    return "\n".join(out)
+
+
+def test_provider_payloads_carry_no_card_data(app_engine, scanned):
+    """The database scan above cannot see what a provider returns, so push a refund, a message
+    and a voucher through the real connectors and scan what the (mock) providers hold. The repo
+    has no payment webhook handler; the provider's answer (status, operation id, failure reason)
+    is the only inbound payload, and it is scanned here. Recheck with the real gateway's data
+    sheet when one is chosen: a real refund payload can carry the payer's UPI ID."""
+    reset_mocks()
+    tid = scanned
+    ctx = system_context(tid)
+    pay = get_connector("mock_payment", "payment")
+    pay.refund(ctx, f"scan-{tid}-refund", "pay_ref_1", 5000)
+    get_connector("mock_messaging", "messaging").send(
+        ctx,
+        f"scan-{tid}-msg",
+        "+919999900000",
+        "status_update",
+        {"body": "Your refund is on its way."},
+    )
+    blob = _provider_records(tid)
+    assert blob, "the connectors recorded nothing: the scan would prove nothing"
+    assert not card_like_numbers(blob) and not sensitive_keys(blob)
+    # The same scan does flag a gateway-style payload that does carry card data.
+    hostile = '{"payer": {"card_number": "4111111111111111", "vpa": "a@b"}, "cvv": "123"}'
+    assert card_like_numbers(hostile) and sensitive_keys(hostile)
+    reset_mocks()

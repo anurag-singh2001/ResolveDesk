@@ -155,9 +155,9 @@ def test_processors_and_contact_come_from_settings(api, app_engine, tid, people)
     assert c["name"] == settings["privacy_contact_name"]
     assert c["email"] == settings["privacy_contact_email"]
     assert c["response_target_days"] == settings["grievance_target_days"] == 30
-    assert "legal_ceiling_days" not in c and c["acknowledge_hours"] == 48
+    assert "legal_ceiling_days" not in c and "acknowledge_hours" not in c
     assert c["configured"] is True
-    assert "30" in c["response_text"] and "48" in c["response_text"]
+    assert "30" in c["response_text"] and "straight away" in c["response_text"]
     assert "legal" not in c["response_text"].lower() and "90" not in c["response_text"]
 
 
@@ -166,7 +166,7 @@ def test_not_kept_claims_need_code_confirmation_and_the_setting(
 ):
     cid, auth = people()
     shown = api.get("/me/data-held", headers=auth).json()["not_kept"]
-    assert shown == ["We never see or store your card number, CVV or UPI PIN."]  # confirmed by scan
+    assert shown == ["We do not store your card number, CVV or UPI PIN."]  # confirmed by scan
     with tenant_session(tid, app_engine) as s:
         customer = s.get(Customer, cid)
         settings = effective_settings(s)

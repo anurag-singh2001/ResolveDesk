@@ -40,7 +40,6 @@ function exportBody(): ReadableExport {
       name: "Privacy desk",
       email: "privacy@example.test",
       response_target_days: 30,
-      acknowledge_hours: 48,
       response_text: "We aim to reply within 30 days.",
     },
   };

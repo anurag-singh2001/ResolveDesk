@@ -96,6 +96,15 @@ def _priced_options(
 
 
 def _apply(session: Session, order: Transaction, facts, category: str, option) -> Remedy:
+    """One option priced by `_apply_rule`; a refund is never the answer on an order the
+    delivery app refunds (late tiers and missing items included): a person decides instead."""
+    remedy = _apply_rule(session, order, facts, category, option)
+    if remedy.action == "refund" and facts.settings["refund_channel"] != "tenant_gateway":
+        return Remedy(None, {}, "the delivery app refunds this order", "escalate")
+    return remedy
+
+
+def _apply_rule(session: Session, order: Transaction, facts, category: str, option) -> Remedy:
     s = facts.settings
     order_ref = str(order.id)
 

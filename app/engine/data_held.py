@@ -34,14 +34,14 @@ from app.engine.retention import retention_days
 # `data_not_kept` lists it; the setting alone never enables a claim.
 KNOWN_NOT_KEPT = ("card_numbers", "upi_details")
 # `card_numbers` is confirmed by tests/integration/test_no_card_data.py (owner decision P5):
-# card number, CVV and UPI PIN are never stored. `upi_details` stays unconfirmed: a gateway
+# card number, CVV and UPI PIN are not stored. `upi_details` stays unconfirmed: a gateway
 # refund payload can carry the payer's UPI ID, and nothing proves otherwise yet.
 CONFIRMED_NOT_KEPT: frozenset[str] = frozenset({"card_numbers"})
 # Retention figures stay labelled provisional until counsel confirms them; flip in code only.
 RETENTION_CONFIRMED = False
-# Our own answer-by target is a setting (grievance_target_days); the acknowledgement time is fixed.
+# Our own answer-by target is a setting (grievance_target_days). No acknowledgement time is
+# promised: the status page shows receipt at once.
 MAX_TARGET_DAYS = 90  # sanity bound on the tenant setting; NOT a statement of any legal limit
-ACK_HOURS = 48  # we confirm we have a privacy message within this many hours (owner decision P2)
 DEFAULT_RECORD_YEARS = 8  # payment and refund records: 8 financial years (owner decision P1)
 HEADINGS = ("title", "item", "yours", "purpose", "keep", "use", "processors", "not_kept", "contact")
 RETENTION_FLOOR_DAYS = 365  # same one-year floor the retention job applies
@@ -176,8 +176,7 @@ def contact(settings: dict[str, Any], lang: str) -> dict[str, Any]:
         "name": name if configured else "",
         "email": email,
         "response_target_days": days,
-        "acknowledge_hours": ACK_HOURS,
-        "response_text": t("held.contact.target", lang, days=days, hours=ACK_HOURS)
+        "response_text": t("held.contact.target", lang, days=days)
         if configured
         else t("held.contact.unset", lang),
     }

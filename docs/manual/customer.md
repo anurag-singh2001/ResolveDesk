@@ -56,7 +56,7 @@ You go straight to the **case page** for your report.
 **Privacy requests.** To ask about your personal data, pick **Privacy request** as the category. It is
 never handled by the assistant: it goes straight to a member of our team, and the case page names our
 **Privacy and grievance contact** and the date by which we aim to respond. That date is our own internal target, not a
-legal deadline. We confirm we have your message within 48 hours. The Privacy and grievance contact is also linked in the footer of every page and on the **Help** page.
+legal deadline. The page shows straight away that we received it. The Privacy and grievance contact is also linked in the footer of every page and on the **Help** page.
 
 ## My cases and the case page
 
@@ -128,7 +128,7 @@ Open **Privacy & data** in the menu.
   closes; your name and contact details are kept while you have an account, until you ask us to
   erase them. The retention periods are marked **provisional** until the business confirms them. Below the table, **Who else sees it** names the companies that
   process data for us. A **What we do not keep** line appears only when the business has
-  confirmed the claim (today: we never see or store your card number, CVV or UPI PIN). The **Privacy and grievance contact** (name, email, and our own targets: we confirm we have your message within 48 hours and aim to reply within 30 days, not a legal deadline;
+  confirmed the claim (today: we do not store your card number, CVV or UPI PIN). The **Privacy and grievance contact** (name, email, and our own targets: the page shows straight away that we received your request, and we aim to reply within 30 days, not a legal deadline;
   "Not set yet" until the business names someone) shows at the top and bottom of the page. The page uses your chosen
   language.
 - **Offers and promotions.** Each offer choice explains what you get (for example offers and vouchers for your next order), what we send, how often (at most one offer message in 30 days) and on which channel (WhatsApp). The switch starts **Off**, the label and the word **On** or **Off** are always visible, and nothing is ticked for you. To stop offers, turn the switch off: one click, and it applies to the next message we would send. **Help messages** are shown as always on, because they are needed to resolve your order; they have no switch, and turning offers off never changes them. **History of your choices** lists each change with its date, channel and the wording version in force. The page uses your chosen language.
@@ -155,8 +155,8 @@ Open **Privacy & data** in the menu.
   you can ask again later. Asking again while a request is open shows that same request. After
   it is done you can no longer sign in, because your sign-in is one of the things removed.
   **One message when it is done.** In the confirmation you choose where we tell you (your phone
-  or your email, if we hold them). We keep that contact for up to 7 days, only to send this one
-  message, then delete it. After the erasure has really been carried out we send it once: what
+  or your email, if we hold them). We keep that contact only to send this one
+  message, and delete it once it is sent or, at the latest, at our next clean-up after 7 days. After the erasure has really been carried out we send it once: what
   we removed, what we kept and why (payment and refund records are kept up to 8 years, counted
   from the end of the financial year, and are marked provisional until the business confirms
   them), the privacy and grievance contact, and that you can complain to the Data Protection

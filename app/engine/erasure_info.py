@@ -86,7 +86,7 @@ def info(
         "keep": keep,
         "wait": wait,
         "provisional_label": t("held.provisional", lang) if provisional else None,
-        "timing": t("held.contact.target", lang, days=days, hours=data_held.ACK_HOURS),
+        "timing": t("held.contact.target", lang, days=days),
         "target_days": days,
         "contact": data_held.contact(settings, lang),
         "buttons": {

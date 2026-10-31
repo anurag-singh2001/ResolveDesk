@@ -268,9 +268,9 @@ def approvers_needed(session: Session, campaign: Campaign) -> int:
     """Two approvers for every campaign by default (owner decision M4, 2026-10-31). The setting
     `campaign_dual_approval_min_paise` (default 0) is the budget from which two are needed; a
     cheaper campaign then needs one hq_owner. A missing or bad value means two."""
-    floor = effective_settings(session, location_id=campaign.location_id).get(
-        "campaign_dual_approval_min_paise", 0
-    )
+    # Tenant level only (no brand or location argument): a lower level cannot loosen it, and
+    # the setting is a `limit`, so no override can raise it above the default 0 anyway.
+    floor = effective_settings(session).get("campaign_dual_approval_min_paise", 0)
     if type(floor) is not int or floor < 0:
         return 2
     return 2 if campaign.budget_paise >= floor else 1
@@ -315,6 +315,10 @@ def decide(
         raise Expired("campaign proposal has expired")
     if not hash_is_intact(session, campaign):
         raise NotEligible("campaign no longer matches its payload hash")
+    if decision == "approved" and campaign.created_by == ctx.user_id:
+        # Four eyes: whoever proposed a campaign cannot approve it (rejecting it stays allowed:
+        # that is a withdrawal, not a send).
+        raise Forbidden("you proposed this campaign, so someone else must approve it")
     approval = CampaignApproval(
         id=uuid.uuid4(),
         tenant_id=ctx.tenant_id,
