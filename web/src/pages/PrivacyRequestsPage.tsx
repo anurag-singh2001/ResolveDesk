@@ -94,7 +94,7 @@ function Review({ item, onDone, onClose }: { item: PrivacyQueueItem; onDone: () 
             </div>
           ) : null}
           {failure ? (
-            <div className="mt-4" role="alert">
+            <div className="mt-4">
               <Alert tone="danger">{failure}</Alert>
               <Button className="mt-2" variant="outline" onClick={() => void reload()}>
                 Review again
