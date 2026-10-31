@@ -11,6 +11,7 @@ proposals, approvals, executions, refund operations and audit_events are not tou
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -318,9 +319,12 @@ def run_erasure(
     request_id: uuid.UUID,
     actor_id: uuid.UUID | None,
     now: datetime,
+    guard: Callable[[DataRequest], None] | None = None,
 ) -> DataRequest | None:
     """Approve and execute (or re-defer) a request. None if it does not exist. Idempotent: a
-    completed request is returned unchanged."""
+    completed request is returned unchanged. `guard` (the staff approval check, S8.5e) runs
+    after the request and the customer are locked and before anything is checked or changed;
+    it raises to refuse, so an approval cannot go stale between its check and the redaction."""
     req = s.scalar(
         select(DataRequest)
         .where(DataRequest.tenant_id == tenant_id, DataRequest.id == request_id)
@@ -336,6 +340,8 @@ def run_erasure(
         .where(Customer.tenant_id == tenant_id, Customer.id == req.customer_id)
         .with_for_update()
     )
+    if guard is not None:
+        guard(req)
     block = erasure_block(s, tenant_id, req.customer_id, now)
     if block is not None:
         req.status, req.reason_code, req.deferred_until = "deferred", block.code, block.until

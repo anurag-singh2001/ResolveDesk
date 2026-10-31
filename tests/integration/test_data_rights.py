@@ -258,7 +258,10 @@ def _request(api, auth):
 
 
 def _approve(api, hq, request_id):
-    r = api.post(f"/data-requests/{request_id}/approve", headers=hq)
+    look = api.get(f"/data-requests/{request_id}/dry-run", headers=hq)  # the approval needs it
+    assert look.status_code == 200, look.text
+    approval = {k: look.json()[k] for k in ("payload_hash", "approval_token")}
+    r = api.post(f"/data-requests/{request_id}/approve", json=approval, headers=hq)
     assert r.status_code == 200, r.text
     return r.json()
 
