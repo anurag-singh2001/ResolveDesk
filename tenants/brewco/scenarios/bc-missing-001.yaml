@@ -1,7 +1,7 @@
 id: bc-missing-001
 tenant: brewco
 kind: plain
-message: The croissant I paid for wasn't in my bag.
+message: One of the items I paid for wasn't in my bag.
 order:
   select: shortfall
 expect:
