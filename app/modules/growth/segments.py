@@ -28,9 +28,10 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.business_time import DEFAULT_TIMEZONE
-from app.modules.growth.lapsed import lapsed_cut
+from app.modules.growth.lapsed import clamp_lapsed_days, lapsed_cut
 
 SEGMENTS = ("new", "active", "loyal", "at_risk", "lapsed", "lapsed_regular", "one_and_done")
+CUSTOMERS = "customers"  # the group total, hidden by the same rules as a cell
 COHORT_MONTHS = 6
 RETURN_MONTHS = (1, 2, 3)
 
@@ -54,7 +55,7 @@ class SegmentCell(BaseModel):
 class SegmentGroup(BaseModel):
     id: uuid.UUID | None  # brand id, or None for the whole scope
     name: str
-    customers: int
+    customers: int | None  # None when hidden (fewer than the small-cell minimum)
     segments: list[SegmentCell]
 
 
@@ -90,7 +91,7 @@ class SegmentSettings:
     @classmethod
     def of(cls, settings: dict) -> "SegmentSettings":
         return cls(
-            lapsed_days=int(settings["lapsed_days"]),
+            lapsed_days=clamp_lapsed_days(settings["lapsed_days"]),
             new_days=int(settings["segment_new_days"]),
             at_risk_multiple=int(settings["segment_at_risk_gap_multiple"]),
             loyal_top_percent=int(settings["segment_loyal_top_percent"]),
@@ -184,13 +185,15 @@ def classify(custs: list[_Cust], as_of: datetime, cfg: SegmentSettings) -> dict[
     return out
 
 
-def _cell(name: str, members: list[_Cust], base: int, hide_small: bool, cfg) -> SegmentCell:
-    if hide_small and len(members) < cfg.small_cell_min:
-        return SegmentCell(
-            segment=name, suppressed=True, in_segment=None, share_bp=None, orders=None,
-            total_spend_paise=None, aov_paise=None, contactable_whatsapp=None,
-            own_channel=None, aggregator_only=None, aggregator_only_not_contactable=None,
-        )  # fmt: skip
+def _hidden_cell(name: str) -> SegmentCell:
+    return SegmentCell(
+        segment=name, suppressed=True, in_segment=None, share_bp=None, orders=None,
+        total_spend_paise=None, aov_paise=None, contactable_whatsapp=None,
+        own_channel=None, aggregator_only=None, aggregator_only_not_contactable=None,
+    )  # fmt: skip
+
+
+def _visible_cell(name: str, members: list[_Cust], base: int) -> SegmentCell:
     orders = sum(c.orders for c in members)
     spend = sum(c.spend for c in members)
     phones = {c.phone for c in members if c.wa_granted and c.phone}  # one per phone
@@ -208,6 +211,49 @@ def _cell(name: str, members: list[_Cust], base: int, hide_small: bool, cfg) -> 
         aggregator_only=len(agg_only),
         aggregator_only_not_contactable=sum(1 for c in agg_only if not c.has_consent),
     )
+
+
+def _cell(name: str, members: list[_Cust], base: int, hide_small: bool, cfg) -> SegmentCell:
+    """One cell on its own (small-cell rule only; see `hide_plan` for the cross-cell rule)."""
+    if hide_small and len(members) < cfg.small_cell_min:
+        return _hidden_cell(name)
+    return _visible_cell(name, members, base)
+
+
+Key = tuple[int, str]  # (group index, cell name)
+
+
+def hide_plan(
+    sizes: dict[Key, int],
+    groups: int,
+    names: list[str],
+    minimum: int,
+    sums: tuple[tuple[str, str, str], ...] = (),
+) -> set[Key]:
+    """Which cells a non-HQ caller must not see: every cell under `minimum`, plus enough more
+    that no hidden number can be worked out from the rest of one response (complementary
+    suppression). Two relations would give a hidden cell away:
+      - within a group, total = a + b (customers = active + lapsed); `sums` lists (total, a, b);
+      - across groups, group 0 (all brands) against the others. Customers can sit in several
+        brands, so this is not an identity, but it is the conservative reading.
+    A relation with exactly one hidden term would be solvable, so a second term is hidden: the
+    smallest visible one (ties: lowest group index). Hiding more can expose another relation, so
+    it repeats until nothing changes; hiding only grows, so it ends."""
+    hidden = {k for k, n in sizes.items() if n < minimum}
+    changed = True
+    while changed:
+        changed = False
+        relations = []
+        for g in range(groups):
+            relations += [[(g, t) for t in trio] for trio in sums]
+        if groups > 1:
+            relations += [[(g, name) for g in range(groups)] for name in names]
+        for terms in relations:
+            if sum(t in hidden for t in terms) == 1:
+                visible = [t for t in terms if t not in hidden]
+                hidden.add(min(visible, key=lambda t: (sizes[t], t[0], t[1])))
+                changed = True
+    return hidden
 
 
 def segment_groups(
@@ -231,12 +277,29 @@ def segment_groups(
                 )  # fmt: skip
             )
     todo = [(False, None, "All brands")] + [(True, b, n) for b, n in brands]
-    out = []
-    for by_brand, gid, name in todo:
+    members = []  # per group: (customers, {segment: customers in it})
+    for by_brand, gid, _ in todo:
         custs = by_group.get((by_brand, gid), [])
-        by_segment = classify(custs, as_of, cfg)
-        cells = [_cell(s, by_segment[s], len(custs), hide_small, cfg) for s in SEGMENTS]
-        out.append(SegmentGroup(id=gid, name=name, customers=len(custs), segments=cells))
+        members.append((custs, classify(custs, as_of, cfg)))
+    hidden: set[Key] = set()
+    if hide_small:
+        sizes = {}
+        for g, (custs, by_segment) in enumerate(members):
+            sizes[(g, CUSTOMERS)] = len(custs)
+            sizes.update({(g, name): len(by_segment[name]) for name in SEGMENTS})
+        hidden = hide_plan(
+            sizes, len(todo), [CUSTOMERS, *SEGMENTS], cfg.small_cell_min,
+            ((CUSTOMERS, "active", "lapsed"),),
+        )  # fmt: skip
+    out = []
+    for g, (_, gid, name) in enumerate(todo):
+        custs, by_segment = members[g]
+        cells = [
+            _hidden_cell(n) if (g, n) in hidden else _visible_cell(n, by_segment[n], len(custs))
+            for n in SEGMENTS
+        ]
+        total = None if (g, CUSTOMERS) in hidden else len(custs)
+        out.append(SegmentGroup(id=gid, name=name, customers=total, segments=cells))
     return out
 
 
@@ -262,7 +325,8 @@ def cohort_groups(
     """First-order-month cohorts for the last COHORT_MONTHS months (the month of `as_of`
     included), with the share who ordered again in month 1, 2 and 3 after it. A month that is
     not over yet is not measurable. A customer's first order is their first within the scope.
-    A hidden cohort (fewer than the minimum, non-HQ roles) shows no size and no rates."""
+    A hidden cohort (under the minimum, or hidden to protect one that is; non-HQ roles only)
+    shows no size and no rates."""
     this_month = as_of.astimezone(ZoneInfo(DEFAULT_TIMEZONE)).date().replace(day=1)
     months = [add_months(this_month, -i) for i in range(COHORT_MONTHS - 1, -1, -1)]
     seen: dict[tuple[bool, uuid.UUID | None], dict[uuid.UUID, set[date]]] = {}
@@ -270,13 +334,21 @@ def cohort_groups(
     for by_brand in (False, True):
         for r in _run(db, _MONTHS, by_brand, tenant_id, location_ids, brands, narrowed, extra):
             seen.setdefault((by_brand, r.grp), {}).setdefault(r.cid, set()).add(r.m)
+    todo = [(False, None, "All brands")] + [(True, b, n) for b, n in brands]
+    cohorts = [
+        {m: [x for x in seen.get((by_brand, gid), {}).values() if min(x) == m] for m in months}
+        for by_brand, gid, _ in todo
+    ]
+    hidden: set[Key] = set()
+    if hide_small:
+        sizes = {(g, str(m)): len(c[m]) for g, c in enumerate(cohorts) for m in months}
+        hidden = hide_plan(sizes, len(todo), [str(m) for m in months], cfg.small_cell_min)
     out = []
-    for by_brand, gid, name in [(False, None, "All brands")] + [(True, b, n) for b, n in brands]:
-        customers = seen.get((by_brand, gid), {}).values()
+    for g, (_, gid, name) in enumerate(todo):
         rows = []
         for m in months:
-            cohort = [s for s in customers if min(s) == m]
-            if hide_small and len(cohort) < cfg.small_cell_min:
+            cohort = cohorts[g][m]
+            if (g, str(m)) in hidden:
                 rows.append(CohortRow(cohort_month=m, suppressed=True, size=None, cells=[]))
                 continue
             cells = []
@@ -285,7 +357,7 @@ def cohort_groups(
                 if target >= this_month:  # that month is not over yet
                     cells.append(_unmeasured(k))
                     continue
-                back = sum(1 for s in cohort if target in s)
+                back = sum(1 for x in cohort if target in x)
                 bp = round(back * 10000 / len(cohort)) if cohort else None
                 cells.append(CohortCell(month=k, measurable=True, returned=back, return_bp=bp))
             rows.append(CohortRow(cohort_month=m, suppressed=False, size=len(cohort), cells=cells))

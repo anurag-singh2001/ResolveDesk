@@ -21,7 +21,7 @@ from app.core.models import Campaign, CampaignApproval, CampaignMember, Signal
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
 from app.engine.proposals import ProposalError, canonical_json
-from app.modules.growth.lapsed import LAPSED_DAYS, lapsed_cut
+from app.modules.growth.lapsed import LAPSED_DAYS, clamp_lapsed_days, lapsed_cut
 
 ACTION = "win_back_campaign"
 TEMPLATE = "winback_offer"
@@ -190,7 +190,7 @@ def propose(
         raise ProposalError("window_days must be 1..60")
     settings = effective_settings(session, location_id=signal.location_id)
     pct = settings["growth_holdout_percent"]
-    lapsed_days = settings["lapsed_days"]
+    lapsed_days = clamp_lapsed_days(settings["lapsed_days"])
     audience = lapsed_audience(
         session, ctx.tenant_id, signal.location_id, signal.recent_end, lapsed_days
     )

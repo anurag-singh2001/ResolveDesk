@@ -133,7 +133,7 @@ def test_scope_by_role_and_404s(api, seeded_history, tenant):
                     assert r.status_code == 404, (role, user.email)
             for lid in own:  # their own outlet equals what HQ sees for it (small cells aside)
                 mine, full = _at(api, headers, lid), _at(api, hq, lid)
-                assert mine["customers"] == full["customers"]
+                assert mine["customers"] in (None, full["customers"])
                 for a, b in zip(mine["segments"], full["segments"], strict=True):
                     assert a["suppressed"] or a["in_segment"] == b["in_segment"]
 
@@ -273,9 +273,16 @@ def test_small_cells_are_hidden_for_non_hq_only(api, planted, maint_engine):
     assert size >= 3
     scoped = _scoped_headers_at(api, cfg, loc)
 
-    _override(maint_engine, tid, "small_cell_min", size)  # exactly at the minimum: shown
-    seg = _cell(_at(api, scoped, loc), "new")
-    assert not seg["suppressed"] and seg["in_segment"] == size
+    _override(maint_engine, tid, "small_cell_min", size)  # exactly at the minimum: shown, unless
+    seg = _cell(_at(api, scoped, loc), "new")  # a small brand cell forces a sibling hidden
+    brand_sizes = [
+        _cell(g, "new")["in_segment"]
+        for g in api.get(SEG, params={"location_id": str(loc)}, headers=hq).json()["groups"]
+    ]
+    if min(brand_sizes) >= size:
+        assert not seg["suppressed"] and seg["in_segment"] == size
+    elif not seg["suppressed"]:
+        assert seg["in_segment"] == size
 
     _override(maint_engine, tid, "small_cell_min", size + 1)  # one below: hidden, nothing leaks
     seg = _cell(_at(api, scoped, loc), "new")
@@ -394,3 +401,42 @@ def test_counts_are_deterministic_and_pinned_for_seed_42(api, seeded_history, te
         GOLDEN.write_text(json.dumps(golden, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     assert cfg.slug in golden, "golden counts not recorded yet: run once with UPDATE_GOLDEN=1"
     assert first == golden[cfg.slug]
+
+
+# -- a hidden number cannot be worked out from the rest of the response --------------------------
+
+
+def _unsolvable(body, kind):
+    """No relation (total = active + lapsed in a group; all brands vs the others for each cell)
+    has exactly one hidden term, so a reader cannot compute a hidden number. UNRUN."""
+    groups = body["groups"]
+    if kind == "segments":
+        per = [
+            {"customers": g["customers"], **{c["segment"]: c["in_segment"] for c in g["segments"]}}
+            for g in groups
+        ]
+        for p in per:
+            hidden = [p[k] is None for k in ("customers", "active", "lapsed")]
+            assert sum(hidden) != 1, p
+        names = list(per[0])
+    else:
+        per = [{r["cohort_month"]: r["size"] for r in g["cohorts"]} for g in groups]
+        names = list(per[0])
+    if len(per) > 1:
+        for n in names:
+            assert sum(p[n] is None for p in per) != 1, n
+
+
+def test_hidden_cells_cannot_be_derived_from_the_response(api, planted, maint_engine):
+    cfg, tid, plant = planted
+    loc, brand = _a_location_and_brand(maint_engine, tid)
+    for i in range(4):
+        plant(loc, brand, phone=f"95000000{i:02d}")
+    scoped = _scoped_headers_at(api, cfg, loc)
+    for minimum in (2, 5, 20, 80, 10**6):
+        _override(maint_engine, tid, "small_cell_min", minimum)
+        for params in ({}, {"location_id": str(loc)}):
+            for url, kind in ((SEG, "segments"), (COH, "cohorts")):
+                resp = api.get(url, params=params, headers=scoped)
+                assert resp.status_code == 200
+                _unsolvable(resp.json(), kind)
