@@ -147,3 +147,6 @@ Tests added and passing for both tenants (never naming a tenant), `make lint` cl
 
 ## Daily Scrum, Review, Retro
 (To be added when the sprint starts.)
+
+### Known gaps
+- 2026-11-01: the portal Jobs page omits `platform_job_runs`, so platform-level job runs are not shown there. Logged by the owner; not yet scheduled.
