@@ -49,17 +49,23 @@ REASON_LABELS = {
 
 
 def reason_code(
-    status: str, category: str | None, event: str | None, raw: str, payment_started: bool
+    status: str,
+    category: str | None,
+    event: str | None,
+    raw: str,
+    payment_started: bool,
+    ai_failure: bool = False,
 ) -> str:
     """Map a case to a fixed reason code. `raw` is only compared against the prefixes the code
-    itself writes; it is never returned."""
+    itself writes; it is never returned. `ai_failure` comes from ai_rerun.is_ai_failure, which
+    also recognises escalations written before the explicit code existed (reason text)."""
     if status == "awaiting_approval":
         return "needs_approval"
     if category == "privacy_request":
         return "privacy"
     if raw.startswith(("execution refused", "refund released")):
         return "payment_check"
-    if raw.startswith(("customer replied but", "agent run did not finish")):
+    if ai_failure or raw.startswith(("customer replied but", "agent run did not finish")):
         return "ai_unavailable"
     if event == "case.escalate":  # the deterministic path's own "no remedy" decision
         return "no_automatic_remedy"
@@ -164,6 +170,23 @@ def assign_owner(session: Session, tenant_id: uuid.UUID, case: Case, now: dateti
         entity_id=case.id,
         payload={"owner_user_id": str(owner), "auto": True},
     )
+
+
+def backfill_owners(session: Session, tenant_id: uuid.UUID, now: datetime) -> list[uuid.UUID]:
+    """Give an owner to cases that already needed a person before ownership existed (S7.2).
+    Only cases with no owner are touched, and only their owner fields change (assign_owner
+    audits each one), so a second run finds nothing to do. Returns the cases that got one."""
+    cases = session.scalars(
+        select(Case)
+        .where(Case.owner_user_id.is_(None), Case.status.in_(NEEDS_PERSON_STATUSES))
+        .order_by(Case.opened_at, Case.id)
+    ).all()
+    done = []
+    for case in cases:
+        assign_owner(session, tenant_id, case, now)
+        if case.owner_user_id is not None:
+            done.append(case.id)
+    return done
 
 
 def reassign(

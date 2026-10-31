@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { NavLink, Link, Outlet } from "react-router-dom";
+import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
+import { CHANGED_EVENT } from "../api/client";
 import { useAuth } from "../auth/session";
 import { homePath, isStaff, navFor, roleLabel } from "../lib/roles";
 import type { NavItem } from "../lib/roles";
@@ -57,8 +58,27 @@ export function AppShell() {
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
   const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
   // Count of cases waiting for a person, shown on the "Cases to handle" item (staff only).
-  const { data: queue } = useApi(() => (isStaff(me.role) ? api.caseQueue() : Promise.reject(new Error("n/a"))), [me.role]);
+  const { data: queue, reload: reloadQueue } = useApi(() => (isStaff(me.role) ? api.caseQueue() : Promise.reject(new Error("n/a"))), [me.role]);
   const waiting = queue?.length ?? 0;
+  // The count goes stale when a case moves (e.g. the AI is re-run, which finishes later), so
+  // refresh it after any change, on every navigation, when the tab regains focus, and slowly.
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (!isStaff(me.role)) return;
+    const refresh = () => void reloadQueue();
+    window.addEventListener(CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    const id = window.setInterval(refresh, 30_000);
+    return () => {
+      window.removeEventListener(CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(id);
+    };
+  }, [reloadQueue, me.role]);
+  useEffect(() => {
+    if (isStaff(me.role)) void reloadQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
   const base = navFor(me.role, me.growth_enabled === true);
   const nav = chaos ? [...base.slice(0, -1), { to: "/demo", label: "Demo controls", icon: "dev" as const }, base[base.length - 1]] : base;
 
@@ -96,16 +116,17 @@ export function AppShell() {
               Help
             </NavLink>
             <ThemeSwitcher />
-            <Button variant="outline" onClick={signOut} className="h-8 px-3">
+            <Button variant="outline" onClick={signOut} className="h-8 shrink-0 whitespace-nowrap px-3">
               Sign out
             </Button>
           </div>
         </div>
         {/* Phone: nav as a scrollable tab row under the top bar. */}
         <nav aria-label="Main" className="border-t border-border md:hidden">
-          <ul className="flex gap-1 overflow-x-auto px-3 py-2">
+          {/* The row still scrolls by swipe; the bar itself is hidden so it does not clutter the header. */}
+          <ul className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {nav.map((item) => (
-              <li key={item.to}>
+              <li key={item.to} className="shrink-0 whitespace-nowrap">
                 <NavLink to={item.to} className={linkClass}>
                   <Icon name={item.icon} />
                   {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}

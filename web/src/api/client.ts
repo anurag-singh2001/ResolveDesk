@@ -5,6 +5,9 @@ export const API_URL: string = (
   (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:8000"
 ).replace(/\/+$/, "");
 
+/** Fired on window after any successful signed-in POST/PUT. */
+export const CHANGED_EVENT = "resolvedesk:changed";
+
 export class ApiError extends Error {
   readonly status: number;
   readonly detail: unknown;
@@ -75,6 +78,11 @@ export async function request<T>(path: string, opts: RequestOptions = {}): Promi
         ? (data as { detail: unknown }).detail
         : data;
     throw new ApiError(res.status, detail);
+  }
+  // A successful change (POST/PUT) may have moved a case in or out of the staff queue, so
+  // anything showing a count of it (the sidebar) can refresh.
+  if (opts.method && opts.method !== "GET" && !opts.anonymous) {
+    window.dispatchEvent(new Event(CHANGED_EVENT));
   }
   return data as T;
 }

@@ -26,7 +26,7 @@ from app.core.settings_resolver import effective_settings
 from app.core.tenancy import tenant_id_for
 from app.engine import lifecycle
 from app.engine.proposals import create_proposal
-from app.engine.routing import REASON_LABELS
+from app.engine.routing import REASON_LABELS, backfill_owners
 from tests.helpers import login
 
 
@@ -379,6 +379,59 @@ def test_queue_reason_is_a_fixed_label_never_stored_text(world):
     assert by_id[str(pending)]["reason_code"] == "needs_approval"
     for row in by_id.values():
         assert row["reason"] == REASON_LABELS[row["reason_code"]]
+
+
+def test_old_ai_unavailable_escalations_map_to_the_ai_reason(world):
+    """Rows written before the explicit code existed carry only the reason text (S7.4)."""
+    w = world
+    loc_id = next(i for i in w["locs"].values() if i in w["order_at"])
+    order, cust = w["order_at"][loc_id], w["cust_at"][loc_id]
+    old = _new_case(w, order, cust)
+    lifecycle.escalate(w["engine"], w["tid"], old, "AI unavailable: MissingAPIKey")
+    old_llm = _new_case(w, order, cust)
+    lifecycle.escalate(w["engine"], w["tid"], old_llm, "LLM: ProviderFailed")
+    other = _new_case(w, order, cust)
+    lifecycle.escalate(w["engine"], w["tid"], other, "AI unavailable but this is customer text")
+    hq = _staff(w["cfg"], "hq_owner")[0]
+    resp = w["api"].get("/cases/queue", headers=login(w["api"], w["cfg"].slug, hq.email))
+    by_id = {r["case_id"]: r for r in resp.json()}
+    assert by_id[str(old)]["reason_code"] == "ai_unavailable"
+    assert by_id[str(old_llm)]["reason_code"] == "ai_unavailable"
+    assert by_id[str(other)]["reason_code"] == "other"
+
+
+def test_backfill_gives_old_cases_an_owner_once_and_audits_it(world, maint_engine):
+    w = world
+    loc_id = next(i for i in w["locs"].values() if i in w["order_at"])
+    slug = next(s for s, i in w["locs"].items() if i == loc_id)
+    cid = _escalate(w, w["order_at"][loc_id], w["cust_at"][loc_id])
+    with tenant_session(w["tid"], maint_engine) as s:  # a case from before S7.2
+        s.execute(
+            update(Case).where(Case.id == cid).values(owner_user_id=None, owner_assigned_at=None)
+        )
+    assert _owner(w, cid) is None
+    now = datetime.now(UTC)
+    with tenant_session(w["tid"], w["engine"]) as s:
+        done = backfill_owners(s, w["tid"], now)
+    assert cid in done
+    assert _owner(w, cid) == _expected(w, slug)
+    with tenant_session(w["tid"], w["engine"]) as s:
+        events = s.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_id == cid, AuditEvent.event == "case.owner_assigned"
+            )
+        ).all()
+        assert events  # audited
+        before = len(events)
+        again = backfill_owners(s, w["tid"], now)
+    assert cid not in again  # idempotent
+    with tenant_session(w["tid"], w["engine"]) as s:
+        after = s.scalars(
+            select(AuditEvent).where(
+                AuditEvent.entity_id == cid, AuditEvent.event == "case.owner_assigned"
+            )
+        ).all()
+    assert len(after) == before
 
 
 def _brand_scoped_manager(w):

@@ -405,7 +405,7 @@ def cases_to_handle(
         query = query.where(Case.owner_user_id == ctx.user_id)
     rows = db.execute(query).all()
     ids = [c.id for c, _, _ in rows]
-    escalated_at: dict[uuid.UUID, tuple[datetime, str, str]] = {}
+    escalated_at: dict[uuid.UUID, tuple[datetime, str, str, bool]] = {}
     for ev in db.scalars(
         select(AuditEvent)
         .where(
@@ -417,6 +417,7 @@ def cases_to_handle(
             ev.occurred_at,
             ev.event,
             str(ev.payload.get("reason") or ""),
+            ev.event == "case.escalated" and ai_rerun.is_ai_failure(ev.payload),
         )
     approved_cases = set(
         db.scalars(
@@ -456,8 +457,12 @@ def cases_to_handle(
             since = proposal.created_at if proposal else case.opened_at
             code = reason_code(case.status, case.category, None, "", False)
         else:
-            since, event, raw = escalated_at.get(case.id, (case.opened_at, None, ""))
-            code = reason_code(case.status, case.category, event, raw, case.id in approved_cases)
+            since, event, raw, ai_failed = escalated_at.get(
+                case.id, (case.opened_at, None, "", False)
+            )
+            code = reason_code(
+                case.status, case.category, event, raw, case.id in approved_cases, ai_failed
+            )
         items.append(
             QueueItemOut(
                 case_id=case.id,

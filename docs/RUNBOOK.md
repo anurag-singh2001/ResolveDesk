@@ -85,6 +85,10 @@ A case whose reason reads "AI unavailable: MissingAPIKey" (or `ProviderFailed`) 
 
 Without pressing anything, `make sweep` (or the running sweeper) retries such cases on its own once the providers can be built, at most 3 times per case, 5, 10 and 20 minutes after the last escalation. Audit trail: `case.ai_rerun_requested` and `case.ai_rerun_result` (codes only, no message text). Via API: `POST /cases/{id}/rerun-ai` (staff only; 409 if the case did not escalate for an AI failure). Never edit the demo database by hand to clear it.
 
+## Cases showing Owner "Unassigned" (made before S7.2)
+
+Cases that were escalated or awaiting approval before case ownership existed have no owner. `make sweep` (and the running sweeper) gives each one an owner by the same rule as new cases (outlet manager, else franchisee owner, else HQ) and writes a `case.owner_assigned` audit row per case. Only the owner fields change. It is idempotent: an owner already set, by the engine or by a person, is never replaced, and a second run reports `owners assigned 0`. Closed or resolved cases stay unowned on purpose.
+
 ## Safety reminders
 
 - Never run tests or evals against the demo/production database.

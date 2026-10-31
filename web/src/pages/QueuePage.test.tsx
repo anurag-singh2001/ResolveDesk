@@ -40,9 +40,29 @@ describe("Cases to handle", () => {
     expect(await screen.findByText("Needs a manager")).toBeInTheDocument();
     expect(screen.getByText("Asha Rao (you)")).toBeInTheDocument();
     expect(screen.getByText("2 h")).toBeInTheDocument();
-    expect(screen.getByText("hi")).toBeInTheDocument();
+    expect(screen.getByText("Hindi")).toBeInTheDocument();
     const nav = await screen.findByTestId("side-nav");
     await waitFor(() => expect(within(nav).getByText("1")).toBeInTheDocument());
+  });
+
+  it("the nav count refreshes after a case action and on navigation", async () => {
+    let queue: QueueItem[] = [item];
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("location_manager") },
+      "GET /cases/queue": () => ({ body: queue }),
+      "GET /meta/categories": { body: { categories: ["missing_items"], free_text: false } },
+      "GET /approvals": { body: [] },
+      "POST /cases/c-1/rerun-ai": { body: { ok: true } },
+    });
+    renderApp("/queue");
+    const nav = await screen.findByTestId("side-nav");
+    await waitFor(() => expect(within(nav).getByText("1")).toBeInTheDocument());
+    queue = [];
+    // Any successful change (here the AI re-run on a case) tells the sidebar to refresh.
+    const { request } = await import("../api/client");
+    await request("/cases/c-1/rerun-ai", { method: "POST", body: {} });
+    await waitFor(() => expect(within(nav).queryByText("1")).not.toBeInTheDocument());
   });
 
   it("filters are sent to the server", async () => {

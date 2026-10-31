@@ -46,7 +46,7 @@ from app.engine.executor import TERMINAL
 from app.engine.graph import AI_UNAVAILABLE, NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
 from app.engine.privacy import flag_due_soon
-from app.engine.routing import assign_owner
+from app.engine.routing import assign_owner, backfill_owners
 from app.engine.verifier import FINAL
 
 log = logging.getLogger(__name__)
@@ -64,6 +64,7 @@ class SweepReport:
     grievances_flagged: list[str] = field(default_factory=list)
     verified: list[str] = field(default_factory=list)
     ai_reruns: list[str] = field(default_factory=list)
+    owners_assigned: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
 
@@ -161,6 +162,10 @@ def sweep_tenant(
         report.ai_reruns = retry_ai_failures(engine, tenant_id, now)
     except Exception:
         log.exception("could not retry AI failures for tenant %s", tenant_id)
+    try:
+        report.owners_assigned = _backfill_owners(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not backfill case owners for tenant %s", tenant_id)
     # Housekeeping, each best effort: one failing must not stop the other or hide the work
     # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
     try:
@@ -176,6 +181,13 @@ def sweep_tenant(
     except Exception:
         log.exception("could not publish pending events for tenant %s", tenant_id)
     return report
+
+
+def _backfill_owners(engine, tenant_id, now) -> list[str]:
+    """Cases escalated or awaiting approval before ownership existed have no owner; give them
+    one through the same rule as new cases. Idempotent (see routing.backfill_owners)."""
+    with tenant_session(tenant_id, engine) as s:
+        return [str(c) for c in backfill_owners(s, tenant_id, now)]
 
 
 def _complete_decided_runs(engine, tenant_id) -> int:

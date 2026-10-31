@@ -44,6 +44,13 @@ export function age(iso: string | null | undefined, now: number = Date.now()): s
   return `${Math.floor(hours / 24)} d`;
 }
 
+const LANGUAGE_NAMES: Record<string, string> = { en: "English", "hi-Latn": "Hinglish", hi: "Hindi" };
+
+/** The customer's language as a person reads it, never the raw code. */
+export function languageLabel(code: string | null | undefined): string {
+  return (code && LANGUAGE_NAMES[code]) || "English";
+}
+
 export function shortId(id: string | null | undefined): string {
   return id ? id.slice(0, 8) : "n/a";
 }

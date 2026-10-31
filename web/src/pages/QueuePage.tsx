@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { Badge, Button, EmptyState, ErrorState, Loading, PageHeader, inputClass, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
-import { categoryLabel, humanize } from "../lib/format";
+import { categoryLabel, humanize, languageLabel } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 
@@ -117,7 +117,7 @@ export function QueuePage() {
                   <td className={tdClass}>
                     {c.owner_name ? (c.owned_by_me ? `${c.owner_name} (you)` : c.owner_name) : "Unassigned"}
                   </td>
-                  <td className={tdClass}>{c.language}</td>
+                  <td className={tdClass}>{languageLabel(c.language)}</td>
                   <td className={`${tdClass} text-right font-semibold ${numClass}`}>{c.amount_paise == null ? "-" : formatPaise(c.amount_paise)}</td>
                   <td className={`${tdClass} text-right`}>
                     <Link
