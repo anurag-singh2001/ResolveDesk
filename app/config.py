@@ -121,6 +121,10 @@ class Settings(BaseSettings):
     platform_jwt_secret: SecretStr | None = None
     platform_jwt_ttl_minutes: int = Field(default=30, ge=1, le=240)
     platform_jwt_audience: str = "resolvedesk-platform"
+    # Scenario lab (S10.1): a SCRATCH database the lab may write cases into. Unset (or the same
+    # database as DATABASE_URL) = the lab refuses to run; scenarios can still be edited.
+    scenario_lab_database_url: SecretStr | None = None
+    scenario_lab_timeout_seconds: int = Field(default=1800, ge=30)
     # Browser origins allowed by CORS, comma-separated (the React app's dev server by default).
     web_origins: str = "http://localhost:5173"
 

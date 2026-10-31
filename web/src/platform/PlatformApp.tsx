@@ -4,10 +4,11 @@ import { NavLink, Route, Routes } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { Logo } from "../components/AppShell";
 import { ThemeSwitcher } from "../components/theme";
-import { Alert, Button, EmptyState, Field, PageHeader, cx, inputClass } from "../components/ui";
+import { Alert, Button, EmptyState, Field, cx, inputClass } from "../components/ui";
 import { AiPage } from "./AiPage";
 import { HealthPage } from "./HealthPage";
 import { JobsPage } from "./JobsPage";
+import { LabPage } from "./LabPage";
 import { LogsPage } from "./LogsPage";
 import { PlatformProvider, usePlatform } from "./session";
 
@@ -20,15 +21,6 @@ const NAV = [
   { to: "/platform/ai", label: "AI performance", end: false },
   { to: "/platform/lab", label: "Scenario lab", end: false },
 ];
-
-function ComingSoon({ title, what }: { title: string; what: string }) {
-  return (
-    <>
-      <PageHeader title={title} />
-      <EmptyState title="Coming soon">{what} There is nothing to show yet, and this page does not show sample numbers.</EmptyState>
-    </>
-  );
-}
 
 function NotEnabled() {
   return (
@@ -110,7 +102,7 @@ function Shell() {
           <Route path="/platform/jobs" element={<JobsPage />} />
           <Route path="/platform/logs" element={<LogsPage />} />
           <Route path="/platform/ai" element={<AiPage />} />
-          <Route path="/platform/lab" element={<ComingSoon title="Scenario lab" what="Running scenarios from here is planned." />} />
+          <Route path="/platform/lab" element={<LabPage />} />
           <Route path="*" element={<EmptyState title="Page not found">That portal page does not exist.</EmptyState>} />
         </Routes>
       </main>

@@ -15,6 +15,7 @@ from sqlalchemy import Engine, text
 
 from app.api.deps import _bearer
 from app.config import get_settings, platform_admin_enabled
+from app.core import scenario_lab as lab
 from app.core.auth import AuthError
 from app.core.db import get_engine
 from app.core.platform_auth import (
@@ -24,6 +25,7 @@ from app.core.platform_auth import (
     authenticate_platform,
     read_platform_token,
 )
+from evals.scenarios import ScenarioError
 
 NOT_ENABLED_DETAIL = "platform admin not enabled"  # the portal tells "off" from any other 404
 
@@ -291,3 +293,131 @@ def job_runs(
         "FROM platform_job_runs_v ORDER BY tenant_slug, day, job, status",
     )
     return [JobRunRow(**r) for r in rows]
+
+
+# --- Scenario lab (S10.1) -----------------------------------------------------------------
+# Scenario files are repo data, not DB rows: nothing here widens the platform role. Each call
+# still writes the platform audit entry (actor and route only). Runs go to the scratch DB only.
+
+
+class LabTextIn(BaseModel):
+    yaml: str = Field(max_length=20_000)
+
+
+class LabRunIn(BaseModel):
+    tenant: str = Field(max_length=64)
+    ids: list[str] = Field(max_length=lab.MAX_IDS, min_length=1)
+    pipeline: str = Field(default="agents", max_length=16)
+
+
+def _audit(engine: Engine, actor: str, route: str) -> None:
+    _read(engine, actor, route, "SELECT 1")
+
+
+def _bad(exc: ScenarioError) -> HTTPException:
+    return HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, {"problems": exc.problems})
+
+
+def _run_out() -> dict:
+    st = lab.current()
+    return {**st.__dict__, "comparison": lab.run_result(st)}
+
+
+@router.get("/lab/scenarios")
+def lab_scenarios(
+    tenant: str = "",
+    actor: str = Depends(require_platform),
+    engine: Engine = Depends(get_platform_engine),
+) -> dict:
+    """No tenant: just the tenant list (the page's first call)."""
+    _audit(engine, actor, "GET /platform/lab/scenarios")
+    try:
+        items = lab.list_scenarios(tenant) if tenant else []
+    except ScenarioError as exc:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, exc.problems[0]) from None
+    return {
+        "tenants": lab.list_tenants(),
+        "scratch_configured": lab.scratch_configured(get_settings()),
+        "scenarios": [
+            {"id": x.id, "kind": x.kind, "held_out": x.held_out, "message": x.message[:200]}
+            for x in items
+        ],
+    }
+
+
+@router.get("/lab/scenarios/{tenant}/{scenario_id}")
+def lab_scenario(
+    tenant: str,
+    scenario_id: str,
+    actor: str = Depends(require_platform),
+    engine: Engine = Depends(get_platform_engine),
+) -> dict:
+    _audit(engine, actor, "GET /platform/lab/scenarios/item")
+    try:
+        return {"yaml": lab.read_text(tenant, scenario_id)}
+    except (ScenarioError, FileNotFoundError):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "scenario not found") from None
+
+
+@router.post("/lab/validate/{tenant}")
+def lab_validate(
+    tenant: str,
+    body: LabTextIn,
+    actor: str = Depends(require_platform),
+    engine: Engine = Depends(get_platform_engine),
+) -> dict:
+    _audit(engine, actor, "POST /platform/lab/validate")
+    try:
+        sc = lab.validate_text(tenant, body.yaml)
+    except ScenarioError as exc:
+        if exc.problems == ["unknown tenant"]:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown tenant") from None
+        return {"ok": False, "problems": exc.problems}
+    return {"ok": True, "problems": [], "id": sc.id}
+
+
+@router.put("/lab/scenarios/{tenant}/{scenario_id}")
+def lab_save(
+    tenant: str,
+    scenario_id: str,
+    body: LabTextIn,
+    actor: str = Depends(require_platform),
+    engine: Engine = Depends(get_platform_engine),
+) -> dict:
+    _audit(engine, actor, "PUT /platform/lab/scenarios/item")
+    try:
+        sc = lab.save_text(tenant, scenario_id, body.yaml)
+    except ScenarioError as exc:
+        if exc.problems == ["unknown tenant"]:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown tenant") from None
+        raise _bad(exc) from None
+    return {"ok": True, "id": sc.id}
+
+
+@router.post("/lab/runs", status_code=status.HTTP_202_ACCEPTED)
+def lab_start(
+    body: LabRunIn,
+    actor: str = Depends(require_platform),
+    engine: Engine = Depends(get_platform_engine),
+) -> dict:
+    """Starts a background run and returns at once; poll GET /lab/runs/current."""
+    _audit(engine, actor, "POST /platform/lab/runs")
+    try:
+        lab.start_run(get_settings(), body.tenant, body.ids, body.pipeline)
+    except lab.LabRefused as exc:
+        busy = "already" in str(exc)
+        code = status.HTTP_409_CONFLICT if busy else status.HTTP_503_SERVICE_UNAVAILABLE
+        raise HTTPException(code, str(exc)) from None
+    except ScenarioError as exc:
+        if exc.problems == ["unknown tenant"]:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "unknown tenant") from None
+        raise _bad(exc) from None
+    return _run_out()
+
+
+@router.get("/lab/runs/current")
+def lab_current(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> dict:
+    _audit(engine, actor, "GET /platform/lab/runs/current")
+    return _run_out()

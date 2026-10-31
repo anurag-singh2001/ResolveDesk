@@ -11,6 +11,7 @@ errors; scores below target don't fail the run, they are what is being measured.
 """
 
 import argparse
+import json
 import os
 import sys
 from datetime import UTC, datetime
@@ -86,6 +87,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--scale", type=float, default=0.25, help="history scale for the reseed")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--only", help="comma-separated scenario ids")
+    ap.add_argument("--report-dir", help="write the report (md + json) here, not evals/reports")
     ap.add_argument("--pause", type=float, default=0.0, help="seconds between cases")
     args = ap.parse_args(argv)
 
@@ -146,9 +148,21 @@ def main(argv: list[str]) -> int:
         print("\nFailing scenarios:")
         for f in failures:
             print(f"  - {f}")
-    REPORTS.mkdir(exist_ok=True)
-    path = REPORTS / f"eval-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.md"
+    out_dir = Path(args.report_dir) if args.report_dir else REPORTS
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"eval-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.md"
     path.write_text(markdown(rows, failures, meta), encoding="utf-8")
+    # Machine-readable twin for the scenario lab's comparison: pass/fail per scenario.
+    summary = {
+        "meta": meta,
+        "rows": [{"tenant": t, "pipeline": p, "metrics": m} for t, p, m in rows],
+        "scenarios": [
+            {"id": r.scenario.id, "tenant": r.scenario.tenant, "pipeline": r.pipeline,
+             "passed": score(r).passed}
+            for r in all_results
+        ],
+    }  # fmt: skip
+    path.with_suffix(".json").write_text(json.dumps(summary), encoding="utf-8")
     print(f"\nreport: {path}")
     broken = [r for r in all_results if score(r).over_ceiling or r.outcome == "error"]
     return 1 if broken else 0
