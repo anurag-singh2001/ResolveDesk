@@ -128,6 +128,16 @@ describe("dashboard page", () => {
     expect(within(region).queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("starts long periods weekly, and a person can still choose daily", async () => {
+    const { urls } = mockMetrics("franchisee_owner", () => ({ body: response([{ id: null, name: "All", points: [point()] }]) }));
+    renderApp("/dashboard");
+    await screen.findByRole("heading", { name: "Remedy spend" });
+    await userEvent.selectOptions(screen.getByLabelText("Period"), "180");
+    await waitFor(() => expect(urls.some((u) => u.searchParams.get("granularity") === "week" && u.searchParams.get("days") === "180")).toBe(true));
+    await userEvent.click(screen.getByRole("button", { name: "Day" }));
+    await waitFor(() => expect(urls.some((u) => u.searchParams.get("granularity") === "day" && u.searchParams.get("days") === "180")).toBe(true));
+  });
+
   it("sends the day/week and period choices to the server", async () => {
     const { urls } = mockMetrics("franchisee_owner", () => ({ body: response([{ id: null, name: "All", points: [point()] }]) }));
     renderApp("/dashboard");

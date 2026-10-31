@@ -273,9 +273,12 @@ function BreakdownTable({ title, groups, onPick }: { title: string; groups: Metr
 
 export function DashboardPage() {
   const [params, setParams] = useSearchParams();
-  const granularity = params.get("g") === "week" ? "week" : "day";
   const requested = Number(params.get("days"));
   const days = PERIODS.includes(requested) ? requested : 30;
+  // Daily bars over many months are too thin to read, so long periods start weekly.
+  const defaultGranularity: "day" | "week" = days > 90 ? "week" : "day";
+  const g = params.get("g");
+  const granularity = g === "day" || g === "week" ? g : defaultGranularity;
   // Ids go to the server, which can only narrow its own scope by them. Names are display only.
   const brandId = params.get("brand") ?? undefined;
   const locationId = params.get("location") ?? undefined;
@@ -308,7 +311,7 @@ export function DashboardPage() {
         subtitle="Cases, remedies, decisions and orders for the locations in your scope. Read-only."
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            <Segmented label="Granularity" value={granularity} options={[{ value: "day", text: "Day" }, { value: "week", text: "Week" }]} onChange={(v) => set({ g: v === "day" ? null : v })} />
+            <Segmented label="Granularity" value={granularity} options={[{ value: "day", text: "Day" }, { value: "week", text: "Week" }]} onChange={(v) => set({ g: v === defaultGranularity ? null : v })} />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>Period</span>
               <select
