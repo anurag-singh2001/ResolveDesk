@@ -461,10 +461,15 @@ def test_emit_never_touches_the_database_on_the_calling_thread(tid):
             lg.error("boom")
         assert engine.threads == []  # nothing happened synchronously
         handler.start()
+        for _ in range(100):  # the drain thread writes on its own, within a moment
+            if engine.threads:
+                break
+            threading.Event().wait(0.05)
+        written_by = set(engine.threads)  # before shutdown (which flushes on the caller)
     finally:
         lg.removeHandler(handler)
         handler.flush_pending()
-    assert engine.threads and threading.get_ident() not in set(engine.threads)
+    assert written_by and threading.get_ident() not in written_by
 
 
 def test_emit_does_not_wait_on_a_database_that_hangs(tid):
