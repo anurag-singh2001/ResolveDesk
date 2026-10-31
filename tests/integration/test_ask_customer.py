@@ -220,8 +220,11 @@ def test_default_suggestion_is_a_voucher_and_a_refund_at_their_maximums(ask):
         facts = order_facts(s, ask["orders"]["me"])[1]
     assert by["free_item_voucher"] <= RS_149  # never above what the order cost
     assert by["free_item_voucher"] <= facts.settings["voucher_max_paise"]
-    assert by["refund"] <= 7450  # half of Rs 149, in integer paise
-    assert by["refund"] == min(7450, facts.refundable_paise)
+    pct = facts.settings["refund_max_percent"]  # 50 for one pack (Rs 74.50), 100 for the other
+    cap = RS_149 * pct // 100
+    assert by["refund"] == min(cap, facts.refundable_paise)
+    if pct == 50:
+        assert by["refund"] <= 7450  # half of Rs 149, in integer paise
     assert all(type(v) is int for v in by.values())
 
 

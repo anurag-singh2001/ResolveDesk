@@ -9,6 +9,7 @@ import { StageBadge } from "../components/badges";
 import { DecideCase } from "../components/DecideCase";
 import { StageStepper } from "../components/StageStepper";
 import { CustomerMessages, OrderCard } from "../components/OrderCard";
+import { CustomerOffer } from "../components/CustomerOffer";
 import { CaseRemedyChoice } from "../components/RemedyChoice";
 import { RemedyBasis, SourceLinks } from "../components/DecisionSources";
 import { StaffReplyPanel } from "../components/StaffReplyPanel";
@@ -327,6 +328,7 @@ export function CasePage() {
           <div className="space-y-6">
             <Remedy c={c} staff={staff} />
             {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
+            {!staff && <CustomerOffer caseId={c.id} onChanged={() => { void kase.reload(); void timeline.reload(); }} />}
             {staff && (<DecideCase caseId={c.id} stage={c.stage} onChanged={() => { void kase.reload(); void timeline.reload(); }} />)}
             {staff && c.can_rerun_ai && (
               <RerunAi

@@ -294,6 +294,47 @@ export interface PendingApproval {
   citations?: Citation[]; // NEW
   basis?: string[]; // which rule set the amount (S8.3)
   sources?: DecisionSource[]; // cited sections as links (S8.3)
+  offer?: StaffOffer | null; // S8.10: the question put to the customer, if any
+  queue_reason?: "customer_chose" | "no_customer_answer" | null; // S8.10
+}
+
+/** S8.10: what an approver sees of a question put to the customer. */
+export interface StaffOffer {
+  state: "open" | "expired";
+  asked_at: string;
+  expires_at: string;
+  options: { code: string; kind: string; amount_paise: number }[];
+}
+
+export interface OfferedOption {
+  code: string;
+  action: string;
+  amount_paise: number;
+}
+
+export interface AskSuggestion {
+  proposal_id: string;
+  can_ask: boolean;
+  blocked_reason: string | null;
+  answer_days: number;
+  options: OfferedOption[];
+}
+
+export interface AskResult {
+  proposal_id: string;
+  expires_at: string;
+  options: OfferedOption[];
+}
+
+/** S8.10: what the customer sees. Text comes from server templates in the case language. */
+export interface CustomerOffer {
+  state: "none" | "open" | "chosen" | "expired";
+  heading: string;
+  intro: string;
+  expires_note: string;
+  status_text: string;
+  options: RemedyOption[];
+  expires_at?: string | null;
 }
 
 export interface OutletInsight {
