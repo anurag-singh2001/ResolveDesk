@@ -9,6 +9,7 @@ import type {
   Campaign,
   Case,
   GrowthSignal,
+  BrandSignalsResponse,
   LocationRef,
   RerunAiResult,
   OutletInsight,
@@ -167,6 +168,7 @@ export const api = {
     request<SegmentsResponse>(`/insights/segments${brandId ? `?brand_id=${enc(brandId)}` : ""}`),
   cohorts: (brandId?: string) =>
     request<CohortsResponse>(`/insights/cohorts${brandId ? `?brand_id=${enc(brandId)}` : ""}`),
+  brandSignals: () => request<BrandSignalsResponse>("/growth/brand-signals"),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>

@@ -773,4 +773,24 @@ export interface CohortsResponse {
   small_cell_min: number;
   cells_hidden_below_min: boolean;
   groups: CohortGroup[];
+// S11.4: brand-level repeat-rate readings (GET /growth/brand-signals). Aggregates only.
+export interface BrandSignal {
+  brand_id: string;
+  name: string;
+  status: "drop" | "steady" | "low_volume";
+  baseline_orders: number;
+  recent_orders: number;
+  min_orders: number;
+  baseline_bp: number | null; // null when low_volume: no trend is shown
+  recent_bp: number | null;
+  drop_bp: number | null;
+  diagnosis: { findings?: string[]; hypotheses?: string[] } | null;
+}
+
+export interface BrandSignalsResponse {
+  as_of: string;
+  recent_start: string;
+  baseline_start: string;
+  definition: string;
+  brands: BrandSignal[];
 }

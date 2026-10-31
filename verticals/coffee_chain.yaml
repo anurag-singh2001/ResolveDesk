@@ -78,6 +78,8 @@ settings:
   segment_loyal_top_percent: {kind: value, default: 20}
   # Segment and cohort cells with fewer customers than this are hidden from every role but hq_owner.
   small_cell_min: {kind: value, default: 10}
+  # Orders needed in each window before a brand repeat rate shows as a trend (below: low volume).
+  growth_min_orders: {kind: value, default: 30}
   # The most (paise) an hq_owner may approve themselves after switching a remedy to a higher
   # amount, with a written reason (owner decision M3, Rs 500). Lower only.
   switch_self_approve_max_paise: {kind: limit, default: 50000}
