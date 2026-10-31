@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { errorMessage } from "../api/client";
 import type { ChaosSettings, ClockState, SweepReport } from "../api/types";
@@ -269,7 +270,10 @@ export function DevPage() {
 
           <Card className="p-4 text-sm text-muted-foreground">
             <h2 className="font-montserrat text-sm font-semibold text-foreground">Platform portal</h2>
-            <p className="mt-1" data-testid="platform-portal">Platform portal (coming in Sprint 9). Not built yet, so there is nothing to open.</p>
+            <p className="mt-1" data-testid="platform-portal">
+              Health, jobs and AI performance across all businesses, with its own sign in.{" "}
+              <Link to="/platform" className="underline underline-offset-2 hover:text-brand">Open the platform portal</Link>
+            </p>
           </Card>
         </div>
       )}

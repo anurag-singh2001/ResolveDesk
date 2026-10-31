@@ -122,6 +122,6 @@ describe("demo controls", () => {
     expect(btn).toBeDisabled();
     await userEvent.click(btn);
     expect(calls.some((c) => c.method === "POST")).toBe(false);
-    expect(screen.getByTestId("platform-portal")).toHaveTextContent("Platform portal (coming in Sprint 9)");
+    expect(screen.getByRole("link", { name: "Open the platform portal" })).toHaveAttribute("href", "/platform");
   });
 });
