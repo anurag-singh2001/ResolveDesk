@@ -7,7 +7,7 @@ row id, no tenant id, no error class, no text. Read only through GET /platform/a
 GET /platform/jobs, which write a platform audit entry on every read.
 
 Revision ID: 0034
-Revises: 0029
+Revises: 0031
 Create Date: 2026-10-31
 """
 
@@ -16,7 +16,7 @@ from collections.abc import Sequence
 from alembic import op
 
 revision: str = "0034"
-down_revision: str | None = "0029"
+down_revision: str | None = "0031"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
