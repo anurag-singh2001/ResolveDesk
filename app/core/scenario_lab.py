@@ -8,8 +8,10 @@ database is configured, or it is the same database as the app's own, nothing sta
 One run at a time, in this process. Status is held in memory (lost on restart, by design).
 """
 
+import contextlib
 import json
 import os
+import signal
 import subprocess
 import sys
 import threading
@@ -17,9 +19,11 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from urllib.parse import urlparse
+
+import yaml
 
 from app.config import Settings
+from app.core.db_targets import BadDbUrl, Target, db_target, safe_target
 from app.core.tenant_config import ROOT, TENANTS_DIR, load_tenant, tenant_dirs
 from app.core.verticals import load_pack
 from evals.scenarios import (
@@ -80,7 +84,17 @@ def save_text(slug: str, scenario_id: str, text: str) -> Scenario:
     sc = validate_text(slug, text)
     if sc.id != scenario_id:
         raise ScenarioError([f"id: the text says {sc.id!r} but the name is {scenario_id!r}"])
-    path = scenario_file(tenant_folder(slug), scenario_id)
+    folder = tenant_folder(slug)
+    path = scenario_file(folder, scenario_id)
+    for other in sorted((folder / "scenarios").glob("*.yaml")):
+        if other.resolve() == path:
+            continue
+        try:
+            held = yaml.safe_load(other.read_text(encoding="utf-8"))
+        except (OSError, yaml.YAMLError):
+            continue
+        if isinstance(held, dict) and held.get("id") == scenario_id:
+            raise ScenarioError([f"id: another scenario file already uses {scenario_id!r}"])
     tmp = path.with_name(f".{path.name}.{uuid.uuid4().hex}.tmp")
     tmp.write_text(text if text.endswith("\n") else text + "\n", encoding="utf-8", newline="\n")
     os.replace(tmp, path)
@@ -90,20 +104,38 @@ def save_text(slug: str, scenario_id: str, text: str) -> Scenario:
 # --- scratch database guard -------------------------------------------------------------
 
 
-def _db_name(url: str | None) -> str | None:
-    return (urlparse(url).path.lstrip("/") or None) if url else None
+def protected_targets(s: Settings) -> list[Target]:
+    """Every database the lab must never touch: app, migration, maint and platform targets,
+    decoded. A malformed protected url is skipped (it cannot be compared; the scratch url
+    is the one that must be well formed)."""
+    out: list[Target] = []
+    for raw in (s.database_url, s.migration_database_url, s.maint_database_url,
+                s.platform_database_url):  # fmt: skip
+        try:
+            t = safe_target(raw)
+        except BadDbUrl:
+            continue
+        if t is not None:
+            out.append(t)
+    return out
 
 
 def scratch_url(s: Settings) -> str:
-    """The scratch DB url, or LabRefused. Fails closed: unset, or the same database name as
-    the app's own (demo) database, or as the platform database, means no run."""
+    """The scratch DB url, or LabRefused. Fails closed: unset, malformed, carrying query
+    overrides, or the same host+port+database as any app target means no run."""
     secret = s.scenario_lab_database_url
     raw = secret.get_secret_value().strip() if secret else ""
     if not raw:
         raise LabRefused("no scratch database is configured for the lab")
-    name = _db_name(raw)
-    if name is None or name in {_db_name(s.database_url), _db_name(s.platform_database_url)}:
-        raise LabRefused("the lab's scratch database is the same as an app database; refusing")
+    try:
+        target = db_target(raw)
+    except BadDbUrl as exc:
+        raise LabRefused(f"the lab's scratch database url is not usable: {exc}") from None
+    protected = protected_targets(s)
+    if not protected or target in protected:
+        raise LabRefused(
+            "the lab's scratch database is an app database (or none is known); refusing"
+        )
     return raw
 
 
@@ -178,26 +210,63 @@ def start_run(
     return snapshot
 
 
-_OTHER_DB_VARS = {
-    "MIGRATION_DATABASE_URL",
-    "MAINT_DATABASE_URL",
-    "PLATFORM_DATABASE_URL",
-    "SCENARIO_LAB_DATABASE_URL",
-}
+# The child gets an allowlist, never a copy of the parent's environment: no JWT or platform
+# secret, no TEST_/MIGRATION_/MAINT_/PLATFORM_ url. OS basics only, then the LLM settings
+# passed explicitly from the parent's own Settings (so the child needs no dotenv file).
+_OS_VARS = (
+    "PATH", "SYSTEMROOT", "SYSTEMDRIVE", "WINDIR", "COMSPEC", "PATHEXT", "TEMP", "TMP", "TMPDIR",
+    "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "LANG", "LC_ALL", "TZ", "VIRTUAL_ENV",
+)  # fmt: skip
+_EXTRA_SETTINGS = ("gemini_api_key", "groq_api_key", "ollama_base_url", "app_env")
+PROTECTED_ENV = "EVAL_PROTECTED_DB_TARGETS"  # non-secret [host, port, db] triples, JSON
 
 
-def child_env(url: str) -> dict[str, str]:
-    env = {k: v for k, v in os.environ.items() if k.upper() not in _OTHER_DB_VARS}
+def _setting_text(v: object) -> str:
+    if hasattr(v, "get_secret_value"):
+        return v.get_secret_value()
+    if isinstance(v, bool):
+        return "true" if v else "false"
+    if isinstance(v, dict | list | tuple):
+        return json.dumps(v)
+    return str(v)
+
+
+def child_env(s: Settings, url: str, no_dotenv: Path) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k.upper() in _OS_VARS}
+    for name in Settings.model_fields:
+        if name.startswith("llm_") or name in _EXTRA_SETTINGS:
+            v = getattr(s, name, None)
+            if v is not None:
+                env[name.upper()] = _setting_text(v)
     env["DATABASE_URL"] = url
+    env["ENV_FILE"] = str(no_dotenv)  # a path that does not exist: Settings loads no dotenv
+    env[PROTECTED_ENV] = json.dumps([list(t) for t in protected_targets(s)])
     return env
 
 
 def child_command(slug: str, ids: list[str], pipeline: str, report_dir: Path) -> list[str]:
-    # --no-seed: the child never reseeds; --i-know is never passed.
+    # --no-seed: the child never reseeds; --i-know is never passed; --require-scratch makes
+    # the child itself refuse a protected database, whatever the parent checked.
     return [
         sys.executable, "-m", "evals.run", "--tenant", slug, "--only", ",".join(ids), "--all",
-        "--no-seed", "--pipeline", pipeline, "--report-dir", str(report_dir),
+        "--no-seed", "--require-scratch", "--pipeline", pipeline, "--report-dir", str(report_dir),
     ]  # fmt: skip
+
+
+def kill_tree(proc: subprocess.Popen) -> None:
+    """Stop the child and everything it started (Windows: taskkill /T; POSIX: its group)."""
+    try:
+        if sys.platform == "win32":
+            subprocess.run(  # noqa: S603
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True, timeout=30, check=False,
+            )  # fmt: skip
+        else:
+            os.killpg(proc.pid, signal.SIGKILL)
+    except Exception:  # noqa: BLE001 - fall back to the direct child
+        proc.kill()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        proc.wait(timeout=30)
 
 
 def _finish(run_id: str, status: str, message: str, report: str | None) -> None:
@@ -210,23 +279,31 @@ def _finish(run_id: str, status: str, message: str, report: str | None) -> None:
 def _execute(s: Settings, url: str, run_id: str, slug: str, ids: list[str], pipeline: str) -> None:
     try:
         report_dir = LAB_REPORTS / run_id
-        proc = subprocess.run(  # noqa: S603 - fixed argv, ids already checked against files
-            child_command(slug, ids, pipeline, report_dir),
-            cwd=ROOT, env=child_env(url), capture_output=True, text=True,
-            timeout=s.scenario_lab_timeout_seconds, check=False,
-        )  # fmt: skip
+        report_dir.mkdir(parents=True, exist_ok=True)
+        # Output goes to a file (never held in memory); nothing from it is shown in the UI.
+        with open(report_dir / "child.log", "wb") as log:
+            kw: dict = {"start_new_session": True} if sys.platform != "win32" else {}
+            proc = subprocess.Popen(  # noqa: S603 - fixed argv, ids already checked against files
+                child_command(slug, ids, pipeline, report_dir),
+                cwd=ROOT, env=child_env(s, url, report_dir / "no.env"),
+                stdin=subprocess.DEVNULL, stdout=log, stderr=subprocess.STDOUT, **kw,
+            )  # fmt: skip
+            try:
+                code = proc.wait(timeout=s.scenario_lab_timeout_seconds)
+            except subprocess.TimeoutExpired:
+                kill_tree(proc)
+                _finish(run_id, "failed", "the run timed out and was stopped", None)
+                return
         twin = next(iter(sorted(report_dir.glob("eval-*.json"))), None)
         if twin is not None:
             note = "finished"
-            if proc.returncode:
+            if code:
                 note = "finished; a scenario errored or went past the business rule"
             _finish(run_id, "succeeded", note, f"{run_id}/{twin.name}")
-        elif proc.returncode == 2:
+        elif code == 2:
             _finish(run_id, "failed", "the eval refused to run on this database", None)
         else:
-            _finish(run_id, "failed", f"stopped without a report (exit {proc.returncode})", None)
-    except subprocess.TimeoutExpired:
-        _finish(run_id, "failed", "the run timed out and was stopped", None)
+            _finish(run_id, "failed", f"stopped without a report (exit {code})", None)
     except Exception as exc:  # noqa: BLE001 - the lab must always leave 'running'
         _finish(run_id, "failed", f"the run could not start ({type(exc).__name__})", None)
 

@@ -134,8 +134,8 @@ def test_a_run_without_a_scratch_database_is_refused_and_nothing_starts(lab_clie
 
 def test_a_scratch_database_equal_to_the_app_database_is_refused(lab_client, monkeypatch):
     client, h, slug, _ = lab_client
-    app_db = get_settings().database_url.rsplit("/", 1)[-1].split("?")[0]
-    monkeypatch.setenv("SCENARIO_LAB_DATABASE_URL", f"postgresql://u:p@elsewhere/{app_db}")
+    # the same host, port and database as the app (user and case may differ): refused
+    monkeypatch.setenv("SCENARIO_LAB_DATABASE_URL", get_settings().database_url)
     get_settings.cache_clear()
     sid = client.get("/platform/lab/scenarios", params={"tenant": slug}, headers=h).json()[
         "scenarios"

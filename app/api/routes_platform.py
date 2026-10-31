@@ -6,6 +6,7 @@ raw table, no tenant setting, no customer row. Every read writes a platform audi
 (actor and route only).
 """
 
+import re
 from datetime import date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -310,8 +311,15 @@ class LabRunIn(BaseModel):
     pipeline: str = Field(default="agents", max_length=16)
 
 
-def _audit(engine: Engine, actor: str, route: str) -> None:
-    _read(engine, actor, route, "SELECT 1")
+def _tag(value: str, limit: int = 64) -> str:
+    """Untrusted text made safe for the audit route: a short [a-z0-9._-] token."""
+    return re.sub(r"[^A-Za-z0-9._-]", "?", value)[:limit]
+
+
+def _audit(engine: Engine, actor: str, route: str, **detail: str) -> None:
+    """Audit entry with the route and (tenant, scenario id, pipeline) detail; no scenario text."""
+    suffix = "".join(f" {k}={_tag(v, 200)}" for k, v in detail.items())
+    _read(engine, actor, f"{route}{suffix}"[:200], "SELECT 1")
 
 
 def _bad(exc: ScenarioError) -> HTTPException:
@@ -330,7 +338,7 @@ def lab_scenarios(
     engine: Engine = Depends(get_platform_engine),
 ) -> dict:
     """No tenant: just the tenant list (the page's first call)."""
-    _audit(engine, actor, "GET /platform/lab/scenarios")
+    _audit(engine, actor, "GET /platform/lab/scenarios", tenant=tenant)
     try:
         items = lab.list_scenarios(tenant) if tenant else []
     except ScenarioError as exc:
@@ -352,7 +360,7 @@ def lab_scenario(
     actor: str = Depends(require_platform),
     engine: Engine = Depends(get_platform_engine),
 ) -> dict:
-    _audit(engine, actor, "GET /platform/lab/scenarios/item")
+    _audit(engine, actor, "GET /platform/lab/scenarios/item", tenant=tenant, id=scenario_id)
     try:
         return {"yaml": lab.read_text(tenant, scenario_id)}
     except (ScenarioError, FileNotFoundError):
@@ -366,7 +374,7 @@ def lab_validate(
     actor: str = Depends(require_platform),
     engine: Engine = Depends(get_platform_engine),
 ) -> dict:
-    _audit(engine, actor, "POST /platform/lab/validate")
+    _audit(engine, actor, "POST /platform/lab/validate", tenant=tenant)
     try:
         sc = lab.validate_text(tenant, body.yaml)
     except ScenarioError as exc:
@@ -384,7 +392,7 @@ def lab_save(
     actor: str = Depends(require_platform),
     engine: Engine = Depends(get_platform_engine),
 ) -> dict:
-    _audit(engine, actor, "PUT /platform/lab/scenarios/item")
+    _audit(engine, actor, "PUT /platform/lab/scenarios/item", tenant=tenant, id=scenario_id)
     try:
         sc = lab.save_text(tenant, scenario_id, body.yaml)
     except ScenarioError as exc:
@@ -401,7 +409,10 @@ def lab_start(
     engine: Engine = Depends(get_platform_engine),
 ) -> dict:
     """Starts a background run and returns at once; poll GET /lab/runs/current."""
-    _audit(engine, actor, "POST /platform/lab/runs")
+    _audit(
+        engine, actor, "POST /platform/lab/runs",
+        tenant=body.tenant, pipeline=body.pipeline, ids=",".join(body.ids),
+    )  # fmt: skip
     try:
         lab.start_run(get_settings(), body.tenant, body.ids, body.pipeline)
     except lab.LabRefused as exc:
