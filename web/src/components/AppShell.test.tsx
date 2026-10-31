@@ -26,12 +26,12 @@ describe("role-based navigation", () => {
   });
 
   it("location managers see approvals and cases", async () => {
-    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Policies", "Help"]);
+    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Policies", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
   it("franchisee owners also see insights", async () => {
-    expect(await navLabels("franchisee_owner")).toEqual(["Approvals", "Cases to handle", "Cases", "Insights", "Policies", "Help"]);
+    expect(await navLabels("franchisee_owner")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Insights", "Policies", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
@@ -40,6 +40,7 @@ describe("role-based navigation", () => {
       "Approvals",
       "Cases to handle",
       "Cases",
+      "Dashboard",
       "Insights",
       "Privacy requests",
       "Policies",

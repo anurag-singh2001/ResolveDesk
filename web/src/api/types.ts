@@ -670,3 +670,49 @@ export interface PrivacyDryRun {
   approval_token: string;
   expires_at: string;
 }
+
+// GET /insights/metrics. Money is integer paise, *_bp are basis points, null means no data.
+export interface MetricPoint {
+  bucket_start: string; // YYYY-MM-DD, start of the day or ISO week in the response timezone
+  cases_opened: number;
+  cases_by_category: Record<string, number>;
+  refunds_count: number;
+  refunds_paise: number;
+  vouchers_count: number;
+  vouchers_paise: number;
+  remedy_spend_paise: number;
+  decisions: number;
+  median_decision_minutes: number | null;
+  sla_met_bp: number | null;
+  orders: number;
+  repeat_orders: number;
+  repeat_rate_bp: number | null;
+  revenue_paise: number;
+  aov_paise: number | null;
+  ai_decided: number;
+  ai_overridden: number;
+  ai_accuracy_bp: number | null;
+}
+
+export interface MetricGroup {
+  id: string | null;
+  name: string;
+  points: MetricPoint[];
+}
+
+export interface MetricsResponse {
+  granularity: "day" | "week";
+  timezone: string;
+  start: string;
+  end: string;
+  decision_sla_minutes: number;
+  groups: MetricGroup[];
+}
+
+export interface MetricsQuery {
+  granularity: "day" | "week";
+  days: number;
+  group_by: "none" | "location" | "brand";
+  location_id?: string;
+  brand_id?: string;
+}

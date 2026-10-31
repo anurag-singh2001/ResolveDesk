@@ -19,3 +19,10 @@ export function parseRupeesToPaise(text: string): number | null {
   if (!m) return null;
   return Number(m[1]) * 100 + Number((m[2] ?? "").padEnd(2, "0"));
 }
+
+/** Whole rupees for chart axes ("₹12,000"); integer maths, no paise. */
+export function formatPaiseShort(paise: number | null | undefined): string {
+  if (paise === null || paise === undefined || !Number.isFinite(paise)) return "n/a";
+  const p = Math.trunc(paise);
+  return `${p < 0 ? "-" : ""}₹${groupIN.format(Math.floor(Math.abs(p) / 100))}`;
+}

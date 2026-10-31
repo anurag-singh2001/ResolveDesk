@@ -5,6 +5,7 @@ import { AppShell } from "./components/AppShell";
 import { EmptyState, Loading } from "./components/ui";
 import { canSeeGrowth, canSeeInsights, homePath, isStaff } from "./lib/roles";
 import { GrowthPage } from "./pages/GrowthPage";
+import { DashboardPage } from "./pages/DashboardPage";
 import { InsightsPage } from "./pages/InsightsPage";
 import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
 import { ApprovalsPage } from "./pages/ApprovalsPage";
@@ -78,6 +79,7 @@ function TenantApp() {
         <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
         <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
+        <Route path="/dashboard" element={<Only when={staff}><DashboardPage /></Only>} />
         <Route path="/growth" element={<Only when={canSeeGrowth(me.role, me.growth_enabled)}><GrowthPage /></Only>} />
         <Route path="/dev" element={<Navigate to="/demo" replace />} />
         <Route path="/demo" element={<Only when={me.role === "hq_owner"}><DevPage /></Only>} />

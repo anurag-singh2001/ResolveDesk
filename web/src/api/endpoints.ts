@@ -12,6 +12,8 @@ import type {
   LocationRef,
   RerunAiResult,
   OutletInsight,
+  MetricsQuery,
+  MetricsResponse,
   Categories,
   Alternatives,
   AskResult,
@@ -153,6 +155,12 @@ export const api = {
   },
   locations: () => request<LocationRef[]>("/locations"),
   outletInsights: () => request<OutletInsight[]>("/insights/outlets"),
+  metrics: (q: MetricsQuery) => {
+    const p = new URLSearchParams({ granularity: q.granularity, days: String(q.days), group_by: q.group_by });
+    if (q.location_id) p.set("location_id", q.location_id);
+    if (q.brand_id) p.set("brand_id", q.brand_id);
+    return request<MetricsResponse>(`/insights/metrics?${p.toString()}`);
+  },
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>

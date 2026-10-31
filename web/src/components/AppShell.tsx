@@ -15,6 +15,7 @@ const ICON: Record<NavItem["icon"], string> = {
   approvals: "M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Z",
   dev: "M8 9l-4 3 4 3m8-6l4 3-4 3M14 6l-4 12",
   insights: "M4 20V10m6 10V4m6 16v-7m4 7H2",
+  dashboard: "M3 3h8v8H3zM13 3h8v5h-8zM13 11h8v10h-8zM3 14h8v7H3z",
   growth: "M3 17l6-6 4 4 8-8m0 0h-5m5 0v5",
   privacy: "M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Zm-2 8.5h4v3h-4v-3Z",
   policies: "M7 3h7l5 5v13H7V3Zm7 0v5h5M10 13h6m-6 3h6",

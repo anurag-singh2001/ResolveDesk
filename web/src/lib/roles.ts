@@ -18,7 +18,7 @@ export function isStaff(role: string | undefined): boolean {
 export interface NavItem {
   to: string;
   label: string;
-  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "growth" | "privacy" | "policies";
+  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "dashboard" | "growth" | "privacy" | "policies";
 }
 
 /** Which screens a role sees. The API still enforces access on every call. */
@@ -46,6 +46,7 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
       { to: "/approvals", label: "Approvals", icon: "approvals" },
       { to: "/queue", label: "Cases to handle", icon: "cases" },
       { to: "/cases", label: "Cases", icon: "cases" },
+      { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
       ...(canSeeInsights(role) ? [{ to: "/insights", label: "Insights", icon: "insights" as const }] : []),
       ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth", label: "Growth", icon: "growth" as const }] : []),
       ...(role === "hq_owner" ? [{ to: "/privacy-requests", label: "Privacy requests", icon: "privacy" as const }] : []),
