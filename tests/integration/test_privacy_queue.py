@@ -154,8 +154,8 @@ def test_stale_when_the_customers_data_changes_after_the_dry_run(
     hq = staff(api, tenant, slug, "hq_owner")
     req = _request(api, auth)
     look = _look(api, hq, req["id"])
-    with tenant_session(tid, app_engine) as s:  # a new record lands after the owner looked
-        s.add(Ticket(tenant_id=tid, customer_id=cid, channel="web", status="closed"))
+    # The customer changes something after the owner looked: a consent is now on.
+    api.post("/me/consents/marketing", json={"granted": True}, headers=auth)
     r = _approve_with(api, hq, req["id"], look)
     assert r.status_code == 409 and "changed" in r.json()["detail"]
     assert _name(app_engine, tid, cid) == "Real Person"
