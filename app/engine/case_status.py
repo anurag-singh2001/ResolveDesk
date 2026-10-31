@@ -24,7 +24,7 @@ from app.core.money import format_inr
 from app.core.settings_resolver import effective_settings
 from app.engine.approvals import not_superseded
 from app.engine.needs import latest_question
-from app.engine.privacy import PRIVACY_CATEGORY, customer_message
+from app.engine.privacy import PRIVACY_CATEGORY, close_text, customer_message
 
 STAGES = (
     "received",
@@ -71,7 +71,9 @@ def case_status(
     ).first()
     if proposal is None:
         if case.close_reason:  # a person closed it with a reason (S7.6)
-            return CaseStatus("closed", t(f"close.{case.close_reason}", lang))
+            return CaseStatus(
+                "closed", close_text(case.close_reason, effective_settings(session), lang)
+            )
         if case.status == "escalated" and case.category == PRIVACY_CATEGORY:
             return CaseStatus(
                 "escalated", customer_message(case.opened_at, effective_settings(session), lang)

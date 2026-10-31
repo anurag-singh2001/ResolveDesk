@@ -96,10 +96,23 @@ def _priced_options(
 
 
 def _apply(session: Session, order: Transaction, facts, category: str, option) -> Remedy:
+    """One option priced by `_apply_rule`; a refund is never the answer on an order the
+    delivery app refunds (late tiers and missing items included): a person decides instead."""
+    remedy = _apply_rule(session, order, facts, category, option)
+    if remedy.action == "refund" and facts.settings["refund_channel"] != "tenant_gateway":
+        return Remedy(None, {}, "the delivery app refunds this order", "escalate")
+    return remedy
+
+
+def _apply_rule(session: Session, order: Transaction, facts, category: str, option) -> Remedy:
     s = facts.settings
     order_ref = str(order.id)
 
     if isinstance(option, RefundPercentOption):
+        if s["refund_channel"] != "tenant_gateway":
+            # Placed through a delivery app: that app refunds it, so no refund option exists
+            # (the customer is never shown a request we could not honour).
+            return Remedy(None, {}, "the delivery app refunds this order", "escalate")
         # The option's percent is what the pack offers; refund_max_percent stays the ceiling.
         percent = min(option.refund_percent, s["refund_max_percent"])
         amount = min(percent_of(order.total_paise, percent), facts.refundable_paise)

@@ -55,7 +55,8 @@ tied to exactly the proposal you saw and expires after a few hours if it isn't u
 If the proposed remedy is not the fair one (say a voucher where a partial refund fits, or the voucher is too small), click **Switch remedy** instead of rejecting. You get the remedies the rules allow for this case, each with its amount range. Choose one, enter the amount in rupees, and say **why** (it is saved in the audit trail). Optionally tick **Approve it now as well**. Then **Review switch** and confirm with **Yes, switch** (**Cancel** is selected first).
 
 - The old proposal is replaced and can no longer be approved. A new proposal is created and checked by the same rules as any other (limits, voucher not above the order total, repeat-claim warning).
-- **Approve it now** only works if you could approve that amount anyway. Above your limit the new proposal is created and waits for a senior approver (the case is handed to HQ); you are told so.
+- **You are the author of the new proposal**, so you cannot approve it the way you approve someone else's. **Approve it now** works in the same step only for a **downgrade**: a smaller amount of the same remedy, or a voucher worth no more in place of a refund. Anything higher waits for a different approver ("a different approver has to approve it"). Above the escalation limit it waits for an HQ owner and the case is handed to HQ.
+- **No second person?** An HQ owner can tick **Approve it now as well** and fill **Reason for approving it yourself**, for amounts up to the tenant's small limit (₹500 by default). The approval is recorded as self-approved with your reason. Above the limit it simply waits until another person can approve; it never goes through silently.
 - The customer only ever sees the result of the new proposal, never the one you replaced.
 - "Someone has already decided or switched this proposal" means another approver got there first; reload the queue.
 
@@ -101,7 +102,7 @@ Where the business has Growth switched on, a **Growth** menu item appears. It li
 repeat-customer rate has dropped (**Refresh signals** re-runs the check; HQ only). For a signal
 click **Propose win-back campaign**: you see the audience, the **holdout** (customers deliberately
 not contacted, so the result can be judged fairly), the budget and who has approved so far.
-Nothing is sent until **two different people** approve and **at least one is an HQ owner**; you
+Nothing is sent until **two different people** approve and **at least one is an HQ owner** (every campaign; the person who proposed it cannot be one of the two); you
 can't approve twice. If the system refuses, its reason is shown. After the campaign has run,
 **Measure result** shows the verdict (worked, did not work, or inconclusive) and the lesson
 saved to the playbook. "Possible causes" are hints, not confirmed facts.

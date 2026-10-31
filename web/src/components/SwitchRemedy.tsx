@@ -5,6 +5,7 @@ import { api } from "../api/endpoints";
 import type { Alternatives, PendingApproval, SwitchAlternative, SwitchResponse } from "../api/types";
 import { humanize } from "../lib/format";
 import { formatPaise, parseRupeesToPaise } from "../lib/money";
+import { useAuth } from "../auth/session";
 import { Alert, Button, Field, inputClass } from "./ui";
 
 export const SWITCH_CONFLICT = "Someone has already decided or switched this proposal.";
@@ -22,6 +23,9 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
   const [amountText, setAmountText] = useState("");
   const [note, setNote] = useState("");
   const [approve, setApprove] = useState(false);
+  const [ownReason, setOwnReason] = useState("");
+  const { me } = useAuth();
+  const isOwner = me?.role === "hq_owner";
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,6 +83,7 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
         amount_paise: amount,
         approve: approve && !overYourLimit,
         note: note.trim(),
+        ...(isOwner && approve && ownReason.trim() ? { self_approve_reason: ownReason.trim() } : {}),
       });
       setResult(r);
     } catch (err) {
@@ -99,10 +104,14 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
         <p className="mt-1">
           {humanize(result.action)} of {formatPaise(result.amount_paise)} replaces the old proposal.{" "}
           {result.decision === "approved"
-            ? "It is approved."
-            : result.waiting_for
+            ? result.self_approved === "owner_override"
+              ? "It is approved on your override, and the override is recorded."
+              : "It is approved."
+            : result.waiting_for === "hq_owner"
               ? "It is above what you can approve, so it waits for a senior approver."
-              : "It now waits for a decision."}
+              : result.waiting_for === "second_person"
+                ? "You made this proposal, so a different approver has to approve it."
+                : "It now waits for a decision."}
         </p>
         <Link to={`/approvals/${result.proposal_id}`} className="mt-2 inline-block font-medium underline">
           Open the new proposal
@@ -174,6 +183,21 @@ export function SwitchRemedy({ proposal }: { proposal: PendingApproval }) {
             <input type="checkbox" className="mt-0.5 accent-current" checked={approve} onChange={(e) => setApprove(e.target.checked)} />
             <span>Approve it now as well</span>
           </label>
+          {approve && (
+            <p className="text-xs text-muted-foreground">
+              You are the author of the new proposal, so you can approve it yourself only when it is a smaller amount or a
+              voucher in place of a refund. Otherwise a different approver decides.
+            </p>
+          )}
+          {approve && isOwner && (
+            <Field
+              label="Reason for approving it yourself"
+              htmlFor="switch-own-reason"
+              hint="Only if there is nobody else to approve, and only up to a small limit. It is recorded and reviewed."
+            >
+              <textarea id="switch-own-reason" rows={2} maxLength={500} className={inputClass} value={ownReason} onChange={(e) => setOwnReason(e.target.value)} />
+            </Field>
+          )}
           {approve && overYourLimit && (
             <Alert tone="warning">That amount is over your approval limit, so it will be created and wait for a senior approver.</Alert>
           )}

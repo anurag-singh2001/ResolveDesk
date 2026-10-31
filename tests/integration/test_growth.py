@@ -21,6 +21,8 @@ from app.core.models import (
     Consent,
     Customer,
     Location,
+    Membership,
+    MembershipLocation,
     PlaybookEntry,
     Signal,
     Transaction,
@@ -78,10 +80,22 @@ def make_signal(engine, tid, as_of):
     """A stored signal at the location with the largest lapsed audience (same for any tenant:
     the campaign steps don't depend on a drop having been planted)."""
     with tenant_session(tid, engine) as s:
-        best = max(
-            s.scalars(select(Location.id)),
-            key=lambda loc: len(camp.lapsed_audience(s, tid, loc, as_of)),
+        # Campaigns need a proposer and two different approvers (one hq_owner), so prefer an
+        # outlet where at least two non-hq staff can act; any outlet if none has that.
+        staffed = {
+            loc
+            for loc, n in s.execute(
+                select(MembershipLocation.location_id, func.count(Membership.user_id.distinct()))
+                .join(Membership, Membership.id == MembershipLocation.membership_id)
+                .where(Membership.role != "hq_owner")
+                .group_by(MembershipLocation.location_id)
+            )
+            if n >= 2
+        }
+        locations = [loc for loc in s.scalars(select(Location.id)) if loc in staffed] or list(
+            s.scalars(select(Location.id))
         )
+        best = max(locations, key=lambda loc: len(camp.lapsed_audience(s, tid, loc, as_of)))
         r = sig.read_location(s, tid, best, as_of)
         diagnosis = sig.template_diagnosis(sig.gather_evidence(s, tid, r))
         return sig.store_signal(s, tid, r, diagnosis, "template").id
@@ -102,6 +116,16 @@ def approvers(engine, cfg, tid, location_id):
     if other is None:
         pytest.skip("tenant has no second staff user for this location")
     return hq, other
+
+
+def third_party(engine, cfg, tid, location_id, *others):
+    """A staff user who may act on the location and is none of `others`: campaigns are proposed
+    by someone who then cannot approve them (four eyes)."""
+    taken = {c.user_id for c in others}
+    for c in staff_ctxs(engine, cfg, tid):
+        if c.user_id not in taken and c.can_see_location(location_id) and c.role != "customer":
+            return c
+    pytest.skip("tenant has no third staff user for this location")
 
 
 def propose_for(engine, tid, signal_id, ctx, now=None, **kw):
@@ -183,6 +207,45 @@ def test_dual_approval_rule():
     assert camp.dual_approved([a(u1, "hq_owner"), a(u2, "location_manager")])
 
 
+def test_every_campaign_needs_two_approvers_unless_the_threshold_is_raised(
+    app_engine, gt, monkeypatch
+):
+    """M4: two approvers for every campaign; `campaign_dual_approval_min_paise` defaults to 0."""
+    from app.core.models import CampaignApproval
+
+    _, tid, _ = gt
+    now = datetime.now(UTC)
+
+    def a(user, role):
+        return CampaignApproval(decided_by=user, role=role, decision="approved", expires_at=now)
+
+    cheap, dear = (
+        Campaign(budget_paise=1, location_id=uuid.uuid4()),
+        Campaign(budget_paise=10_000, location_id=uuid.uuid4()),
+    )
+    with tenant_session(tid, app_engine) as s:
+        assert camp.effective_settings(s)["campaign_dual_approval_min_paise"] == 0
+        assert camp.approvers_needed(s, cheap) == camp.approvers_needed(s, dear) == 2
+        assert camp.approvers_needed(s, Campaign(budget_paise=0, location_id=uuid.uuid4())) == 2
+    # A tenant that raises the threshold: below it one hq_owner is enough, at it two are needed.
+    monkeypatch.setattr(
+        camp, "effective_settings", lambda *_a, **_k: {"campaign_dual_approval_min_paise": 10_000}
+    )
+    assert camp.approvers_needed(None, cheap) == 1
+    assert camp.approvers_needed(None, dear) == 2
+    for bad in (True, -1, "0", None, 1.5):  # a bad value never lowers the bar
+        monkeypatch.setattr(
+            camp,
+            "effective_settings",
+            lambda *_a, _b=bad, **_k: {"campaign_dual_approval_min_paise": _b},
+        )
+        assert camp.approvers_needed(None, cheap) == 2
+    u1 = uuid.uuid4()
+    assert camp.dual_approved([a(u1, "hq_owner")], 1)  # one HQ approver where one is enough
+    assert not camp.dual_approved([a(u1, "franchisee_owner")], 1)  # still needs an hq_owner
+    assert not camp.dual_approved([a(u1, "hq_owner")])  # the default is two
+
+
 def test_audience_is_consented_capped_and_bound_to_a_hash(app_engine, gt):
     cfg, tid, as_of = gt
     signal_id = make_signal(app_engine, tid, as_of)
@@ -231,7 +294,9 @@ def test_nothing_is_sent_until_both_approve_then_exactly_once(app_engine, gt):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     # No approvals, then one, then the same person again: still nothing goes out.
@@ -275,7 +340,9 @@ def test_tampered_or_expired_campaigns_do_not_send(app_engine, maint_engine, gt)
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     now = datetime.now(UTC)
@@ -317,7 +384,9 @@ def test_verdict_after_window_and_playbook_entry(app_engine, gt):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     with tenant_session(tid, app_engine) as s, pytest.raises(NotReady):
@@ -403,12 +472,25 @@ def test_growth_api_end_to_end(api, app_engine, gt):
         )
         if other is None:
             pytest.skip("no second approver for this location")
-        made = api.post(f"/growth/signals/{sid}/campaign", json={}, headers=headers[hq])
+        proposer = next(
+            (
+                e
+                for e, c in ctxs.items()
+                if c.role != "hq_owner" and e != other and c.can_see_location(loc)
+            ),
+            None,
+        )
+        if proposer is None:
+            pytest.skip("no third staff user for this location")
+        made = api.post(f"/growth/signals/{sid}/campaign", json={}, headers=headers[proposer])
         if made.status_code == 422:
             pytest.skip("history too small for an audience at this scale")
         assert made.status_code == 201, made.text
         cid = made.json()["id"]
         approve = f"/growth/campaigns/{cid}/approve"
+        # The proposer cannot approve their own campaign.
+        own = api.post(approve, json={"decision": "approved"}, headers=headers[proposer])
+        assert own.status_code == 403, own.text
         yes = {"decision": "approved"}
         if outsider:  # out of scope looks like absent
             assert api.get(f"/growth/campaigns/{cid}", headers=headers[outsider]).status_code == 404
@@ -443,7 +525,7 @@ def approved_campaign(engine, cfg, tid, as_of, approve_both=True):
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(engine, tid, signal_id, hq)
+        cid, _ = propose_for(engine, tid, signal_id, third_party(engine, cfg, tid, loc, hq, other))
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     decide_as(engine, tid, hq, cid)
@@ -561,6 +643,20 @@ def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
     hq_email = next(u.email for u in cfg.users if u.role == "hq_owner")
     headers = login(api, cfg.slug, hq_email)
     signal_id = make_signal(app_engine, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        sig_loc = s.get(Signal, signal_id).location_id
+    approver = next(
+        (
+            u.email
+            for u in cfg.users
+            if u.role not in ("customer", "hq_owner")
+            and ctx_of(app_engine, tid, u.email).can_see_location(sig_loc)
+        ),
+        None,
+    )
+    if approver is None:
+        pytest.skip("no second staff user for this location")
+    approver_headers = login(api, cfg.slug, approver)
     try:
         deps.advance_clock(timedelta(days=15))
         made = api.post(f"/growth/signals/{signal_id}/campaign", json={}, headers=headers)
@@ -569,7 +665,7 @@ def test_campaign_writes_ignore_the_dev_clock(api, app_engine, gt):
         assert made.status_code == 201, made.text
         cid = uuid.UUID(made.json()["id"])
         yes = api.post(f"/growth/campaigns/{cid}/approve", json={"decision": "approved"},
-                       headers=headers)  # fmt: skip
+                       headers=approver_headers)  # fmt: skip
         assert yes.status_code == 200, yes.text
     finally:
         deps.reset_clock()
@@ -600,3 +696,42 @@ def test_the_signal_job_measures_up_to_the_latest_data_not_an_empty_window(api, 
     with tenant_session(tid, app_engine) as s:
         slugs = {s.get(Location, uuid.UUID(x["location_id"])).slug for x in found.json()}
     assert slugs == planted
+
+
+def test_the_proposer_cannot_approve_their_own_campaign(app_engine, gt):
+    cfg, tid, as_of = gt
+    signal_id = make_signal(app_engine, tid, as_of)
+    with tenant_session(tid, app_engine) as s:
+        loc = s.get(Signal, signal_id).location_id
+    hq, other = approvers(app_engine, cfg, tid, loc)
+    try:
+        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+    except ProposalError:
+        pytest.skip("history too small for an audience at this scale")
+    with pytest.raises(camp.Forbidden):
+        decide_as(app_engine, tid, hq, cid)  # the author may not approve
+    with tenant_session(tid, app_engine) as s:
+        assert s.get(Campaign, cid).status == "pending_approval"
+        assert camp.approvals_of(s, s.get(Campaign, cid)) == []
+    # Withdrawing (rejecting) their own proposal stays allowed.
+    assert decide_as(app_engine, tid, hq, cid, decision="rejected") is False
+    with tenant_session(tid, app_engine) as s:
+        assert s.get(Campaign, cid).status == "rejected"
+
+
+def test_no_override_can_lower_the_two_approver_rule(gt):
+    """B2: a limit with default 0: a tenant, brand or location value cannot raise it."""
+    from app.core.settings_resolver import resolve
+    from app.core.verticals import load_pack
+
+    cfg, _, _ = gt
+    pack = load_pack(cfg.vertical_pack)
+    spec = pack.settings["campaign_dual_approval_min_paise"]
+    assert spec.kind == "limit" and spec.default == 0
+    for org, brand, loc in (
+        ({"campaign_dual_approval_min_paise": 10**9}, {}, {}),
+        ({}, {"campaign_dual_approval_min_paise": 10**9}, {}),
+        ({}, {}, {"campaign_dual_approval_min_paise": 10**9}),
+    ):
+        got = resolve(pack.settings, org, brand, loc)
+        assert got["campaign_dual_approval_min_paise"] == 0

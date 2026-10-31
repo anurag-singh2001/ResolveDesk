@@ -59,13 +59,12 @@ function consents(granted: boolean, withHistory = false): Consents {
 }
 
 const contactLine = {
-  label: "Privacy contact",
+  label: "Privacy and grievance contact",
   configured: true,
   name: "Privacy desk",
   email: "privacy@example.test",
   response_target_days: 30,
-  legal_ceiling_days: 90,
-  response_text: "We aim to reply within 30 days. The legal limit is 90 days.",
+  response_text: "You can see we received your request here straight away. We aim to reply within 30 days.",
 };
 
 const deferred: ErasureRequest = {
@@ -81,9 +80,9 @@ const deferred: ErasureRequest = {
   received_at: "2026-10-27T10:00:00Z",
   received_text: "Received on 27 Oct 2026",
   expected_by: "2026-11-26T10:00:00Z",
-  legal_ceiling_by: "2027-01-25T10:00:00Z",
-  expected_text: "We aim to finish by 26 Nov 2026. The legal limit is 25 Jan 2027.",
+  expected_text: "We aim to finish by 26 Nov 2026.",
   completed_at: null,
+  completion_message: null,
   can_withdraw: true,
   contact: contactLine,
 };
@@ -105,7 +104,6 @@ const withdrawn: ErasureRequest = {
   stage_label: "Withdrawn",
   stage_text: "You withdrew this request. Nothing was erased.",
   expected_by: null,
-  legal_ceiling_by: null,
   expected_text: null,
   can_withdraw: false,
 };
@@ -129,16 +127,22 @@ const erasureInfo: ErasureInfo = {
     {
       key: "records",
       label: "Orders, payments and refunds",
-      reason: "Kept 7 years, for our accounts and to show what was paid.",
+      reason: "Kept 8 years, for our accounts and to show what was paid.",
       provisional: true,
     },
     { key: "audit", label: "A log of actions taken", reason: "It holds codes and ids, not your name.", provisional: false },
   ],
   wait: ["A member of our team approves each request first.", "You have a case that is still being handled."],
   provisional_label: "provisional",
-  timing: "We aim to reply within 30 days. The legal limit is 90 days.",
+  timing: "You can see we received your request here straight away. We aim to reply within 30 days.",
   target_days: 30,
-  legal_ceiling_days: 90,
+  completion_notice: {
+    channels: ["phone", "email"],
+    default: "phone",
+    labels: { phone: "My phone", email: "My email" },
+    text: "When it is done we will tell you once, at the contact you choose. We keep that contact only to send this message, and delete it once the message is sent or, at the latest, at our next clean-up after 7 days.",
+    choose: "Where should we tell you?",
+  },
   contact: contactLine,
   buttons: { request: "Request erasure", confirm: "Yes, request erasure", back: "Cancel", withdraw: "Withdraw my request" },
   confirm: { title: "Ask us to erase your data?", body: "Once it is done it cannot be undone." },
@@ -166,7 +170,7 @@ function held(notKept: string[] = []): DataHeld {
         purpose: "To show what you bought.",
         use: "help",
         use_label: "Help with your orders",
-        retention: "Kept 7 years, as business records.",
+        retention: "Kept 8 years, as business records.",
         retention_provisional: true,
         value: null,
         count: 3,
@@ -177,13 +181,12 @@ function held(notKept: string[] = []): DataHeld {
     not_kept: notKept,
     provisional_label: "provisional",
     contact: {
-      label: "Privacy contact",
+      label: "Privacy and grievance contact",
       configured: true,
       name: "Privacy desk",
       email: "privacy@example.test",
       response_target_days: 30,
-      legal_ceiling_days: 90,
-      response_text: "We aim to reply within 30 days. The legal limit is 90 days.",
+          response_text: "You can see we received your request here straight away. We aim to reply within 30 days.",
     },
   };
 }
@@ -267,11 +270,11 @@ describe("privacy page", () => {
     setup();
     renderApp("/privacy");
     expect(await screen.findByTestId("erase-remove")).toHaveTextContent("Your name");
-    expect(screen.getByTestId("erase-keep")).toHaveTextContent("Kept 7 years");
+    expect(screen.getByTestId("erase-keep")).toHaveTextContent("Kept 8 years");
     expect(screen.getByTestId("erase-keep")).toHaveTextContent("provisional");
     expect(screen.getByTestId("erase-wait")).toHaveTextContent("case that is still being handled");
     expect(screen.getByTestId("erase-timing")).toHaveTextContent("30 days");
-    expect(screen.getByTestId("erase-timing")).toHaveTextContent("90 days");
+    expect(screen.getByTestId("erase-timing")).toHaveTextContent("straight away");
   });
 
   it("needs a confirm step with Cancel focused first, and sends nothing until confirmed", async () => {
@@ -293,6 +296,18 @@ describe("privacy page", () => {
     expect(status).toHaveTextContent("We aim to finish by 26 Nov 2026");
     expect(status).toHaveTextContent("privacy@example.test");
     expect(calls.filter((c) => c.method === "POST" && c.path === "/me/erasure-request")).toHaveLength(1);
+  });
+
+  it("says where the one completion message goes and sends the chosen channel", async () => {
+    const { calls } = setup();
+    renderApp("/privacy");
+    fireEvent.click(await screen.findByRole("button", { name: "Request erasure" }));
+    expect(await screen.findByTestId("erase-notice")).toHaveTextContent("after 7 days");
+    fireEvent.change(screen.getByLabelText("Where should we tell you?"), { target: { value: "email" } });
+    fireEvent.click(screen.getByRole("button", { name: "Yes, request erasure" }));
+    await screen.findByTestId("erasure-status");
+    const post = calls.find((c) => c.method === "POST" && c.path === "/me/erasure-request");
+    expect(post?.body).toEqual({ notify_via: "email" });
   });
 
   it("shows a request that could not complete with its reason, never as done, and can be withdrawn", async () => {
@@ -324,13 +339,13 @@ describe("privacy page", () => {
     renderApp("/privacy");
     const row = await screen.findByTestId("held-orders");
     expect(row).toHaveTextContent("3 on record");
-    expect(row).toHaveTextContent("Kept 7 years");
+    expect(row).toHaveTextContent("Kept 8 years");
     expect(row).toHaveTextContent("provisional");
     expect(screen.getByTestId("held-processors")).toHaveTextContent("Neon");
     const contacts = screen.getAllByTestId("privacy-contact");
     expect(contacts).toHaveLength(2);
-    expect(contacts[0]).toHaveTextContent("Privacy contact: Privacy desk, privacy@example.test");
-    expect(contacts[0]).toHaveTextContent("90 days");
+    expect(contacts[0]).toHaveTextContent("Privacy and grievance contact: Privacy desk, privacy@example.test");
+    expect(contacts[0]).toHaveTextContent("straight away");
   });
 
   it("hides the what-we-do-not-keep line unless the server sends a backed claim", async () => {
@@ -339,9 +354,9 @@ describe("privacy page", () => {
     await screen.findByTestId("held-orders");
     expect(screen.queryByTestId("held-not-kept")).not.toBeInTheDocument();
     first.unmount();
-    setup("customer", null, ["We do not keep your card numbers."]);
+    setup("customer", null, ["We do not store your card number, CVV or UPI PIN."]);
     renderApp("/privacy");
-    expect(await screen.findByTestId("held-not-kept")).toHaveTextContent("card numbers");
+    expect(await screen.findByTestId("held-not-kept")).toHaveTextContent("card number, CVV or UPI PIN");
   });
 
   it("is not available to staff", async () => {

@@ -38,7 +38,14 @@ from app.modules.growth.executor import execute_campaign
 from tests.helpers import login
 from tests.integration import test_growth as growth_tests
 from tests.integration import test_retention as ret
-from tests.integration.test_growth import approvers, decide_as, make_signal, outbox, propose_for
+from tests.integration.test_growth import (
+    approvers,
+    decide_as,
+    make_signal,
+    outbox,
+    propose_for,
+    third_party,
+)
 from tests.integration.test_retention import (
     KEPT,
     NOW,
@@ -156,7 +163,9 @@ def test_growth_send_skips_a_customer_who_withdrew_after_approval(app_engine, ma
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid_, loc)
     try:
-        cid, _ = propose_for(app_engine, tid_, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid_, signal_id, third_party(app_engine, cfg, tid_, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     decide_as(app_engine, tid_, hq, cid)

@@ -240,23 +240,157 @@ def test_old_proposal_can_no_longer_be_decided_or_switched_again(sw):
     assert sw["api"].get(f"/approvals/{old}/alternatives", headers=sw["mgr"]).status_code == 409
 
 
-def test_approve_in_the_same_step_binds_the_approval_to_the_new_hash(sw):
-    _, old = sw["new_pending"]()
+def test_a_downgrade_can_be_approved_in_the_same_step_and_binds_to_the_new_hash(sw):
+    _, old = sw["new_pending"](9000)
     r = _switch(
-        sw, sw["mgr"], old, action="free_item_voucher", amount_paise=9000, approve=True,
+        sw, sw["mgr"], old, action="free_item_voucher", amount_paise=5000, approve=True,
         note="ok",
     )  # fmt: skip
     assert r.status_code == 200, r.text
     out = r.json()
     new = uuid.UUID(out["proposal_id"])
     assert out["decision"] == "approved" and out["waiting_for"] is None and out["expires_at"]
+    assert out["self_approved"] == "downgrade"
     with tenant_session(sw["tid"], sw["engine"]) as s:
         n = s.get(ActionProposal, new)
         approval = s.scalar(select(Approval).where(Approval.proposal_id == new))
         assert approval.payload_hash == n.payload_hash
         assert approval.decided_by == sw["mgr_ctx"].user_id
+        assert n.proposed_by == sw["mgr_ctx"].user_id  # the switcher is the author
         assert check_usable(approval, n, datetime.now(UTC)).ok
         assert s.scalar(select(Approval.id).where(Approval.proposal_id == old)) is None
+        event = s.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event == "approval.approved", AuditEvent.entity_id == new
+            )
+        )
+        assert event.payload["self_approved"] is True
+        assert event.payload["self_approval_basis"] == "downgrade"
+
+
+def test_an_upgrade_by_its_author_waits_for_a_different_person(sw):
+    _, old = sw["new_pending"]()
+    r = _switch(
+        sw, sw["mgr"], old, action="free_item_voucher", amount_paise=9000, approve=True,
+        note="more",
+    )  # fmt: skip
+    assert r.status_code == 200, r.text
+    out = r.json()
+    new = out["proposal_id"]
+    assert out["decision"] is None and out["waiting_for"] == "second_person"
+    assert out["self_approved"] is None and out["execution"] == "none"
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert s.get(ActionProposal, uuid.UUID(new)).proposed_by == sw["mgr_ctx"].user_id
+        assert s.scalar(select(Approval.id).where(Approval.proposal_id == uuid.UUID(new))) is None
+    # The author cannot approve it afterwards either (four-eyes), but may withdraw it.
+    deny = sw["api"].post(
+        f"/approvals/{new}/decision", headers=sw["mgr"], json={"decision": "approved"}
+    )
+    assert deny.status_code == 403
+    # A different eligible person can.
+    ok = sw["api"].post(
+        f"/approvals/{new}/decision", headers=sw["hq"], json={"decision": "approved"}
+    )
+    assert ok.status_code == 200, ok.text
+
+
+def test_a_same_amount_change_of_remedy_is_not_a_downgrade(sw):
+    """A voucher is never 'smaller' than another voucher unless the amount is lower."""
+    _, old = sw["new_pending"](9000)
+    out = _switch(
+        sw, sw["hq"], old, action="free_item_voucher", amount_paise=9500, approve=True
+    ).json()
+    assert out["decision"] is None and out["waiting_for"] == "second_person"
+
+
+def test_the_switcher_is_never_auto_approved(sw):
+    """Even a voucher under the auto-approve cap waits: a person authored it."""
+    _, old = sw["new_pending"](9000)
+    out = _switch(sw, sw["mgr"], old, action="free_item_voucher", amount_paise=2000).json()
+    assert out["decision"] is None
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert (
+            s.scalar(
+                select(Approval.id).where(Approval.proposal_id == uuid.UUID(out["proposal_id"]))
+            )
+            is None
+        )
+
+
+def test_an_owner_override_needs_a_reason_and_is_audited_as_self_approved(sw):
+    _, old = sw["new_pending"]()
+    limit = sw["settings"]["switch_self_approve_max_paise"]
+    assert limit == 50000  # Rs 500
+    # Without a reason an hq_owner's upgrade just waits for a second person.
+    waits = _switch(sw, sw["hq"], old, action="free_item_voucher", amount_paise=9000, approve=True)
+    assert waits.json()["decision"] is None and waits.json()["waiting_for"] == "second_person"
+    _, old2 = sw["new_pending"]()
+    r = _switch(
+        sw, sw["hq"], old2, action="free_item_voucher", amount_paise=9000, approve=True,
+        self_approve_reason="only person on shift",
+    )  # fmt: skip
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["decision"] == "approved" and out["self_approved"] == "owner_override"
+    new = uuid.UUID(out["proposal_id"])
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        event = s.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event == "approval.approved", AuditEvent.entity_id == new
+            )
+        )
+        assert event.payload["self_approved"] is True
+        assert event.payload["self_approval_basis"] == "owner_override"
+        switched = s.scalar(
+            select(AuditEvent).where(
+                AuditEvent.event == "proposal.superseded", AuditEvent.entity_id == old2
+            )
+        )
+        assert switched.payload["self_approved"] is True
+        assert switched.payload["override_reason"] == "only person on shift"
+
+
+def test_an_owner_override_above_the_limit_stays_pending(sw):
+    _, old = sw["new_pending"]()
+    alts = _alts(sw, sw["hq"], old)
+    if "refund" not in alts:
+        pytest.skip("refunds are not offered for this tenant's order")
+    amount = sw["settings"]["switch_self_approve_max_paise"] + 1000
+    assert alts["refund"]["min_paise"] <= amount <= alts["refund"]["max_paise"]
+    r = _switch(
+        sw, sw["hq"], old, action="refund", amount_paise=amount, approve=True,
+        self_approve_reason="nobody else",
+    )  # fmt: skip
+    assert r.status_code == 200, r.text
+    out = r.json()
+    assert out["decision"] is None and out["waiting_for"] == "second_person"
+    assert out["self_approved"] is None
+
+
+@pytest.mark.parametrize(
+    ("approve", "reason", "status"),
+    [(True, "   ", 422), (False, "why not", 422)],
+)
+def test_a_bad_override_request_is_refused_and_leaves_nothing(sw, approve, reason, status):
+    _, old = sw["new_pending"]()
+    r = _switch(
+        sw, sw["hq"], old, action="free_item_voucher", amount_paise=9000, approve=approve,
+        self_approve_reason=reason,
+    )  # fmt: skip
+    assert r.status_code == status, r.text
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert not is_superseded(s, old)
+
+
+def test_only_an_hq_owner_may_ask_for_an_override(sw):
+    _, old = sw["new_pending"]()
+    r = _switch(
+        sw, sw["mgr"], old, action="free_item_voucher", amount_paise=9000, approve=True,
+        self_approve_reason="I am sure",
+    )  # fmt: skip
+    assert r.status_code == 403, r.text
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        assert not is_superseded(s, old)
 
 
 def test_a_manager_cannot_approve_above_the_limit_so_it_waits_for_hq(sw):
@@ -541,7 +675,7 @@ def test_retention_treats_a_switched_case_as_settled_once_the_new_one_is_decided
     with tenant_session(sw["tid"], sw["engine"]) as s:
         # The replacement is pending: the case is unsettled. The superseded one adds nothing.
         assert case_id in set(s.scalars(unsettled_case_ids(sw["tid"])))
-        decide(s, sw["mgr_ctx"], new, "approved", now)
+        decide(s, sw["hq_ctx"], new, "approved", now)  # the switcher authored it: HQ decides
     with tenant_session(sw["tid"], sw["engine"]) as s:
         assert case_id not in set(s.scalars(unsettled_case_ids(sw["tid"])))
 
@@ -556,3 +690,55 @@ def test_a_superseded_proposal_does_not_block_closing_the_case(sw):
     with tenant_session(sw["tid"], sw["engine"]) as s:
         # Old: superseded, never decided. New: rejected. Nothing is owed.
         assert payout_unsettled(s, s.get(Case, case_id)) is False
+
+
+def test_cutting_your_own_proposal_is_not_a_downgrade(sw):
+    """Four eyes cannot be beaten by raising an amount and then 'downgrading' the raise."""
+    _, old = sw["new_pending"]()
+    raised = _switch(sw, sw["mgr"], old, action="free_item_voucher", amount_paise=9000).json()
+    assert raised["decision"] is None
+    again = _switch(
+        sw,
+        sw["mgr"],
+        raised["proposal_id"],
+        action="free_item_voucher",
+        amount_paise=7000,
+        approve=True,
+    ).json()
+    assert again["decision"] is None and again["waiting_for"] == "second_person"
+    assert again["self_approved"] is None
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        new = uuid.UUID(again["proposal_id"])
+        assert s.scalar(select(Approval.id).where(Approval.proposal_id == new)) is None
+
+
+def test_a_proposal_the_caller_authored_is_not_a_baseline(sw):
+    case_id, _ = sw["new_pending"]()
+    with tenant_session(sw["tid"], sw["engine"]) as s:
+        mine = create_proposal(
+            s,
+            sw["tid"],
+            case_id=case_id,
+            action="free_item_voucher",
+            params={"transaction_id": str(sw["order_id"]), "value_paise": 9000, "reason": "x"},
+            reason="p",
+            proposed_by=sw["mgr_ctx"].user_id,
+        ).id
+    r = _switch(
+        sw, sw["mgr"], mine, action="free_item_voucher", amount_paise=5000, approve=True
+    ).json()
+    assert r["decision"] is None and r["waiting_for"] == "second_person"
+
+
+def test_someone_else_may_cut_a_raise_and_approve_it(sw):
+    _, old = sw["new_pending"]()
+    raised = _switch(sw, sw["hq"], old, action="free_item_voucher", amount_paise=9000).json()
+    cut = _switch(
+        sw,
+        sw["mgr"],
+        raised["proposal_id"],
+        action="free_item_voucher",
+        amount_paise=7000,
+        approve=True,
+    ).json()
+    assert cut["decision"] == "approved" and cut["self_approved"] == "downgrade"

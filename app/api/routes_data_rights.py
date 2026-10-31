@@ -5,13 +5,14 @@ hq_owner approves it."""
 
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_tenant_context, not_found, tenant_db
+from app.api.deps import get_db_engine, get_tenant_context, not_found, tenant_db
 from app.core import audit
 from app.core.i18n import normalize
 from app.core.models import (
@@ -26,7 +27,7 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
-from app.engine import consent_benefits, data_export, data_held, erasure_info
+from app.engine import consent_benefits, data_export, data_held, erasure_info, erasure_notice
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
@@ -261,6 +262,9 @@ class DataRequestOut(BaseModel):
     deferred_until: datetime | None
     requested_at: datetime
     completed_at: datetime | None
+    # What happened to the one completion message: sent | failed | unknown | expired | none.
+    # null until it is final. "unknown" is never shown as delivered.
+    completion_message: str | None = None
 
 
 def _request_out(r: DataRequest) -> DataRequestOut:
@@ -272,6 +276,7 @@ def _request_out(r: DataRequest) -> DataRequestOut:
         deferred_until=r.deferred_until,
         requested_at=r.created_at,
         completed_at=r.completed_at,
+        completion_message=r.completion_message,
     )
 
 
@@ -289,17 +294,35 @@ def my_erasure_info(
 ) -> dict:
     """What erasure removes, keeps and may wait for, in the customer's language."""
     customer = own_customer(ctx, db)
-    return erasure_info.info(effective_settings(db), normalize(customer.preferred_language))
+    return erasure_info.info(
+        effective_settings(db),
+        normalize(customer.preferred_language),
+        channels=erasure_notice.held_channels(customer),
+    )
+
+
+class ErasureRequestIn(BaseModel):
+    # Where the one completion message goes: a destination the customer already has on file.
+    notify_via: Literal["phone", "email"] | None = None
 
 
 @router.post("/me/erasure-request", status_code=status.HTTP_201_CREATED)
 def request_erasure(
-    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+    body: ErasureRequestIn | None = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
 ) -> dict:
-    """File a request. If one is already open the same request comes back (not a second one)."""
+    """File a request. If one is already open the same request comes back (not a second one).
+    `notify_via` (optional) picks phone or email for the completion message; default is the
+    phone, else the email, else none."""
     customer = own_customer(ctx, db)
     req = privacy.request_erasure(
-        db, ctx.tenant_id, customer.id, datetime.now(UTC), actor_id=ctx.user_id
+        db,
+        ctx.tenant_id,
+        customer.id,
+        datetime.now(UTC),
+        actor_id=ctx.user_id,
+        notify_via=body.notify_via if body else None,
     )
     return _my_request(req, db, customer)
 
@@ -360,11 +383,15 @@ def list_data_requests(
 @router.post("/data-requests/{request_id}/approve")
 def approve_data_request(
     request_id: uuid.UUID,
+    background: BackgroundTasks,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
 ) -> DataRequestOut:
     """Approve an erasure: code re-checks the guards, then redacts or stays deferred with the
-    reason. Safe to call again on a deferred request (it re-checks) or a completed one."""
+    reason. Safe to call again on a deferred request (it re-checks) or a completed one. Once it
+    is completed, the one completion message is sent after this request commits (never before
+    the erasure succeeded; sending it again is a no-op)."""
     _hq(ctx)
     req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, datetime.now(UTC))
     if req is None:
@@ -373,4 +400,6 @@ def approve_data_request(
         raise HTTPException(
             status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
         )
+    if req.status == "completed" and req.completion_message is None:
+        background.add_task(erasure_notice.send_completion_notice, engine, ctx.tenant_id, req.id)
     return _request_out(req)

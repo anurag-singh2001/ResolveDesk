@@ -32,6 +32,7 @@ from app.engine.dispatch import system_context
 from app.modules.growth.campaigns import (
     FREQUENCY_CAP_DAYS,
     approvals_of,
+    approvers_needed,
     dual_approved,
     hash_is_intact,
     valid_approvals,
@@ -82,7 +83,10 @@ def execute_campaign(
             # members with the same keys, so a half-sent campaign is never stranded.
             if now >= campaign.expires_at:
                 return CampaignRun("refused", "proposal expired")
-            if not dual_approved(valid_approvals(campaign, approvals_of(s, campaign), now)):
+            if not dual_approved(
+                valid_approvals(campaign, approvals_of(s, campaign), now),
+                approvers_needed(s, campaign),
+            ):
                 return CampaignRun("refused", "needs two valid approvals incl. an hq_owner")
         settings = effective_settings(s, location_id=campaign.location_id)
         connector = connector_for(settings, "messaging")

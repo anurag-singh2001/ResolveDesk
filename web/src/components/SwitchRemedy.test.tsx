@@ -128,6 +128,21 @@ describe("switch remedy", () => {
     expect(calls.find((c) => c.path === "/approvals/p-1/switch")!.body).toMatchObject({ approve: false });
   });
 
+  it("says a different approver is needed when the caller authored an upgrade", async () => {
+    setup({
+      "POST /approvals/p-1/switch": {
+        body: { old_proposal_id: "p-1", proposal_id: "p-2", action: "free_item_voucher", amount_paise: 9000, decision: null, waiting_for: "second_person", expires_at: null, execution: "none" },
+      },
+    });
+    const user = userEvent.setup();
+    await openAndFill(user, "Free item voucher", "90");
+    await user.click(screen.getByLabelText("Approve it now as well"));
+    expect(screen.getByText(/author of the new proposal/)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Review switch" }));
+    await user.click(screen.getByRole("button", { name: "Yes, switch" }));
+    expect(await screen.findByText(/different approver has to approve it/)).toBeInTheDocument();
+  });
+
   it("approves in the same step within the limit", async () => {
     const { calls } = setup({
       "POST /approvals/p-1/switch": {

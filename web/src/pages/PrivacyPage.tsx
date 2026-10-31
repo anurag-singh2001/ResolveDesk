@@ -9,9 +9,11 @@ import {
   Button,
   Card,
   ErrorState,
+  Field,
   Loading,
   PageHeader,
   Switch,
+  inputClass,
   numClass,
   tableClass,
   tableWrapClass,
@@ -145,11 +147,13 @@ function ErasureCard() {
   const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
   const [latest, setLatest] = useState<ErasureRequest | null>(null);
+  const [via, setVia] = useState<"phone" | "email" | null>(null);
 
   if (info.loading || current.loading) return <Loading />;
   if (info.error || !info.data) return <ErrorState error={info.error} onRetry={info.reload} />;
   if (current.error) return <ErrorState error={current.error} onRetry={current.reload} />;
   const text = info.data;
+  const notice = text.completion_notice;
   const req = latest ?? current.data;
   const open = req?.can_withdraw ?? false;
 
@@ -204,11 +208,32 @@ function ErasureCard() {
         <div role="alertdialog" aria-labelledby="erase-confirm-title" className="mt-3 rounded-md border border-border p-4" data-testid="erase-confirm">
           <h3 id="erase-confirm-title" className="text-sm font-semibold text-foreground">{text.confirm.title}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{text.confirm.body}</p>
+          <p className="mt-2 text-sm text-foreground" data-testid="erase-notice">{notice.text}</p>
+          {notice.channels.length > 1 && (
+            <div className="mt-2">
+              <Field label={notice.choose} htmlFor="erase-notify-via">
+                <select
+                  id="erase-notify-via"
+                  className={inputClass}
+                  value={via ?? notice.default ?? ""}
+                  onChange={(e) => setVia(e.target.value as "phone" | "email")}
+                >
+                  {notice.channels.map((c) => (
+                    <option key={c} value={c}>{notice.labels[c]}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
           <div className="mt-3 flex flex-wrap gap-2">
             <Button variant="outline" autoFocus disabled={busy} onClick={() => setConfirming(false)}>
               {text.buttons.back}
             </Button>
-            <Button variant="danger" loading={busy} onClick={() => void act(() => api.requestErasure())}>
+            <Button
+              variant="danger"
+              loading={busy}
+              onClick={() => void act(() => api.requestErasure(via ?? notice.default ?? undefined))}
+            >
               {text.buttons.confirm}
             </Button>
           </div>

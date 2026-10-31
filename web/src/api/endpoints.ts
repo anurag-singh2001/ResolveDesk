@@ -81,7 +81,8 @@ export const api = {
   dataExport: () => request<unknown>("/me/data-export"),
   readableExport: () => request<ReadableExport>("/me/data-export/readable"),
   myErasureRequest: () => request<ErasureRequest | null>("/me/erasure-request"),
-  requestErasure: () => request<ErasureRequest>("/me/erasure-request", { method: "POST" }),
+  requestErasure: (notifyVia?: "phone" | "email") =>
+    request<ErasureRequest>("/me/erasure-request", { method: "POST", body: notifyVia ? { notify_via: notifyVia } : {} }),
   erasureInfo: () => request<ErasureInfo>("/me/erasure-info"),
   withdrawErasure: () => request<ErasureRequest>("/me/erasure-request/cancel", { method: "POST" }),
   categories: () => request<Categories>("/meta/categories"),
@@ -149,7 +150,7 @@ export const api = {
     request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
   campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),
-  switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string }) =>
+  switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string; self_approve_reason?: string }) =>
     request<SwitchResponse>(`/approvals/${enc(proposalId)}/switch`, { method: "POST", body }),
   decide: (proposalId: string, decision: "approved" | "rejected", note: string | null) =>
     request<DecisionResponse>(`/approvals/${enc(proposalId)}/decision`, {

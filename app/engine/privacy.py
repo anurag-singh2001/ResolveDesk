@@ -31,10 +31,28 @@ def target_date(opened_at: datetime, settings: dict[str, Any]) -> date:
     return business_date(opened_at, settings) + timedelta(days=settings["grievance_target_days"])
 
 
+def contact_line(settings: dict[str, Any]) -> str | None:
+    """The privacy and grievance contact as one line, or None while the owner has set none."""
+    name, email = settings.get("privacy_contact_name"), settings.get("privacy_contact_email")
+    return (f"{name} ({email})" if name and email else (email or name)) or None
+
+
+def close_text(reason: str, settings: dict[str, Any], language: object = None) -> str:
+    """What the customer reads when a person closes the case. Templates only. The no-remedy
+    wording names the contact and the National Consumer Helpline (owner decision M2); with no
+    contact set it drops that clause rather than point at nobody."""
+    if reason == "no_remedy":
+        contact = contact_line(settings)
+        days = settings["grievance_target_days"]
+        if contact:
+            return t("close.no_remedy", language, contact=contact, days=days)
+        return t("close.no_remedy_nocontact", language)
+    return t(f"close.{reason}", language)
+
+
 def customer_message(opened_at: datetime, settings: dict[str, Any], language: object = None) -> str:
     """Template only: no model text, no promise beyond our own target."""
-    name, email = settings.get("privacy_contact_name"), settings.get("privacy_contact_email")
-    contact = f"{name} ({email})" if name and email else (email or name)
+    contact = contact_line(settings)
     parts = [t("privacy.received", language)]
     if contact:
         parts.append(t("privacy.reach", language, contact=contact))

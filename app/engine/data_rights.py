@@ -31,6 +31,7 @@ from app.core.models import (
     Transaction,
     User,
 )
+from app.engine import erasure_notice
 from app.engine.retention import (
     FINISHED,
     MESSAGE_MARKER,
@@ -231,10 +232,13 @@ def request_erasure(
     customer_id: uuid.UUID,
     now: datetime,
     actor_id: uuid.UUID | None = None,
+    notify_via: str | None = None,
 ) -> DataRequest:
     """File a request (one active request per customer, also enforced by a partial unique
     index: a simultaneous second call gets the first one back). If it cannot run now it is
-    created already `deferred` with the reason; otherwise it waits for a person to approve."""
+    created already `deferred` with the reason; otherwise it waits for a person to approve.
+    `notify_via` (phone | email) picks where the one completion message goes; the destination
+    is copied into a short-lived outbox row now, because the erasure wipes the contact."""
     existing = _active_request(s, tenant_id, customer_id)
     if existing is not None:
         return existing
@@ -256,6 +260,9 @@ def request_erasure(
         if existing is None:
             raise
         return existing
+    customer = s.get(Customer, customer_id)
+    channel = erasure_notice.capture(s, tenant_id, req, customer, notify_via, now)
+    s.flush()
     audit.record(
         s,
         tenant_id,
@@ -264,7 +271,8 @@ def request_erasure(
         event="privacy.erasure_requested",
         entity_type="data_request",
         entity_id=req.id,
-        payload={"status": req.status, "reason": req.reason_code},
+        # The channel kind only (phone | email | none), never the destination.
+        payload={"status": req.status, "reason": req.reason_code, "notify_channel": channel},
     )
     return req
 
@@ -290,6 +298,7 @@ def withdraw_erasure(
     if req is None or req.status in ("completed", "withdrawn"):
         return req
     req.status, req.reason_code, req.deferred_until = "withdrawn", None, None
+    erasure_notice.drop(s, tenant_id, req.id)  # no send will happen: the destination goes now
     audit.record(
         s,
         tenant_id,

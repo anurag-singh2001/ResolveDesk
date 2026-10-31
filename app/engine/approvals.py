@@ -188,8 +188,14 @@ def decide(
     decision: str,
     now: datetime,
     note: str | None = None,
+    *,
+    self_approved: str | None = None,
 ) -> Approval:
-    """A staff member approves or rejects a proposal in their scope."""
+    """A staff member approves or rejects a proposal in their scope.
+
+    `self_approved` is for app/engine/switch.py only: it names the basis ("downgrade" or
+    "owner_override") on which the proposal's own author may approve it. It skips only the
+    four-eyes check; scope, limits and eligibility still apply, and the audit event says so."""
     if decision not in ("approved", "rejected"):
         raise ValueError("decision must be approved or rejected")
     proposal = scoped_proposal(session, ctx, proposal_id)
@@ -198,7 +204,7 @@ def decide(
     lock_case(session, proposal.case_id)
     if is_superseded(session, proposal.id):
         raise AlreadyDecided("this proposal was superseded by another remedy")
-    if decision == "approved" and proposal.proposed_by == ctx.user_id:
+    if decision == "approved" and proposal.proposed_by == ctx.user_id and not self_approved:
         # Four eyes: whoever proposed a remedy cannot approve it (any path). Rejecting your own
         # proposal stays allowed: it is a withdrawal, not a payout.
         raise Forbidden("you proposed this remedy, so someone else must approve it")
@@ -231,7 +237,8 @@ def decide(
         event=f"approval.{decision}",
         entity_type="proposal",
         entity_id=proposal.id,
-        payload={"checks": result.checks, "note": note},
+        payload={"checks": result.checks, "note": note}
+        | ({"self_approved": True, "self_approval_basis": self_approved} if self_approved else {}),
     )
     case = session.get(Case, proposal.case_id)
     if case is not None and case.status in DECIDABLE_CASE_STATUSES:

@@ -79,7 +79,7 @@ def test_info_numbers_come_from_settings_and_code(api, app_engine, tid, people):
         settings = effective_settings(s)
     body = _info(api, auth)
     assert body["target_days"] == data_held.target_days(settings)
-    assert body["legal_ceiling_days"] == data_held.LEGAL_CEILING_DAYS == 90
+    assert "legal_ceiling_days" not in body and "legal limit" not in body["timing"].lower()
     records = next(k for k in body["keep"] if k["key"] == "records")
     assert str(settings["payment_retention_years"]) in records["reason"]
     assert records["provisional"] is True and body["provisional_label"]
@@ -154,7 +154,7 @@ def test_request_shows_stage_dates_and_contact(api, app_engine, tid, made, peopl
     received = datetime.fromisoformat(req["received_at"])
     days = data_held.target_days(settings)
     assert datetime.fromisoformat(req["expected_by"]) == received + timedelta(days=days)
-    assert datetime.fromisoformat(req["legal_ceiling_by"]) == received + timedelta(days=90)
+    assert "legal_ceiling_by" not in req and "legal" not in req["expected_text"].lower()
     assert req["can_withdraw"] is True and req["reason_code"] is None
     assert "Nothing has been erased" in req["stage_text"]
     assert req["contact"]["email"] == settings["privacy_contact_email"]
@@ -377,7 +377,7 @@ def test_no_date_is_shown_that_a_deferral_will_not_meet():
         created_at=now,
     )
     body = erasure_info.view(row, {}, "en")
-    assert body["expected_by"] is None and body["legal_ceiling_by"] is None
+    assert body["expected_by"] is None
     assert body["expected_text"] is None
     assert (now + timedelta(days=200)).date().strftime("%Y") in body["stage_text"]
     row.deferred_until = now + timedelta(days=5)  # inside the target: the dates stay

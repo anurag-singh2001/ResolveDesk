@@ -21,7 +21,7 @@ from typing import Any
 
 from app.core.i18n import format_date, t
 from app.core.models import DataRequest
-from app.engine import data_held
+from app.engine import data_held, erasure_notice
 from app.engine import data_rights as privacy
 
 REMOVE = ("name", "contact", "messages", "profile", "login", "offers")
@@ -38,8 +38,28 @@ STAGE = {
 CAN_WITHDRAW = ("pending_approval", "deferred")
 
 
-def info(settings: dict[str, Any], lang: str) -> dict[str, Any]:
-    """The explanation shown before asking: the three lists, the timing and the contact."""
+def _notice_block(channels: list[str], lang: str) -> dict[str, Any]:
+    """Says, before the customer confirms, where the one completion message will go (or that
+    there is nowhere to send it), and that the destination is kept 7 days only for that."""
+    text = (
+        t("erase.notice.none", lang)
+        if not channels
+        else t("erase.notice.sent_to", lang, days=erasure_notice.TTL.days)
+    )
+    return {
+        "channels": channels,
+        "default": channels[0] if channels else None,
+        "labels": {c: t(f"erase.notice.{c}", lang) for c in channels},
+        "text": text,
+        "choose": t("erase.notice.choose", lang),
+    }
+
+
+def info(
+    settings: dict[str, Any], lang: str, channels: list[str] | tuple[str, ...] = ()
+) -> dict[str, Any]:
+    """The explanation shown before asking: the three lists, the timing and the contact.
+    `channels` are the destinations the signed-in customer has on file (phone, email)."""
     years = data_held._years(settings)
     days = data_held.target_days(settings)
     provisional = not data_held.RETENTION_CONFIRMED
@@ -66,9 +86,8 @@ def info(settings: dict[str, Any], lang: str) -> dict[str, Any]:
         "keep": keep,
         "wait": wait,
         "provisional_label": t("held.provisional", lang) if provisional else None,
-        "timing": t("held.contact.target", lang, days=days, ceiling=data_held.LEGAL_CEILING_DAYS),
+        "timing": t("held.contact.target", lang, days=days),
         "target_days": days,
-        "legal_ceiling_days": data_held.LEGAL_CEILING_DAYS,
         "contact": data_held.contact(settings, lang),
         "buttons": {
             "request": t("erase.btn.request", lang),
@@ -81,17 +100,16 @@ def info(settings: dict[str, Any], lang: str) -> dict[str, Any]:
             "body": t("erase.confirm.body", lang),
         },
         "status_title": t("erase.status.title", lang),
+        "completion_notice": _notice_block(list(channels), lang),
     }
 
 
 def view(req: DataRequest, settings: dict[str, Any], lang: str) -> dict:
     """One request as the customer sees it. Dates: received (created), expected-by (received +
-    the tenant target) and the legal ceiling (received + 90 days, a code constant)."""
+    the tenant target). No legal deadline is stated (owner decision P2)."""
     stage = STAGE[req.status]
     days = data_held.target_days(settings)
-    ceiling = data_held.LEGAL_CEILING_DAYS
     expected = req.created_at + timedelta(days=days)
-    legal = req.created_at + timedelta(days=ceiling)
     reason = privacy.reason_text(req.reason_code, req.deferred_until)
     text = t(f"erase.stage.{stage}.text", lang, date="")
     if stage == "deferred" and req.reason_code in privacy.REASONS:
@@ -118,12 +136,10 @@ def view(req: DataRequest, settings: dict[str, Any], lang: str) -> dict:
         ),
         # Dates are only promised while the request is open.
         "expected_by": expected if promise else None,
-        "legal_ceiling_by": legal if promise else None,
         "expected_text": t(
             "erase.expected_by",
             lang,
             date=format_date(expected.date(), lang),
-            ceiling=format_date(legal.date(), lang),
         )
         if promise
         else None,

@@ -94,6 +94,20 @@ def fair_use(
     return FairUse(int(session.scalar(query)), settings["fair_use_max_grants_30d"])
 
 
+# Always delivery apps, whatever a tenant sets: a setting can add sources but never remove these
+# (both tenants' policies say these apps refund their own orders).
+AGGREGATOR_SOURCES_FLOOR = frozenset({"swiggy", "zomato"})
+
+
+def is_aggregator_order(order: Transaction, settings: dict) -> bool:
+    """Placed through a third-party delivery app. The channel is the order's `source`; the
+    sources that count are the code floor plus the setting `aggregator_order_sources`, compared
+    case-insensitively, so an override can add a delivery app but cannot hide swiggy or zomato."""
+    configured = settings.get("aggregator_order_sources") or []
+    names = AGGREGATOR_SOURCES_FLOOR | {str(x).strip().lower() for x in configured}
+    return str(order.source or "").strip().lower() in names
+
+
 def order_facts(
     session: Session,
     transaction_id: uuid.UUID,
@@ -107,10 +121,13 @@ def order_facts(
     order = session.scalars(query.with_for_update() if lock else query).one_or_none()
     if order is None:
         raise LookupError("order not found")
+    settings = effective_settings(session, brand_id=order.brand_id, location_id=order.location_id)
+    if is_aggregator_order(order, settings):
+        # The delivery app took the payment and refunds it (both tenants' policies). Every
+        # refund check and option reads this one setting, so none of them can offer a refund.
+        settings = {**settings, "refund_channel": "aggregator_only"}
     facts = Facts(
-        settings=effective_settings(
-            session, brand_id=order.brand_id, location_id=order.location_id
-        ),
+        settings=settings,
         order_total_paise=order.total_paise,
         refundable_paise=refundable_paise(session, order.id, exclude_proposal),
     )

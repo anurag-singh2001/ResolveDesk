@@ -28,9 +28,11 @@ from app.core.models import (
     Verification,
 )
 from app.core.money import format_inr
+from app.core.settings_resolver import effective_settings
 from app.core.tenancy import load_context, tenant_id_for
 from app.engine import lifecycle
 from app.engine.approvals import decide
+from app.engine.privacy import close_text
 from app.engine.proposals import create_proposal
 from app.engine.staff_actions import CLOSE_REASONS, NOTE_MAX_LENGTH, TEMPLATE_IDS
 from tests.helpers import login
@@ -345,9 +347,30 @@ def test_close_with_each_reason_is_stored_audited_and_shown_to_the_customer(worl
             assert s.scalar(select(Ticket.status).where(Ticket.case_id == cid)) == "closed"
         cust = _customer_headers(w, cid)
         tl = w["api"].get(f"/cases/{cid}/timeline", headers=cust).json()
-        assert tl[-1]["text"] == t(f"close.{reason}", "hi")
+        with tenant_session(w["tid"], w["engine"]) as s:
+            expected = close_text(reason, effective_settings(s), "hi")
+        assert tl[-1]["text"] == expected
         out = w["api"].get(f"/cases/{cid}", headers=cust).json()
-        assert out["stage"] == "closed" and out["message"] == t(f"close.{reason}", "hi")
+        assert out["stage"] == "closed" and out["message"] == expected
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_no_remedy_close_text_gives_a_reason_the_contact_and_the_helpline(lang):
+    """M2: no legal-sounding 'remedy', no 'compensation' word in Hindi; a way to contest."""
+    settings = {
+        "privacy_contact_name": "Desk",
+        "privacy_contact_email": "desk@example.test",
+        "grievance_target_days": 30,
+    }
+    text = close_text("no_remedy", settings, lang)
+    assert "Desk (desk@example.test)" in text and "1915" in text
+    assert "consumerhelpline.gov.in" in text and "30" in text and "{" not in text
+    assert "remedy" not in text.lower() and "muaavza" not in text and "मुआवज़ा" not in text
+    # With no contact set the sentence drops that clause instead of pointing at nobody.
+    bare = close_text(
+        "no_remedy", {**settings, "privacy_contact_email": "", "privacy_contact_name": ""}, lang
+    )
+    assert "1915" in bare and "{" not in bare and "desk@" not in bare
 
 
 def test_closed_case_refuses_reply_and_second_close(world):

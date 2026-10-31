@@ -1,6 +1,7 @@
 """Deterministic eligibility from Facts, against each tenant's real effective settings."""
 
 import uuid
+from types import SimpleNamespace
 
 import pytest
 
@@ -10,6 +11,8 @@ from app.core.settings_resolver import resolve
 from app.core.tenancy import TenantContext
 from app.core.tenant_config import load_tenant
 from app.core.verticals import load_pack
+from app.engine import resolver
+from app.engine.eligibility import is_aggregator_order
 
 CTX = TenantContext(uuid.uuid4(), uuid.uuid4(), uuid.uuid4(), "hq_owner", frozenset(), frozenset())
 TOTAL = 69_800
@@ -120,3 +123,31 @@ def test_audit_redaction_is_case_insensitive_and_covers_free_text():
         "amount_paise": 100,
         "nested": [{"display_name": "[redacted]"}],
     }
+
+
+@pytest.mark.parametrize("source", ["swiggy", "SWIGGY", " Zomato "])
+def test_an_override_cannot_hide_a_delivery_app(settings, source):
+    order = SimpleNamespace(source=source)
+    for hostile in ([], None, ["only_other"]):
+        assert is_aggregator_order(order, {**settings, "aggregator_order_sources": hostile})
+
+
+def test_a_setting_can_add_a_delivery_app_and_own_channels_stay_own(settings):
+    extra = {**settings, "aggregator_order_sources": ["Dunzo"]}
+    assert is_aggregator_order(SimpleNamespace(source="dunzo"), extra)
+    assert not is_aggregator_order(SimpleNamespace(source="pickup_app"), extra)
+    assert not is_aggregator_order(SimpleNamespace(source=None), extra)
+
+
+@pytest.mark.parametrize("option", ["late_tiers", "refund_missing"])
+def test_no_rule_returns_a_refund_for_an_order_the_delivery_app_refunds(
+    settings, monkeypatch, option
+):
+    """Late tiers and missing items go through the same guard as the refund option."""
+    refund = resolver.Remedy("refund", {"amount_paise": 100}, "x", "proposed")
+    monkeypatch.setattr(resolver, "_apply_rule", lambda *a, **k: refund)
+    own = SimpleNamespace(settings={**settings, "refund_channel": "tenant_gateway"})
+    assert resolver._apply(None, None, own, "c", option).action == "refund"
+    app = SimpleNamespace(settings={**settings, "refund_channel": "aggregator_only"})
+    got = resolver._apply(None, None, app, "c", option)
+    assert got.action is None and got.outcome == "escalate"

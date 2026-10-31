@@ -43,6 +43,7 @@ from app.core.tenant_config import load_tenant, tenant_dirs
 from app.engine.agent_runner import resume_after_decision, resume_info
 from app.engine.ai_rerun import retry_ai_failures, unfinished_request
 from app.engine.dispatch import EXECUTORS, reconcile, run_approved
+from app.engine.erasure_notice import sweep_notices
 from app.engine.executor import TERMINAL
 from app.engine.graph import AI_UNAVAILABLE, NO_PAUSED_WORKFLOW, RUN_TTL, prune_finished
 from app.engine.lifecycle import escalate, verify_executed
@@ -66,6 +67,7 @@ class SweepReport:
     verified: list[str] = field(default_factory=list)
     ai_reruns: list[str] = field(default_factory=list)
     owners_assigned: list[str] = field(default_factory=list)
+    erasure_notices: list[str] = field(default_factory=list)
     pruned_threads: int = 0
     events_published: int = 0
 
@@ -167,6 +169,10 @@ def sweep_tenant(
         report.owners_assigned = _backfill_owners(engine, tenant_id, now)
     except Exception:
         log.exception("could not backfill case owners for tenant %s", tenant_id)
+    try:  # erasure completion messages: send or retry, and drop destinations past 7 days
+        report.erasure_notices = sweep_notices(engine, tenant_id, now)
+    except Exception:
+        log.exception("could not send erasure notices for tenant %s", tenant_id)
     # Housekeeping, each best effort: one failing must not stop the other or hide the work
     # above. Finished runs' checkpoints go; customer updates whose subscriber failed retry.
     try:

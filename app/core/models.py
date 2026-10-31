@@ -511,6 +511,7 @@ class DataRequest(TenantOwned, Base):
 
     __tablename__ = "data_requests"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_data_requests_tenant_id"),
         _fk("customer_id", "customers", ondelete="CASCADE"),
         # One active request per customer, enforced by the database.
         Index(
@@ -534,6 +535,34 @@ class DataRequest(TenantOwned, Base):
     deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What happened to the one completion message (migration 0032): sent | failed | unknown |
+    # expired | none (nowhere to send). NULL until the message reaches a final state.
+    completion_message: Mapped[str | None] = mapped_column(String(16))
+
+
+class ErasureNotice(TenantOwned, Base):
+    """Where to send the one "your erasure is done" message (migration 0032, owner decision P4).
+
+    The customer's contact is wiped when the erasure runs, so the destination is copied here at
+    request time, for this one purpose, and the row is deleted as soon as the send reaches a
+    final state or `expires_at` (7 days after the request) passes, whichever is first. It is
+    the only place a destination outlives the erasure. Nothing else about the customer is
+    copied, and the destination is never logged or audited."""
+
+    __tablename__ = "erasure_notices"
+    __table_args__ = (
+        _fk("request_id", "data_requests", ondelete="CASCADE"),
+        UniqueConstraint("tenant_id", "request_id", name="uq_erasure_notices_request"),
+        CheckConstraint("channel IN ('phone', 'email')", name="ck_erasure_notices_channel"),
+        CheckConstraint("state IN ('queued', 'sending')", name="ck_erasure_notices_state"),
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel: Mapped[str] = mapped_column(String(8), nullable=False)
+    destination: Mapped[str] = mapped_column(String(320), nullable=False)
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    state: Mapped[str] = mapped_column(String(8), nullable=False, server_default="queued")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 # --- Engine (PROJECT.md section 7 "Engine", "Money", "Trust") ---------------------------

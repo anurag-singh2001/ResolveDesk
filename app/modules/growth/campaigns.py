@@ -264,10 +264,23 @@ def valid_approvals(
     ]
 
 
-def dual_approved(valid: list[CampaignApproval]) -> bool:
-    """Two different staff users, at least one hq_owner."""
+def approvers_needed(session: Session, campaign: Campaign) -> int:
+    """Two approvers for every campaign by default (owner decision M4, 2026-10-31). The setting
+    `campaign_dual_approval_min_paise` (default 0) is the budget from which two are needed; a
+    cheaper campaign then needs one hq_owner. A missing or bad value means two."""
+    # Tenant level only (no brand or location argument): a lower level cannot loosen it, and
+    # the setting is a `limit`, so no override can raise it above the default 0 anyway.
+    floor = effective_settings(session).get("campaign_dual_approval_min_paise", 0)
+    if type(floor) is not int or floor < 0:
+        return 2
+    return 2 if campaign.budget_paise >= floor else 1
+
+
+def dual_approved(valid: list[CampaignApproval], needed: int = 2) -> bool:
+    """`needed` different staff users (2 unless the tenant raised the threshold), at least one
+    of them an hq_owner."""
     users = {a.decided_by for a in valid}
-    return len(users) >= 2 and any(a.role == "hq_owner" for a in valid)
+    return len(users) >= needed and any(a.role == "hq_owner" for a in valid)
 
 
 def approvals_of(session: Session, campaign: Campaign) -> list[CampaignApproval]:
@@ -302,6 +315,10 @@ def decide(
         raise Expired("campaign proposal has expired")
     if not hash_is_intact(session, campaign):
         raise NotEligible("campaign no longer matches its payload hash")
+    if decision == "approved" and campaign.created_by == ctx.user_id:
+        # Four eyes: whoever proposed a campaign cannot approve it (rejecting it stays allowed:
+        # that is a withdrawal, not a send).
+        raise Forbidden("you proposed this campaign, so someone else must approve it")
     approval = CampaignApproval(
         id=uuid.uuid4(),
         tenant_id=ctx.tenant_id,
@@ -331,7 +348,10 @@ def decide(
     if decision == "rejected":
         campaign.status = "rejected"
         return approval, False
-    ready = dual_approved(valid_approvals(campaign, approvals_of(session, campaign), now))
+    ready = dual_approved(
+        valid_approvals(campaign, approvals_of(session, campaign), now),
+        approvers_needed(session, campaign),
+    )
     if ready:
         campaign.status = "approved"
     return approval, ready

@@ -17,7 +17,7 @@ actions: [refund, free_item_voucher, loyalty_credit, send_status_update]
 # Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
 # `{options: [...]}` lets the customer choose between remedies (S7.9). A refund option is only a
 # request: a team member decides on it (the manager-decides policy for a wrong item), and it is
-# never auto-approved. OWNER TO CONFIRM that this option fits the business's policy.
+# never auto-approved. Owner approved 2026-10-31 (S8.8); hidden on aggregator-placed orders.
 remedies: {wrong_order: {options: [voucher, {refund_percent: 50}]}, missing_items: refund_missing, quality: voucher}
 metrics: [wrong_order_rate, repeat_rate, ticket_rate, avg_ticket_paise]
 features:
@@ -37,11 +37,11 @@ settings:
   # one-year floor), so a lower value is ignored.
   support_retention_days: {kind: value, default: 365}
   # "What we hold" page (S8.5a, provisional). Years that payment, order and refund records are
-  # kept (a tenant may only lower it). The legal ceiling, the "provisional" label and the
+  # kept, in financial years (a tenant may only lower it; 8 per owner decision 2026-10-31). The "provisional" label and the
   # confirmed "we do not keep" claims live in code (app/engine/data_held.py) so a tenant
   # override cannot change them. data_not_kept only NARROWS what code has confirmed.
-  payment_retention_years: {kind: limit, default: 7}
-  data_not_kept: {kind: value, default: []}
+  payment_retention_years: {kind: limit, default: 8}
+  data_not_kept: {kind: value, default: [card_numbers]}
   # DPDP s.11 access (S5.2, provisional): who else processes a customer's data. Shown in the
   # customer data export. A tenant can replace the list if its provider set differs.
   data_processors:
@@ -66,6 +66,16 @@ settings:
   # share of the audience held out unmessaged so lift can be measured.
   growth_campaign_budget_paise: {kind: limit, default: 1000000}
   growth_holdout_percent: {kind: value, default: 10}
+  # The most (paise) an hq_owner may approve themselves after switching a remedy to a higher
+  # amount, with a written reason (owner decision M3, Rs 500). Lower only.
+  switch_self_approve_max_paise: {kind: limit, default: 50000}
+  # Campaigns need two approvers (one an hq_owner) when their budget is at or above this; 0 =
+  # every campaign (owner decision M4, 2026-10-31). A limit with default 0: no override can raise
+  # it, so every campaign needs two approvers. Read at tenant level only.
+  campaign_dual_approval_min_paise: {kind: limit, default: 0}
+  # Order sources (transactions.source) placed through a third-party delivery app. The app
+  # refunds those orders, so the refund option is hidden and a refund proposal is refused.
+  aggregator_order_sources: {kind: value, default: [swiggy, zomato]}
   refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
   late_delivery_tiers:
     kind: value

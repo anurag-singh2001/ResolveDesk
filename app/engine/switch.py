@@ -10,9 +10,15 @@ partial refund, a smaller voucher). Instead of rejecting and starting over, they
 - the new proposal is made through `create_proposal` and `action.validate`, the same code
   checks as any proposal (caps, voucher <= order total, refund limits, needs_hq). It has its
   own payload hash, so an approval of the old hash can never execute it (hard rule 6);
-- the new proposal gets its own approval. The approver may approve it in the same step only
-  when `approvals.decide` would let them (scope and limits, unchanged); otherwise it waits
-  for the right approver (e.g. an hq_owner for an amount above the escalation limit);
+- the switcher is the AUTHOR of the new proposal (`proposed_by`), so the four-eyes rule in
+  `approvals.decide` applies to them: they cannot approve it. Two narrow exceptions, both
+  audited with `self_approved: true` (owner decision M3, 2026-10-31):
+    * a downgrade (a smaller amount of the same action, or a refund switched to a voucher not
+      worth more): it cannot cost the business more than what was already proposed;
+    * an hq_owner override, up to the setting `switch_self_approve_max_paise` (Rs 500), with a
+      written reason, for a back office with no second person.
+  Anything else waits for a different eligible person ("second_person") or, above the
+  caller's escalation limit, for an hq_owner. Staff proposals are never auto-approved;
 - everything runs under the case row lock that `approvals.decide` also takes, so approving the
   old proposal and switching it at the same moment have exactly one winner.
 
@@ -33,6 +39,7 @@ from app.core.settings_resolver import tenant_pack
 from app.core.tenancy import TenantContext
 from app.engine.approvals import (
     AlreadyDecided,
+    Forbidden,
     NotEligible,
     NotFound,
     _order_id,
@@ -65,8 +72,30 @@ class SwitchResult:
     old_proposal_id: uuid.UUID
     proposal: ActionProposal
     approval: Approval | None
-    waiting_for: str | None  # "hq_owner" when the caller may create it but not approve it
+    waiting_for: str | None  # "hq_owner" (above the caller's limit) or "second_person"
     checks: dict
+    self_approved: str | None = None  # "downgrade" | "owner_override" when the author approved
+
+
+def is_downgrade(old: ActionProposal, new: ActionProposal, caller: uuid.UUID) -> bool:
+    """The new remedy cannot cost more than the old one: the same action for a smaller amount,
+    or a refund (cash) switched to a voucher worth no more. Anything else is an upgrade.
+
+    The baseline must be somebody else's proposal. If the caller authored `old` (their own
+    earlier switch, or a proposal they made), cutting it proves nothing: a person could raise
+    an amount, wait, then "downgrade" their own raise and approve it alone. A proposal's
+    author is never the engine's None, so `old` is the nearest proposal in the chain not
+    authored by the caller exactly when `old.proposed_by != caller`; otherwise there is none
+    and this is not a downgrade."""
+    if old.proposed_by == caller:
+        return False
+    if old.amount_paise is None or new.amount_paise is None:
+        return False
+    if new.action == old.action:
+        return new.amount_paise < old.amount_paise
+    return (
+        old.action == "refund" and new.action != "refund" and new.amount_paise <= old.amount_paise
+    )
 
 
 def _is_switchable_shape(action_cls) -> bool:
@@ -138,11 +167,21 @@ def switch_remedy(
     approve: bool,
     note: str,
     now: datetime,
+    self_approve_reason: str | None = None,
 ) -> SwitchResult:
     """Raises NotFound (404: out of scope, other tenant), AlreadyDecided (409: not pending),
-    NotEligible (422: not an allowed remedy, amount outside the rule's range, or a code check
+    Forbidden (403: an override asked for by someone who is not an hq_owner), NotEligible (422:
+    not an allowed remedy, amount outside the rule's range, a missing reason, or a code check
     failed)."""
     old, case = _pending_proposal(session, ctx, proposal_id)
+    override = (self_approve_reason or "").strip()[:SWITCH_REASON_MAX]
+    if self_approve_reason is not None:
+        if not override:
+            raise NotEligible(["say why you are approving it yourself (it is audited)"])
+        if not approve:
+            raise NotEligible(["approving it yourself needs approve to be true"])
+        if ctx.role != "hq_owner":
+            raise Forbidden("only an hq_owner may approve a switched remedy themselves")
     options = _ranges(session, old, case)
     if action not in options:
         raise NotEligible([f"{action} is not an allowed remedy for this case"])
@@ -174,8 +213,9 @@ def switch_remedy(
         new = create_proposal(
             session, ctx.tenant_id, case_id=case.id, action=action, params=params, reason=reason,
             basis=[{"code": "approver_set", "params": {}}],
+            proposed_by=ctx.user_id,  # the switcher authors it: four-eyes applies to them
         )  # fmt: skip
-        _, _, _, result = evaluate_proposal(session, ctx, new, now)
+        _, _, facts, result = evaluate_proposal(session, ctx, new, now)
         if not result.ok:
             raise NotEligible(result.errors)
     except ProposalError as exc:
@@ -185,6 +225,21 @@ def switch_remedy(
         nested.rollback()
         raise
     nested.commit()
+
+    # Who may approve the new proposal in this same step. Its author (the caller) may not,
+    # except for a downgrade or a small hq_owner override; otherwise it waits.
+    needs_hq_hand = bool(result.checks.get("needs_hq")) and ctx.role != "hq_owner"
+    self_basis, waiting = None, None
+    if approve:
+        limit = facts.settings.get("switch_self_approve_max_paise", 0)
+        if needs_hq_hand:
+            waiting = "hq_owner"  # created, not approved: the limit check stays what it was
+        elif is_downgrade(old, new, ctx.user_id):
+            self_basis = "downgrade"
+        elif override and new.amount_paise is not None and new.amount_paise <= limit:
+            self_basis = "owner_override"
+        else:
+            waiting = "second_person"  # an override above the limit also lands here, never silently
 
     session.add(
         ProposalSupersession(
@@ -214,6 +269,10 @@ def switch_remedy(
             # Not called "note": audit redacts that key, and the why is the point of this event.
             "switch_reason": why or None,
             "checks": result.checks,
+            "self_approved": self_basis is not None,
+            "self_approval_basis": self_basis,
+            "self_approval_requested": bool(override),
+            "override_reason": override or None if self_basis == "owner_override" else None,
         },
     )
     events.emit(
@@ -223,16 +282,16 @@ def switch_remedy(
         case.id,
         {"proposal_id": str(new.id), "auto_approved": False, "supersedes": str(old.id)},
     )
-    if result.checks.get("needs_hq") and ctx.role != "hq_owner":
+    if needs_hq_hand:
         _hand_to_hq(session, ctx, case, now)  # an hq_owner deciding it needs no hand-over
 
-    approval, waiting = None, None
-    if approve:
-        if result.checks.get("needs_hq") and ctx.role != "hq_owner":
-            waiting = "hq_owner"  # created, not approved: the limit check stays what it was
-        else:
-            approval = decide(session, ctx, new.id, "approved", now, why or None)
-    return SwitchResult(old.id, new, approval, waiting, result.checks)
+    approval = None
+    if self_basis is not None:
+        reason_text = override if self_basis == "owner_override" else why
+        approval = decide(
+            session, ctx, new.id, "approved", now, reason_text or None, self_approved=self_basis
+        )
+    return SwitchResult(old.id, new, approval, waiting, result.checks, self_basis)
 
 
 def _hand_to_hq(session: Session, ctx: TenantContext, case, now: datetime) -> None:

@@ -375,3 +375,36 @@ def test_a_pick_without_a_category_in_agents_mode_is_422(api, ctx, app_engine, m
     assert resp.status_code == 422, resp.text
     with tenant_session(ctx["tid"], app_engine) as s:
         assert s.scalar(select(Case.id).where(Case.transaction_id == ctx["order_id"])) is None
+
+
+def test_the_refund_option_is_hidden_on_an_order_placed_through_a_delivery_app(
+    api, ctx, app_engine, maint_engine
+):
+    """M1: the delivery app refunds those orders, so only the voucher is offered, a stored
+    refund pick falls back to the voucher, and a refund proposal is refused by the same rule."""
+    with tenant_session(ctx["tid"], app_engine) as s:
+        order = s.get(Transaction, ctx["order_id"])
+        original = order.source
+        _, facts = order_facts(s, order.id)
+        aggregator = facts.settings["aggregator_order_sources"][0]
+        order.source = aggregator
+    try:
+        body = _options(api, ctx).json()
+        assert [o["kind"] for o in body["options"]] == ["voucher"]
+        assert body["choice_required"] is False
+        with tenant_session(ctx["tid"], app_engine) as s:
+            order = s.get(Transaction, ctx["order_id"])
+            _, facts = order_facts(s, order.id)
+            assert facts.settings["refund_channel"] == "aggregator_only"
+            assert [o.code for o in remedy_options(s, order, facts, ctx["multi"])] == ["voucher"]
+            action = enabled_actions(tenant_pack(s).actions)["refund"]()
+            from app.actions.refund import RefundInput
+
+            inp = RefundInput(transaction_id=order.id, amount_paise=100, reason="x")
+            assert not action.validate(None, inp, facts).ok
+    finally:
+        with tenant_session(ctx["tid"], app_engine) as s:
+            s.get(Transaction, ctx["order_id"]).source = original
+    # Back on an own-channel order the refund request is offered again, voucher first.
+    again = _options(api, ctx).json()
+    assert [o["kind"] for o in again["options"]] == ["voucher", "refund"]
