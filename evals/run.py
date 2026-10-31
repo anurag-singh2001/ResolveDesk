@@ -11,6 +11,7 @@ errors; scores below target don't fail the run, they are what is being measured.
 """
 
 import argparse
+import json
 import os
 import sys
 from datetime import UTC, datetime
@@ -71,6 +72,41 @@ def reseeds_default_db() -> bool:
     return _db_name(default) is not None and _db_name(default) == _db_name(effective)
 
 
+def refuses_scratch_check() -> str | None:
+    """--require-scratch: a reason to refuse, or None. The effective DATABASE_URL must be a
+    well-formed url that is not the same host+port+database as any protected target: the
+    dotenv file's app/migration/maint/platform urls, plus those the scenario lab lists in
+    EVAL_PROTECTED_DB_TARGETS. With no protected target known at all it refuses (fail closed).
+    Applies with --no-seed too."""
+    import json
+
+    from dotenv import dotenv_values
+
+    from app.core.db_targets import BadDbUrl, db_target, safe_target
+
+    try:
+        effective = db_target(os.environ.get("DATABASE_URL") or "")
+    except BadDbUrl as exc:
+        return f"DATABASE_URL is not usable ({exc})"
+    protected = []
+    dot = dotenv_values(os.environ.get("ENV_FILE", ".env"))
+    for key in ("DATABASE_URL", "MIGRATION_DATABASE_URL", "MAINT_DATABASE_URL",
+                "PLATFORM_DATABASE_URL"):  # fmt: skip
+        try:
+            if (t := safe_target(dot.get(key))) is not None:
+                protected.append(t)
+        except BadDbUrl:
+            continue
+    try:
+        listed = json.loads(os.environ.get("EVAL_PROTECTED_DB_TARGETS") or "[]")
+        protected += [(str(h), int(p), str(d)) for h, p, d in listed]
+    except (ValueError, TypeError):
+        return "EVAL_PROTECTED_DB_TARGETS is malformed"
+    if not protected:
+        return "no protected database is known to compare with"
+    return "DATABASE_URL is an app database" if effective in protected else None
+
+
 def main(argv: list[str]) -> int:
     if hasattr(sys.stdout, "reconfigure"):  # Windows consoles default to cp1252 (no ₹)
         sys.stdout.reconfigure(encoding="utf-8")
@@ -86,9 +122,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--scale", type=float, default=0.25, help="history scale for the reseed")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--only", help="comma-separated scenario ids")
+    ap.add_argument("--report-dir", help="write the report (md + json) here, not evals/reports")
+    ap.add_argument("--require-scratch", action="store_true",
+                    help="refuse unless DATABASE_URL is a different database from every "
+                    "app target (also with --no-seed)")  # fmt: skip
     ap.add_argument("--pause", type=float, default=0.0, help="seconds between cases")
     args = ap.parse_args(argv)
 
+    if args.require_scratch and (why := refuses_scratch_check()):
+        print(f"refusing to run: {why}", file=sys.stderr)
+        return 2
     if not args.no_seed and not args.i_know and reseeds_default_db():
         print(
             "refusing to reseed: DATABASE_URL points at the same database as the dotenv "
@@ -146,9 +189,21 @@ def main(argv: list[str]) -> int:
         print("\nFailing scenarios:")
         for f in failures:
             print(f"  - {f}")
-    REPORTS.mkdir(exist_ok=True)
-    path = REPORTS / f"eval-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.md"
+    out_dir = Path(args.report_dir) if args.report_dir else REPORTS
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / f"eval-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.md"
     path.write_text(markdown(rows, failures, meta), encoding="utf-8")
+    # Machine-readable twin for the scenario lab's comparison: pass/fail per scenario.
+    summary = {
+        "meta": meta,
+        "rows": [{"tenant": t, "pipeline": p, "metrics": m} for t, p, m in rows],
+        "scenarios": [
+            {"id": r.scenario.id, "tenant": r.scenario.tenant, "pipeline": r.pipeline,
+             "passed": score(r).passed}
+            for r in all_results
+        ],
+    }  # fmt: skip
+    path.with_suffix(".json").write_text(json.dumps(summary), encoding="utf-8")
     print(f"\nreport: {path}")
     broken = [r for r in all_results if score(r).over_ceiling or r.outcome == "error"]
     return 1 if broken else 0

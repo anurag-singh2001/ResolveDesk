@@ -168,15 +168,6 @@ describe("platform portal", () => {
     expect(screen.getAllByText("100.0%").length).toBeGreaterThan(0);
   });
 
-  it("shows a plain coming-soon state on the scenario lab", async () => {
-    sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
-    const { calls } = mockFetch(data);
-    renderApp("/platform/lab");
-    expect(await screen.findByRole("heading", { name: "Scenario lab" })).toBeInTheDocument();
-    expect(screen.getByText("Coming soon")).toBeInTheDocument();
-    expect(calls.length).toBe(0);
-  });
-
   it("has no business navigation and a nav of the five portal pages", async () => {
     sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
     mockFetch(data);

@@ -41,6 +41,8 @@ interface PlatformValue {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => void;
   get: <T>(path: string) => Promise<T>;
+  /** POST or PUT a JSON body (scenario lab only). */
+  send: <T>(method: "POST" | "PUT", path: string, body: unknown) => Promise<T>;
 }
 
 const Ctx = createContext<PlatformValue | null>(null);
@@ -116,12 +118,13 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     const id = window.setTimeout(() => clear("Your session has ended. Please sign in again."), Math.max(0, Math.min(ms, 2 ** 31 - 1)));
     return () => window.clearTimeout(id);
   }, [token, expiresAt, clear]);
-  const get = useCallback(
-    async <T,>(path: string): Promise<T> => {
+  const request = useCallback(
+    async <T,>(path: string, init: RequestInit): Promise<T> => {
       if (!token) throw new ApiError(401, "not authenticated");
       try {
         return (await call(`/platform${path}`, {
-          headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
+          ...init,
+          headers: { Accept: "application/json", ...(init.headers as Record<string, string>), Authorization: `Bearer ${token}` },
         })) as T;
       } catch (err) {
         if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
@@ -136,10 +139,16 @@ export function PlatformProvider({ children }: { children: ReactNode }) {
     },
     [token, clear],
   );
+  const get = useCallback(<T,>(path: string) => request<T>(path, {}), [request]);
+  const send = useCallback(
+    <T,>(method: "POST" | "PUT", path: string, body: unknown) =>
+      request<T>(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    [request],
+  );
 
   const value = useMemo<PlatformValue>(
-    () => ({ signedIn: token !== null, disabled, notice, signIn, signOut: () => clear(null), get }),
-    [token, disabled, notice, signIn, clear, get],
+    () => ({ signedIn: token !== null, disabled, notice, signIn, signOut: () => clear(null), get, send }),
+    [token, disabled, notice, signIn, clear, get, send],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

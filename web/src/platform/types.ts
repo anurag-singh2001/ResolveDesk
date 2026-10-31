@@ -20,3 +20,19 @@ export interface JobRunRow {
   tenant_slug: string; day: string; job: string; status: string; run_count: number;
   finished_count: number; duration_ms_total: number; last_started_at: string | null;
 }
+
+export interface LabScenarioItem { id: string; kind: string; held_out: boolean; message: string }
+export interface LabListing { tenants: string[]; scratch_configured: boolean; scenarios: LabScenarioItem[] }
+export interface LabCompareRow { id: string; pipeline: string; before: string; now: string; change: string }
+export interface LabSummaryRow { tenant: string; pipeline: string; metrics: Record<string, string> }
+export interface LabComparison {
+  last_report: { name: string; when: string } | null;
+  scenarios: LabCompareRow[];
+  new_rows: LabSummaryRow[];
+  last_rows: LabSummaryRow[];
+}
+export interface LabRun {
+  run_id: string; status: "idle" | "running" | "succeeded" | "failed"; tenant: string; ids: string[];
+  pipeline: string; started_at: string | null; finished_at: string | null; message: string;
+  comparison: LabComparison | null;
+}
