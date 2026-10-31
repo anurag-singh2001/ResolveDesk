@@ -25,6 +25,7 @@ from app.core.models import (
     Customer,
     DataRequest,
     DomainEvent,
+    ErasureNotice,
     Execution,
     FeatureFlag,
     Fulfilment,
@@ -154,6 +155,7 @@ def _seed_policy(s, t: SeededTenant) -> None:
 
 def _seed_commerce(s, t: SeededTenant) -> None:
     """One row in every commerce table, so the generic RLS tests cover them too."""
+    request_id = uuid.uuid4()
     now = datetime.now(UTC)
     tid = t.tenant_id
     customer_id, order_id, ticket_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
@@ -229,6 +231,7 @@ def _seed_commerce(s, t: SeededTenant) -> None:
                 notice_version="v1",
             ),
             DataRequest(
+                id=request_id,
                 tenant_id=tid,
                 customer_id=customer_id,
                 kind="erasure",
@@ -237,6 +240,16 @@ def _seed_commerce(s, t: SeededTenant) -> None:
         ]
     )
     s.flush()
+    s.add(
+        ErasureNotice(
+            tenant_id=tid,
+            request_id=request_id,
+            channel="email",
+            destination="seed@example.test",
+            language="en",
+            expires_at=now,
+        )
+    )
     s.add(
         TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
     )

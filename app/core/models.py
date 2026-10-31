@@ -541,7 +541,7 @@ class DataRequest(TenantOwned, Base):
 
 
 class ErasureNotice(TenantOwned, Base):
-    """Where to send the one "your erasure is done" message (migration 0032, owner decision P4).
+    """Where to send the one "your erasure is done" message (migration 0030, owner decision P4).
 
     The customer's contact is wiped when the erasure runs, so the destination is copied here at
     request time, for this one purpose, and the row is deleted as soon as the send reaches a
