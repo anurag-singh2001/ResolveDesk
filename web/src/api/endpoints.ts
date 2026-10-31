@@ -7,6 +7,7 @@ import type {
   ClockState,
   Business,
   Campaign,
+  CalendarResponse,
   Case,
   GrowthSignal,
   BrandSignalsResponse,
@@ -169,6 +170,7 @@ export const api = {
   cohorts: (brandId?: string) =>
     request<CohortsResponse>(`/insights/cohorts${brandId ? `?brand_id=${enc(brandId)}` : ""}`),
   brandSignals: () => request<BrandSignalsResponse>("/growth/brand-signals"),
+  growthCalendar: () => request<CalendarResponse>("/growth/calendar"),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>
