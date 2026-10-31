@@ -34,6 +34,7 @@ from app.core.tenancy import TenantContext, load_context
 from app.engine.approvals import not_superseded
 
 NEEDS_PERSON_STATUSES = ("escalated", "awaiting_approval")
+BACKFILL_BATCH = 200
 
 
 # What the queue shows as the reason. Stored reasons (audit payloads, proposal reasons) can quote
@@ -180,6 +181,8 @@ def backfill_owners(session: Session, tenant_id: uuid.UUID, now: datetime) -> li
         select(Case)
         .where(Case.owner_user_id.is_(None), Case.status.in_(NEEDS_PERSON_STATUSES))
         .order_by(Case.opened_at, Case.id)
+        .limit(BACKFILL_BATCH)  # a big backlog drains over several passes
+        .with_for_update(skip_locked=True)  # a concurrent pass or a person's hand-over wins
     ).all()
     done = []
     for case in cases:

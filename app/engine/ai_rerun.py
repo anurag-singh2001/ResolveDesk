@@ -39,7 +39,7 @@ BACKOFF_BASE = timedelta(minutes=5)  # 5, 10, 20 minutes after the latest escala
 MAX_MESSAGE = 4000  # same cap the graph uses when it re-reads the customer's words
 # Old rows only: "LLM: <class>" reasons a retry can fix; budget/format errors would repeat.
 _TRANSIENT = TRANSIENT_LLM_ERRORS
-_REASON = re.compile(r"^(AI unavailable|LLM): (\w+)$")
+_REASON = re.compile(r"(AI unavailable|LLM): (\w+)")
 
 STARTED, ALREADY_RUNNING, NOT_ELIGIBLE = "started", "already_running", "not_eligible"
 
@@ -58,7 +58,7 @@ def is_ai_failure(payload: dict) -> bool:
     written before the code existed) the reason text."""
     if payload.get("code") == AI_UNAVAILABLE:
         return True
-    m = _REASON.match(payload.get("reason") or "")
+    m = _REASON.fullmatch(payload.get("reason") or "")
     return bool(m) and (m.group(1) == "AI unavailable" or m.group(2) in _TRANSIENT)
 
 
@@ -81,7 +81,7 @@ def rerun_state(s, case: Case) -> RerunState | None:
         return None
     last = escalations[-1]
     reason = last.payload.get("reason") or ""
-    m = _REASON.match(reason)
+    m = _REASON.fullmatch(reason)
     requests = [e for e in events if e.event == "case.ai_rerun_requested"]
     return RerunState(
         error=m.group(2) if m else "unknown",

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
 import { CHANGED_EVENT } from "../api/client";
 import { useAuth } from "../auth/session";
@@ -68,14 +68,20 @@ export function AppShell() {
     const refresh = () => void reloadQueue();
     window.addEventListener(CHANGED_EVENT, refresh);
     window.addEventListener("focus", refresh);
-    const id = window.setInterval(refresh, 30_000);
+    const id = window.setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 30_000);
     return () => {
       window.removeEventListener(CHANGED_EVENT, refresh);
       window.removeEventListener("focus", refresh);
       window.clearInterval(id);
     };
   }, [reloadQueue, me.role]);
+  const firstPath = useRef(pathname);
   useEffect(() => {
+    // The first mount already fetched through useApi; refresh only when the route changes.
+    if (firstPath.current === pathname) return;
+    firstPath.current = pathname;
     if (isStaff(me.role)) void reloadQueue();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pathname]);
