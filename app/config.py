@@ -1,11 +1,12 @@
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import Field, NonNegativeInt, SecretStr, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Provider = Literal["gemini", "groq", "ollama"]
+PricePaise = Annotated[int, Field(ge=0, le=10**9)]
 DEV_JWT_SECRET = "dev-only-change-me-dev-only-change-me"
 
 
@@ -58,7 +59,9 @@ class Settings(BaseSettings):
     # ESTIMATE price table for the usage records (S9.2): "provider/model" -> [input, output]
     # paise per million tokens, integers (hard rule 3). Unlisted models cost 0 (free tiers).
     # Not a bill: check the provider's invoice. Env: LLM_PRICES_PAISE_PER_MILLION='{"a/b":[1,2]}'.
-    llm_prices_paise_per_million: dict[str, tuple[NonNegativeInt, NonNegativeInt]] = {}
+    # Each price is capped (1e9 paise = 10 million rupees per million tokens) so a typo cannot
+    # overflow the bigint cost column.
+    llm_prices_paise_per_million: dict[str, tuple[PricePaise, PricePaise]] = {}
 
     # Dev only: JSON file the mock providers keep their records in, so they survive an API
     # restart. Unset = in memory (tests, default).

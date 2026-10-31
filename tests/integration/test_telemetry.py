@@ -2,7 +2,7 @@
 never any text, and a recording failure never breaks the run or the job."""
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -164,3 +164,46 @@ def test_app_role_cannot_rewrite_usage_or_the_start_of_a_job(app_engine, tid):
             s.execute(text(sql))
     telemetry.finish_job(app_engine, tid, job, "ok", {"n": 1})  # the finish columns are allowed
     assert [r.status for r in rows(app_engine, tid, JobRun)] == ["ok"]
+
+
+def test_next_start_closes_a_stale_running_row_as_abandoned(app_engine, maint_engine, tid):
+    old = telemetry.start_job(app_engine, tid, "sweep")
+    recent = telemetry.start_job(app_engine, tid, "sweep")  # not past the TTL: left alone
+    other = telemetry.start_job(app_engine, tid, "retention_dry_run")
+    with tenant_session(tid, maint_engine) as s:
+        s.execute(
+            text("UPDATE job_runs SET started_at = :t WHERE id = :i"),
+            {"t": datetime.now(UTC) - telemetry.ABANDON_AFTER - timedelta(minutes=1), "i": old},
+        )
+    new = telemetry.start_job(app_engine, tid, "sweep")
+    by_id = {r.id: r for r in rows(app_engine, tid, JobRun)}
+    assert by_id[old].status == "failed" and by_id[old].error_class == "Abandoned"
+    assert by_id[old].finished_at is not None
+    assert by_id[recent].status == "running" and by_id[new].status == "running"
+    assert by_id[other].status == "running"  # another job is never touched
+
+
+def test_finish_job_retries_once_after_a_dropped_connection(app_engine, tid, monkeypatch):
+    job = telemetry.start_job(app_engine, tid, "sweep")
+    real, calls = telemetry.tenant_session, []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("server closed the connection")
+        return real(*a, **k)
+
+    monkeypatch.setattr(telemetry, "tenant_session", flaky)
+    telemetry.finish_job(app_engine, tid, job, "ok", {"n": 1})
+    monkeypatch.undo()
+    assert [r.status for r in rows(app_engine, tid, JobRun)] == ["ok"]
+
+
+def test_cancellation_marks_the_job_failed_and_propagates(app_engine, tid):
+    def cancelled():
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        telemetry.run_job(app_engine, tid, "j", cancelled)
+    (r,) = rows(app_engine, tid, JobRun)
+    assert r.status == "failed" and r.error_class == "KeyboardInterrupt"

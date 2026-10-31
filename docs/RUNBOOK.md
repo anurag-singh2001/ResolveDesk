@@ -112,7 +112,8 @@ Without pressing anything, `make sweep` (or the running sweeper) retries such ca
 Two tables, filled automatically, nothing to switch on:
 
 - `llm_usage`: after each agent run, one row per role, provider and model with calls, input and output tokens, summed latency (ms), failures, outcome (`ok`, `error`, `fallback_used`) and the failing exception class. Cost is `estimated_cost_micro_paise` (1 paise = 1,000,000), an ESTIMATE from `LLM_PRICES_PAISE_PER_MILLION` (JSON, `{"gemini/<model>": [input, output]}` in whole paise per million tokens). Unlisted models cost 0. Check the provider's invoice for real spend.
-- `job_runs`: one row per tenant per job: `sweep`, `retention_dry_run` (or `retention_apply`), `growth_nightly`, with `running`, `ok` or `failed`, integer counts and the error class. A row stuck on `running` means the process died mid-job.
+- `job_runs`: one row per tenant per job: `sweep`, `retention_dry_run` (or `retention_apply`), `growth_nightly`, with `running`, `ok` or `failed`, integer counts and the error class. A row stuck on `running` means the process died mid-job; the next start of the same job for that tenant marks any `running` row older than 6 hours as `failed` with error class `Abandoned`.
+- A run killed before it finishes loses its token counters (written once, at the end of the run), so usage totals are a floor, not exact.
 - Neither table holds prompt, reply or message text, and exception messages are not stored. Recording is best effort: if it fails, a warning with the exception class is logged and the run or job carries on.
 
 ## Safety reminders

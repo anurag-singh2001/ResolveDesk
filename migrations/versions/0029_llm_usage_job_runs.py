@@ -68,6 +68,7 @@ def upgrade() -> None:
     )
     op.create_index("ix_llm_usage_tenant_id", "llm_usage", ["tenant_id"])
     op.create_index("ix_llm_usage_tenant_created", "llm_usage", ["tenant_id", "created_at"])
+    op.create_index("ix_llm_usage_tenant_run", "llm_usage", ["tenant_id", "run_id"])
 
     op.create_table(
         "job_runs",

@@ -845,6 +845,7 @@ class LlmUsage(TenantOwned, Base):
             "AND latency_ms >= 0 AND estimated_cost_micro_paise >= 0",
             name="ck_llm_usage_counters",
         ),
+        Index("ix_llm_usage_tenant_run", "tenant_id", "run_id"),
     )
 
     run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # workflow run, no FK

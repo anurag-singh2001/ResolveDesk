@@ -90,3 +90,16 @@ def test_price_table_rejects_floats_and_negatives():
     for bad in ({"a/b": (1.5, 2)}, {"a/b": (-1, 2)}):
         with pytest.raises(ValidationError):
             Settings(_env_file=None, llm_prices_paise_per_million=bad)
+
+
+def test_cost_estimate_is_clamped_to_bigint():
+    s = Settings(_env_file=None, llm_prices_paise_per_million={"p/m": (10**9, 10**9)})
+    assert estimate_cost_micro_paise(s, "p", "m", 10**15, 10**15) == 2**63 - 1
+
+
+def test_price_above_the_cap_is_rejected():
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, llm_prices_paise_per_million={"a/b": (10**9 + 1, 0)})

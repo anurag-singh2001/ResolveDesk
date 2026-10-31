@@ -10,10 +10,10 @@ reply, a message or an exception message (hard rule 7 spirit; they can echo requ
 import logging
 import uuid
 from collections.abc import Callable
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import Engine
+from sqlalchemy import Engine, update
 
 from app.config import Settings, get_settings
 from app.core.db import tenant_session
@@ -22,6 +22,8 @@ from app.core.models import JobRun, LlmUsage
 log = logging.getLogger(__name__)
 
 MICRO = 1_000_000  # micro-paise per paise: price (paise per million tokens) x tokens
+BIGINT_MAX = 2**63 - 1  # the cost column is bigint: clamp, never overflow
+ABANDON_AFTER = timedelta(hours=6)  # a 'running' job older than this has lost its process
 
 
 def estimate_cost_micro_paise(
@@ -30,7 +32,7 @@ def estimate_cost_micro_paise(
     """An ESTIMATE from the settings price table, in integer micro-paise (no floats).
     paise per million tokens x tokens = micro-paise exactly. Unlisted models cost 0."""
     price_in, price_out = settings.llm_prices_paise_per_million.get(f"{provider}/{model}", (0, 0))
-    return input_tokens * price_in + output_tokens * price_out
+    return min(input_tokens * price_in + output_tokens * price_out, BIGINT_MAX)
 
 
 def _outcome(u: dict[str, Any]) -> str:
@@ -82,12 +84,23 @@ def _int_counts(counts: dict[str, Any] | None) -> dict[str, int]:
 
 
 def start_job(engine: Engine, tenant_id: uuid.UUID, job: str) -> uuid.UUID | None:
-    """A 'running' row; None when it could not be written."""
+    """A 'running' row; None when it could not be written. Older 'running' rows of the same
+    tenant and job past ABANDON_AFTER belong to a process that died: they are closed as
+    failed/'Abandoned' so the table never shows a job running forever."""
     try:
         with tenant_session(tenant_id, engine) as session:
-            row = JobRun(
-                tenant_id=tenant_id, job=job, status="running", started_at=datetime.now(UTC)
+            now = datetime.now(UTC)
+            session.execute(
+                update(JobRun)
+                .where(
+                    JobRun.tenant_id == tenant_id,
+                    JobRun.job == job,
+                    JobRun.status == "running",
+                    JobRun.started_at < now - ABANDON_AFTER,
+                )
+                .values(status="failed", finished_at=now, error_class="Abandoned")
             )
+            row = JobRun(tenant_id=tenant_id, job=job, status="running", started_at=now)
             session.add(row)
             session.flush()
             return row.id
@@ -107,17 +120,19 @@ def finish_job(
     """Close the row (status ok, failed or skipped). Never raises."""
     if job_id is None:
         return
-    try:
-        with tenant_session(tenant_id, engine) as session:
-            row = session.get(JobRun, job_id)
-            if row is None:
-                return
-            row.status = status
-            row.finished_at = datetime.now(UTC)
-            row.counts = _int_counts(counts)
-            row.error_class = error_class[:80] if error_class else None
-    except Exception as exc:
-        log.warning("could not record end of job: %s", type(exc).__name__)
+    for attempt in (1, 2):  # one retry: a dropped pooled connection should not strand the row
+        try:
+            with tenant_session(tenant_id, engine) as session:
+                row = session.get(JobRun, job_id)
+                if row is None:
+                    return
+                row.status = status
+                row.finished_at = datetime.now(UTC)
+                row.counts = _int_counts(counts)
+                row.error_class = error_class[:80] if error_class else None
+            return
+        except Exception as exc:
+            log.warning("could not record end of job (try %s): %s", attempt, type(exc).__name__)
 
 
 def run_job[T](
@@ -132,7 +147,7 @@ def run_job[T](
     job_id = start_job(engine, tenant_id, job)
     try:
         result = fn()
-    except Exception as exc:
+    except BaseException as exc:  # incl. cancellation/KeyboardInterrupt: never left 'running'
         finish_job(engine, tenant_id, job_id, "failed", error_class=type(exc).__name__)
         raise
     try:
