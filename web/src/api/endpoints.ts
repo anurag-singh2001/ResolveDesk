@@ -9,6 +9,7 @@ import type {
   Campaign,
   Case,
   GrowthSignal,
+  BrandSignalsResponse,
   LocationRef,
   RerunAiResult,
   OutletInsight,
@@ -161,6 +162,7 @@ export const api = {
     if (q.brand_id) p.set("brand_id", q.brand_id);
     return request<MetricsResponse>(`/insights/metrics?${p.toString()}`);
   },
+  brandSignals: () => request<BrandSignalsResponse>("/growth/brand-signals"),
   growthSignals: () => request<GrowthSignal[]>("/growth/signals"),
   refreshSignals: () => request<GrowthSignal[]>("/growth/signals/refresh", { method: "POST" }),
   proposeCampaign: (signalId: string) =>

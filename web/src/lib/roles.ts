@@ -49,6 +49,7 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
       { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
       ...(canSeeInsights(role) ? [{ to: "/insights", label: "Insights", icon: "insights" as const }] : []),
       ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth", label: "Growth", icon: "growth" as const }] : []),
+      ...(role === "hq_owner" && growthEnabled ? [{ to: "/growth/brands", label: "Brand signals", icon: "growth" as const }] : []),
       ...(role === "hq_owner" ? [{ to: "/privacy-requests", label: "Privacy requests", icon: "privacy" as const }] : []),
       { to: "/policies", label: "Policies", icon: "policies" },
       { to: "/help", label: "Help", icon: "help" },

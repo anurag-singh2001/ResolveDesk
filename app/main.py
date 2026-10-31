@@ -9,6 +9,7 @@ from app.api import (
     routes_admin,
     routes_approvals,
     routes_auth,
+    routes_brand_signals,
     routes_cases,
     routes_data_rights,
     routes_growth,
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(routes_approvals.router)
     app.include_router(routes_offers.router)
     app.include_router(routes_growth.router)
+    app.include_router(routes_brand_signals.router)
     app.include_router(routes_insights.router)
     app.include_router(routes_data_rights.router)
     app.include_router(routes_platform.router)  # 404 unless the platform admin is configured
