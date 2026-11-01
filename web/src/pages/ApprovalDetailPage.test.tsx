@@ -101,6 +101,14 @@ describe("approval detail", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("needs a senior approver");
   });
 
+  it("says so when a person tries to approve their own proposal", async () => {
+    setup({ status: 403, body: { detail: "you proposed this remedy, so someone else must approve it" } });
+    await approve();
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("someone else must approve it");
+    expect(alert).not.toHaveTextContent("senior approver");
+  });
+
   it("explains a 409 as already decided and hides the buttons", async () => {
     setup({ status: 409, body: { detail: "already decided" } });
     await approve();

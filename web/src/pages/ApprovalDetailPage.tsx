@@ -14,6 +14,7 @@ import { voucherAboveOrder } from "../lib/approvals";
 import { useApi } from "../lib/useApi";
 
 export const NEEDS_SENIOR = "This is over your approval limit or outside your outlets, so it needs a senior approver.";
+export const OWN_PROPOSAL = "You proposed this remedy, so someone else must approve it.";
 export const ALREADY_DECIDED = "Someone has already decided this proposal.";
 
 type Pending = "approved" | "rejected" | null;
@@ -41,8 +42,9 @@ export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: Pendin
       setResult(r);
       onDone?.(r);
     } catch (err) {
-      if (err instanceof ApiError && err.status === 403) setError(NEEDS_SENIOR);
-      else if (err instanceof ApiError && err.status === 409) {
+      if (err instanceof ApiError && err.status === 403) {
+        setError(/you proposed/i.test(err.message) ? OWN_PROPOSAL : NEEDS_SENIOR);
+      } else if (err instanceof ApiError && err.status === 409) {
         setError(ALREADY_DECIDED);
         setLocked(true);
         onLocked?.();
@@ -60,7 +62,7 @@ export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: Pendin
         <p className="font-medium">{approved ? "Approved." : "Rejected."}</p>
         <p className="mt-1">
           {approved
-            ? result.execution === "queued"
+            ? result.execution === "queued" && proposal.action === "refund"
               ? "The refund has been sent to the payment provider. The case shows it as confirmed only once the provider confirms it."
               : "The remedy will be carried out. The case page shows its progress."
             : "The customer's case will show that no remedy was approved."}
