@@ -279,3 +279,6 @@ Previous retro action (Sprint 7: tick the same day, one click-through per batch)
 | S8.6, S8.7 | open | no new evidence; owner decision D3, web test/build counts and Devanagari check outstanding |
 
 Velocity: ticked now 18 of 42 SP (15 + S8.5b 3). Finding: mixed Hinglish and English on the Privacy page; policy page and case lists load slowly (about 5-9 s).
+
+### Click-through addendum 2026-11-01 (second pass)
+Ticked: S8.3, S8.5c, S8.5d, S8.7. Sprint 7 also gained S7.9, Sprint 11 gained S11.4. Ticked SP: Sprint 7 42 of 60, Sprint 8 34 of 42, Sprint 11 8 of 24.
