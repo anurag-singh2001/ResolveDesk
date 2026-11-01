@@ -47,6 +47,7 @@ demo_password: spice-route-demo
 users:
   - {email: owner@spiceroute.test, name: Asha Kulkarni, role: hq_owner}
   - {email: kharadi.manager@spiceroute.test, name: Rohit Shinde, role: location_manager, locations: [kharadi]}
+  - {email: kharadi.shift@spiceroute.test, name: Meena Pawar, role: location_manager, locations: [kharadi]}
   - {email: riya@customer.test, name: Riya M., role: customer}
   - {email: kabir@customer.test, name: Kabir S., role: customer}
 
@@ -54,7 +55,7 @@ users:
 simulation:
   end_date: 2026-09-30
   days: 60
-  customers: 1500
+  customers: 3000
   orders: 6000
   past_tickets: 300
   hours: [11, 24]
@@ -64,6 +65,8 @@ simulation:
   problems:
     - {kind: late, rate: 0.08, extra_minutes: [46, 90]}
     - {kind: missing_item, rate: 0.02}
+    # Planted: Kharadi loses half its regulars from day 35 (feeds the growth campaign flow).
+    - {kind: repeat_drop, location: kharadi, from_day: 35, factor: 0.5}
   messy:
     duplicate_phone_rate: 0.03
     orders_outside_window: 25
