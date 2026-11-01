@@ -25,7 +25,7 @@ from app.core.verticals import load_pack
 from app.engine.agent_runner import PIPELINES, run_agents
 from app.llm.providers import model_name
 from evals.harness import existing_case_orders, run_scenarios
-from evals.metrics import COLUMNS, failure_line, score, summarize
+from evals.metrics import COLUMNS, by_language, failure_line, language_of, score, summarize
 from evals.scenarios import load_scenarios
 
 REPORTS = Path(__file__).resolve().parent / "reports"
@@ -47,13 +47,33 @@ def table(rows: list[tuple[str, str, dict[str, str]]]) -> str:
                      [fmt.format(*r) for r in body])  # fmt: skip
 
 
-def markdown(rows, failures: list[str], meta: dict[str, str]) -> str:
+def language_table(langs: list[dict]) -> str:
+    head = ["tenant", "pipeline", "language", "n", "passed", "pass"]
+    body = [[d["tenant"], d["pipeline"], d["language"], str(d["cases"]), str(d["passed"]),
+             d["pass"]] for d in langs]  # fmt: skip
+    widths = [max(len(x) for x in col) for col in zip(head, *body, strict=True)]
+    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
+    sep = ["-" * w for w in widths]
+    lines = [fmt.format(*head), fmt.format(*sep)] + [fmt.format(*r) for r in body]
+    return chr(10).join(lines)
+
+
+def markdown(
+    rows, failures: list[str], meta: dict[str, str], langs: list[dict] | None = None
+) -> str:
     head = ["tenant", "pipeline"] + [label for _, label in COLUMNS]
     lines = [f"# Eval report {meta['when']}", ""]
     lines += [f"- {k}: {v}" for k, v in meta.items() if k != "when"]
     lines += ["", "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     lines += ["| " + " | ".join([t, p] + [m[k] for k, _ in COLUMNS]) + " |" for t, p, m in rows]
     lines += ["", LEGEND, ""]
+    if langs:
+        head = "| tenant | pipeline | language | n | passed | pass |"
+        lines += ["## Pass rate by language", "", head,
+                  "|---|---|---|---|---|---|"]  # fmt: skip
+        lines += [f"| {d['tenant']} | {d['pipeline']} | {d['language']} | {d['cases']} | "
+                  f"{d['passed']} | {d['pass']} |" for d in langs]  # fmt: skip
+        lines += [""]
     lines += ["## Failing scenarios", ""] + ([f"- {f}" for f in failures] or ["None."])
     return "\n".join(lines) + "\n"
 
@@ -185,6 +205,10 @@ def main(argv: list[str]) -> int:
     }
     print()
     print(table(rows))
+    langs = by_language(all_results)
+    print()
+    print("Pass rate by language:")
+    print(language_table(langs))
     if failures:
         print("\nFailing scenarios:")
         for f in failures:
@@ -192,14 +216,15 @@ def main(argv: list[str]) -> int:
     out_dir = Path(args.report_dir) if args.report_dir else REPORTS
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / f"eval-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}.md"
-    path.write_text(markdown(rows, failures, meta), encoding="utf-8")
+    path.write_text(markdown(rows, failures, meta, langs), encoding="utf-8")
     # Machine-readable twin for the scenario lab's comparison: pass/fail per scenario.
     summary = {
         "meta": meta,
         "rows": [{"tenant": t, "pipeline": p, "metrics": m} for t, p, m in rows],
+        "languages": langs,
         "scenarios": [
             {"id": r.scenario.id, "tenant": r.scenario.tenant, "pipeline": r.pipeline,
-             "passed": score(r).passed}
+             "language": language_of(r.scenario), "passed": score(r).passed}
             for r in all_results
         ],
     }  # fmt: skip

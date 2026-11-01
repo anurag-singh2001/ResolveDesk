@@ -612,3 +612,9 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: the app role has no grant on `error_logs` and `alerts` (0033), and the counter function adds on every call, which is not repeatable. The owner connection (as `make refresh`) gives exact idempotency. Pure row builders keep the guard and shapes unit-testable without a database.
 - Alternative rejected: going through `log_error_count` and `alerts_apply` as the app role (every rerun would inflate the count); a Make target (too easy to run by accident).
 - Open: the failed demo job can trigger the real `job_failed` alert on the next pass (useful for S9.4 but it is a real-looking alert). Integration test written, not run.
+
+## 2026-11-01 - Per-language eval pass rate (S7.12, reporting only)
+- Decision: `evals/run.py` prints, and writes to the markdown and JSON twin, the pass rate per (tenant, pipeline, language). Language is the scenario's new optional `language` field, else `hinglish` for kind hinglish, else `devanagari` if the message has Devanagari letters, else `en`. The JSON keeps its existing keys and adds `languages` and a `language` per scenario. It reuses `score(...).passed`; scoring is untouched.
+- Why: no language field existed, and `kind` alone cannot tell Hindi script from English; an optional field lets scenario authors label exactly, the detector covers unlabelled ones.
+- Alternative rejected: a language-detection library (a dependency and a guess for short messages); making the field required (edits every scenario file).
+- Open: Hindi-script and Hinglish scenarios per tenant still have to be written; a real eval run (scratch DB) was not done here.

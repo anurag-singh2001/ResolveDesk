@@ -76,6 +76,8 @@ class Scenario(BaseModel):
     id: str
     tenant: str
     kind: Kind = "plain"
+    # Optional label for the per-language report (e.g. "en", "hi"); reporting only, never scored.
+    language: str | None = Field(default=None, max_length=16, pattern=r"^[a-z][a-z-]*$")
     message: str = Field(min_length=1)
     order: OrderSelector
     expect: Expect

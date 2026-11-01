@@ -82,3 +82,38 @@ def test_an_auto_approved_proposal_that_ran_on_still_counts_as_proposed():
         assert score(_result(_scenario(), outcome=ran_on)).passed
     esc = _scenario(outcome="escalated", action=None, amount=None)
     assert not score(_result(esc, outcome="resolved", action=None, amount=None)).outcome_ok
+
+
+def test_language_label_order_and_report_only():
+    from evals.metrics import language_of
+
+    assert language_of(_scenario()) == "en"
+    assert language_of(_scenario(kind="hinglish")) == "hinglish"
+    dev = _scenario().model_copy(update={"message": "मेरा ऑर्डर देर से आया"})
+    assert language_of(dev) == "devanagari"
+    tagged = _scenario().model_copy(update={"language": "hi"})
+    assert language_of(tagged) == "hi"
+
+
+def test_pass_rate_by_language_uses_the_same_score_and_leaves_scoring_alone():
+    from evals.metrics import by_language
+
+    good = _result(_scenario())
+    bad = _result(_scenario(kind="hinglish"), outcome="escalated", action=None, amount=None)
+    before = [score(good).passed, score(bad).passed]
+    rows = by_language([good, bad, _result(_scenario())])
+    assert [score(good).passed, score(bad).passed] == before == [True, False]
+    got = {r["language"]: (r["cases"], r["passed"], r["pass"]) for r in rows}
+    assert got["en"][:2] == (2, 2) and got["hinglish"][:2] == (1, 0)
+    assert got["en"][2] != got["hinglish"][2]
+
+
+def test_report_has_a_language_section_and_json_twin_fields():
+    from evals.metrics import by_language
+    from evals.run import language_table, markdown
+
+    langs = by_language([_result(_scenario())])
+    md = markdown([], [], {"when": "now"}, langs)
+    assert "## Pass rate by language" in md and "| en |" in md
+    assert "en" in language_table(langs)
+    assert "Pass rate by language" not in markdown([], [], {"when": "now"})
