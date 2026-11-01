@@ -11,7 +11,15 @@ from scripts import seed_portal_demo as demo
 def _counts(conn):
     return {
         t: conn.execute(text(f"SELECT count(*) FROM {t}")).scalar()
-        for t in ("job_runs", "llm_usage", "error_logs", "alerts", "transactions", "cases", "customers")
+        for t in (
+            "job_runs",
+            "llm_usage",
+            "error_logs",
+            "alerts",
+            "transactions",
+            "cases",
+            "customers",
+        )
     }
 
 
