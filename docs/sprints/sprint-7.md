@@ -311,7 +311,7 @@ Clicks NOT performed in the browser: S7.4 re-run, S7.5 propose, S7.6 reply and c
 | S7.D1 (5) | open | no design artefact in docs; owner to confirm |
 | S7.D2 (8) | open | no wireframes or approval recorded; owner to confirm |
 
-Velocity: planned 60 SP, done (ticked) 11 SP (S7.2 5, S7.3 3, S7.8 3). Code merged: all of S7.1-S7.12 (47 SP), so the gap is verification, not building. Carry-over with points unchanged: S7.1 3, S7.4 3, S7.5 8, S7.6 5, S7.7 1, S7.9 5, S7.10 5, S7.11 1, S7.12 5, S7.D1 5, S7.D2 8 = 46 SP.
+Velocity: planned 60 SP, done (ticked) 11 SP (S7.2 5, S7.3 3, S7.8 3). Code merged: all of S7.1-S7.12 (47 SP), so the gap is verification, not building. Carry-over with points unchanged: S7.1 3, S7.4 3, S7.5 8, S7.6 5, S7.7 1, S7.9 5, S7.10 5, S7.11 1, S7.12 5, S7.D1 5, S7.D2 8 = 49 SP.
 
 Owner questions: (1) were S7.D1/S7.D2 delivered, and where are the artefacts or approval? (2) refund fit to policy, four-eyes on the S7.10 switch, and the "no remedy due" wording. (3) native-speaker review of Hinglish/Devanagari.
 
