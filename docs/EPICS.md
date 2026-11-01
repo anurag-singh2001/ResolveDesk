@@ -44,7 +44,7 @@ Definition of Done (all must hold before `[x]`):
 | 9 | TBD | Platform portal backbone |
 | 10 | TBD | Scenario lab + metrics API + dashboards |
 | 11 | TBD | HQ marketing module |
-| 12 | TBD | UI revamp completion, polish, full walkthrough, merge to main |
+| 12 | 2026-11-02 → 2026-11-03 (planned) | UI revamp completion, polish, full walkthrough, merge to main; 34 SP (30 core + 4 stretch); see docs/sprints/sprint-12.md |
 
 ---
 
@@ -171,6 +171,22 @@ Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Giv
 - [x] S7.D1 Design system in Claude Design (5 SP, main session + design tooling) -- done when: colours, type scale, spacing, components, both themes, Devanagari support delivered and shown to the owner -- 2026-11-01 review: no design artefact in docs; owner to confirm delivery and approval -- CLOSED 2026-11-01: waived by owner, shipped ChaiUI accepted as design of record; no design file delivered
 - [x] S7.D2 Wireframes for every page and role (8 SP, main session + design tooling) -- done when: customer, staff and platform-portal wireframes and persona flows delivered; owner approval recorded (gate for S8.7) -- 2026-11-01 review: no wireframes or approval in docs; owner to confirm -- CLOSED 2026-11-01: waived by owner, shipped pages accepted; no wireframes delivered
 - [x] S8.7 UI revamp ship: CasePage restyle, merge UI branch, browser walkthrough light/dark/375px (5 SP, re-estimated at Sprint 8 planning from 8 provisional, Sonnet builder) -- done when: UI branch merged into test, web tests and build pass, walkthrough on both tenants recorded -- merged f11eaca (+6d43954); 2026-11-01 review: STILL OPEN, walkthrough done (both tenants, roles, light/dark, 375px on 8 pages) but web test/build result and Devanagari check not recorded -- 2026-11-01: web tests 231 passed in 29 files, tsc clean, build ok on 49abd8b; Devanagari seen on customer and staff pages; 375px no overflow on 8 pages; light and dark checked on the dashboard only, so a light and dark pass across pages remains -- VERIFIED 2026-11-01: light and dark on 8 staff pages, 375px no overflow on 8 pages, both tenants walked, web tests 231, build ok, Devanagari seen
+
+## E19 · Sprint 12 -- polish, full walkthrough, merge to main (planned 2026-11-01; full text in docs/sprints/sprint-12.md)
+No page restyle needed: all 22 pages already use ChaiUI components (S7.D1/D2 waived).
+- [ ] S12.1 Support contact in the no-remedy closing message (2 SP, Sonnet builder, Safety: customer text) -- done when: closing message names the tenant support contact, not Privacy desk, in en/hi/hi-Latn; both tenants
+- [ ] S12.2 One language per customer Privacy page (2 SP, Sonnet builder, Safety: customer text) -- done when: key-coverage test for 3 locales, no mixed Hinglish/English; both tenants
+- [ ] S12.3 Find and fix slow pages (3 SP, Sonnet builder) -- done when: cause recorded, Policies rules panel under 2 s warm, query-count regression test; both tenants
+- [ ] S12.4 Route-level code splitting (2 SP, Sonnet builder, stretch) -- done when: entry chunk under 500 kB from 850 kB, web tests pass
+- [ ] S12.5 Timeline and status agree after verification mismatch, O0003646 (3 SP, Sonnet builder, Safety: money, customer text) -- done when: regression test for the sequence; no "confirmed" while "needs a check"; both tenants
+- [ ] S12.6 Spice Route campaign flow end to end (5 SP, Sonnet builder, Safety: consent, messaging) -- done when: repeat-rate drop planted, third staff user, goldens refreshed, S11.3 skips gone, both tenants
+- [ ] S12.7 Manual spend form (2 SP, Sonnet builder, stretch) -- done when: form posts integer paise through the existing API, shows in ROI; both tenants
+- [ ] S12.8 Calendar warnings on Growth approval screen and nav highlight (3 SP, Sonnet builder) -- done when: warnings shown on approval, Calendar highlighted on /growth/calendar; both tenants
+- [ ] S12.9 Apply owner Hindi review corrections (2 SP, Sonnet builder, Safety: customer text) -- done when: every item in docs/HINDI-REVIEW.md applied or declined with reason; both tenants
+- [ ] S12.10 In-app Help and manuals updated (3 SP, Sonnet builder) -- done when: Help covers Dashboard, Segments, Brand signals, Calendar, Scenario lab, ROI per role (test)
+- [ ] S12.11 README, RUNBOOK, SCENARIOS, demo script (2 SP, main session) -- done when: docs match code, owner follows the demo script once
+- [ ] S12.12 Final walkthrough on both tenants (3 SP, main session + test-runner) -- done when: all pages, roles, light/dark, 375px, 3 languages, full test/lint/web/eval results recorded
+- [ ] S12.13 Merge test into main with evidence (2 SP, main session, process) -- done when: merge hash, CI green on main, known gaps listed; owner approves
 
 ## E15 · Transparency: rules and policies -- Sprint 8
 - [x] S8.1 Policies endpoint and pages (5 SP, Sonnet builder) -- done when: GET /policies returns current documents and sections; customer "Our policies" page and staff view; both tenants -- VERIFIED 2026-11-01: 76d1173, merge 2b1a089; full suite on 2f84f23 2408 passed/34 skipped/2 failed (both test-order failures in test_history_db, fixed 2ebcb06; final run on 2ebcb06 pending); browser: customer Our policies and staff Policies pages opened on both tenants, 375px overflow check passed
