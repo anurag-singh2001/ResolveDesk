@@ -508,8 +508,14 @@ def test_downgrade_then_upgrade_restores_exactly_the_same_rights(app_engine):
     from alembic import command
     from alembic.config import Config
 
-    # Every platform view across stories (S9.1 views plus the S9.5 usage and job views).
-    ALL_VIEWS = [*VIEWS, "platform_llm_usage_v", "platform_job_runs_v"]
+    # Every platform view across stories: S9.1, the S9.5 usage and job views, and the scheduler
+    # runs view. Anything else the role can read fails the `raw` check below.
+    ALL_VIEWS = [
+        *VIEWS,
+        "platform_llm_usage_v",
+        "platform_job_runs_v",
+        "platform_scheduler_runs_v",
+    ]
     cfg = Config("alembic.ini")
     cfg.attributes["url"] = get_settings().test_migration_database_url
     command.downgrade(cfg, "0027")

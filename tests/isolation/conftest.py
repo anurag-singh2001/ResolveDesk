@@ -35,6 +35,7 @@ from app.core.models import (
     Location,
     LocationBrand,
     LoginFailure,
+    ManualSpend,
     Membership,
     MembershipBrand,
     MembershipLocation,
@@ -399,6 +400,16 @@ def _seed_growth(s, t: SeededTenant, customer_id, now) -> None:
             role="hq_owner",
             decided_at=now,
             expires_at=now + timedelta(hours=24),
+        )
+    )
+    s.add(
+        ManualSpend(
+            tenant_id=tid,
+            channel="aggregator",
+            amount_paise=1000,
+            period_start=now.date(),
+            period_end=now.date(),
+            entered_by=t.user_id,
         )
     )
     s.add(
