@@ -34,12 +34,25 @@ approves, and code executes.
   decides refunds; the policy packs say so, and the remedy there is a voucher on the
   tenant's own channel or an escalation — never a refund we can't execute. Background:
   [docs/research/market.md](docs/research/market.md) (F7–F10).
-- **Growth (stretch):** for tenants with the `growth` flag (BrewCo in the demo), a
-  nightly-style job spots a drop in an outlet's repeat-customer rate, proposes a win-back
-  campaign with a holdout group, needs two staff approvals (one HQ), sends once per customer
-  to consented customers only, and reports an honest verdict (worked / did not work /
-  inconclusive). Endpoints under `/growth` (see http://localhost:8000/docs); the web app has a **Growth** page
-  (staff, flag on) and an **Insights** page (HQ and franchisee owners: per-outlet metrics).
+- **Growth (stretch):** the `growth` flag is on for both demo tenants. A nightly-style job spots
+  a drop in an outlet's repeat-customer rate and proposes a win-back campaign with a holdout
+  group. A campaign needs two different staff approvals (one an HQ owner, and not the person
+  who proposed it) and is sent once per customer, to consented customers only. After the
+  window it reports a verdict (worked / did not work / inconclusive) and an offer ROI against
+  the held-out group. Staff screens (all read-only except where noted): **Dashboard** (charts
+  by day or week, drill down by brand and location), **Segments** (customer segments and
+  first-order cohorts, counts only), **Insights** (per-outlet table, HQ and franchisee
+  owners), **Growth** (signals, campaigns, approval, ROI, and a manual-spend form for HQ),
+  **Brand signals** (HQ only) and **Campaign calendar** (overlap and frequency-cap warnings,
+  which warn and never block). Endpoints under `/growth` and `/insights` (see
+  http://localhost:8000/docs). What is proven: the campaign flow and ROI are tested end to end
+  on BrewCo. On Spice Route the seed has no campaign audience and only two staff users, so the
+  same flow is not yet proven there (planned as S12.6, not in this branch).
+- **Platform portal (operator):** a separate sign-in at `/platform` with Health, Scheduled
+  jobs, Logs and alerts, AI performance and a **Scenario lab** (edit scenario files and run a
+  few on a scratch database). Off until the platform admin is configured; see the
+  [runbook](docs/RUNBOOK.md). On the demo, the rows on Jobs, AI performance, Logs and Alerts
+  are **seeded demo rows** (`scripts/seed_portal_demo.py`, labelled `demo`), not real activity.
 - **Out:** real integrations, billing, multi-channel inbox.
 
 ## How it works
@@ -102,47 +115,18 @@ LLM choice: `LLM_PROVIDER=groq`, `LLM_FALLBACK_PROVIDER=gemini` and `ENGINE_MODE
 in `.env` give the setup the evals below used. `ENGINE_MODE` defaults to `deterministic`: a
 no-LLM rule path where the customer picks the category instead of writing free text.
 
-## Demo script (about 5 minutes)
+## Demo script
 
-With `DEMO_AUTH=true`, the login page lists the demo accounts; pick one, no typing needed.
+The full walkthrough, with steps for both tenants and each role (customer, location manager,
+franchisee owner, HQ owner, and the platform portal), is in
+[docs/DEMO-SCRIPT.md](docs/DEMO-SCRIPT.md) (about 15 minutes; the first five steps are the
+original 5-minute demo). With `DEMO_AUTH=true` the login page lists the demo accounts; pick one,
+no typing needed.
 
-1. **Refund, approved and confirmed** (checked in the browser).
-   Spice Route → *Kabir S.* → open a late order → "My order came over an hour late and
-   cold". The AI files it as late delivery and proposes a refund within the tier in force
-   on the order date (e.g. 50% → ₹244.50 on a ₹489 order). Sign in as *Asha Kulkarni*
-   (HQ) → Approvals: the case shows the customer's words, the cited policy, and the checks
-   (within cap, amount, fair-use count). Approve → back as Kabir, the timeline ends at
-   **Confirmed**.
-2. **Voucher, auto-approved** (checked in the browser).
-   BrewCo → *Dev P.* → "My cappuccino was lukewarm and tasted burnt". Food quality → ₹100
-   voucher, under the ₹150 auto-approve cap → **Confirmed**, "Your voucher worth ₹100.00
-   has been issued."
-3. **Outlet scope.** BrewCo → *Neha Joshi* (Baner manager) sees only Baner's cases; *Meera
-   Iyer* (HQ) sees all five outlets.
-4. **Payment timeout, shown honestly.** As an HQ owner, `POST /admin/chaos` (Swagger at
-   http://localhost:8000/docs, dev only) with `{"service": "payment",
-   "accept_then_timeout_rate": 1}`, then approve a refund: the customer sees
-   *processing*, not "refunded". Reset chaos, run `make sweep`: it reconciles by key and the
-   case moves to **Confirmed** with one refund, not two.
-5. **Repeat complainer.** A customer with three or more grants in 30 days is never
-   auto-approved; the approval shows the fair-use count for a person to decide.
-6. **The AI asks, the customer answers** (checked in the browser). BrewCo → *Dev P.* →
-   report "Not sure — just describe it" with "Something was not right with this order." The
-   case stops at **Waiting for your reply** with a reply box. Reply "my cappuccino was served
-   cold and tasted burnt" → the timeline shows *You replied*, then Quality → ₹100 voucher →
-   **Confirmed**.
-7. **Outlet insights and a win-back campaign** (checked in the browser). BrewCo → *Meera
-   Iyer* → **Insights**: per-outlet cases, refunds, vouchers, decision time and repeat rate
-   (Baner stands out at ~37%). **Growth** → *Refresh signals* → "Baner: repeat customers
-   down" with the evidence and causes marked "not confirmed" → *Propose win-back campaign*
-   (offer group and a holdout group, budget) → *Approve*. Approving twice is refused; sign in
-   as *Neha Joshi* (Baner manager) and approve → **Sent**. Dev panel → clock +15 days →
-   Growth → *Measure result*: with 154 offered and 17 held out the verdict is honestly
-   **Inconclusive** ("too few people to tell"). Reset the clock afterwards.
-
-Steps 4 and 5 are covered by the chaos and fair-use test suites; walk through them once
-before showing them live. As HQ, the **Demo controls** page (left menu, dev only; formerly Dev panel) has the chaos presets
-and a **Run sweeper** button, so step 4 needs no terminal.
+The chaos step (a payment that times out after accepting) and the repeat-complainer step are
+covered by the chaos and fair-use test suites; walk through them once before showing them live.
+As HQ, the **Demo controls** page (left menu, dev only) has the chaos presets and a **Run
+sweeper** button, so no terminal is needed.
 
 By default the mock providers keep their records in memory. Restarting the API forgets them, so
 a refund approved before a restart and checked after it is reported as "provider has no record"
@@ -153,11 +137,13 @@ also has a **Simulated clock** (+1h to +15 days, reset) to see approvals expire 
 
 ## Evals
 
-`make eval` runs 36 scenarios (late, missing, wrong item, quality, payment, status, loyalty,
+`make eval` runs the scenario files in `tenants/<slug>/scenarios/` (42 now: 22 Spice Route and 20 BrewCo, of which 8 are held out and read-only in the lab; late, missing, wrong item, quality, payment, status, loyalty,
 privacy requests, needs-info, prompt injection, and Hinglish / Devanagari Hindi messages) per
 tenant, for the agent pipeline and a one-call baseline. Groq gpt-oss-120b main / 20b classifier,
-Gemini fallback, tuning set (14 BrewCo, 16 Spice Route). It refuses to reseed the demo database:
+Gemini fallback, tuning set. It refuses to reseed the demo database:
 point it at a scratch one.
+
+The table below is from the 2026-10-25 to 2026-10-27 runs on the smaller set that existed then (36 scenarios, tuning set 14 BrewCo and 16 Spice Route). It has not been re-run on the 42 now in the repo.
 
 | tenant | pipeline | 2026-10-25 | 2026-10-26 | 2026-10-27 | over the rule | injections held |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -178,13 +164,35 @@ pipelines; the older Hinglish `bc-wrong-002` failed on the baseline only.
 
 ## Tests
 
-`make test` (both tenants, every test), `make test-isolation`, `make test-chaos`, `make lint`,
-`make web-test`. Last full run (2026-10-27, one process, after Sprints 4 and 5): 1312 passed,
-12 skipped (shape-specific, e.g. a tenant without lateness tiers or without the growth flag),
-2 failed. Both failures were the admin-sweep test expecting an out-of-date list of report
-fields after two parallel branches each added one; fixed in the next commit and re-run green
-(14 passed, with the deadlock reproduction tests). Chaos: green three times in a row (3 passed,
-1 skipped each). Web: 83 passed.
+**`make test` is not a full run.** It runs `pytest -m "not isolation and not chaos and not live"`:
+unit and integration tests for both tenants, but not the isolation suite, the chaos suite or the
+live-LLM tests. The other commands are `make test-isolation`, `make test-chaos`, `make lint` and
+`make web-test` (vitest). A full run is all of those, plus `make eval` if prompts or agents changed.
+
+A single pytest run against the remote database takes over four hours, and one network drop
+spoils the rest. `scripts/run_test_batches.py` splits the suite (unit, and the chaos,
+integration and isolation folders) into batches of about 60 tests, runs them in parallel with
+one worker per database, retries batches lost to the network, and saves each result as it
+finishes:
+
+```bash
+uv run python -m scripts.run_test_batches --env a.env --env b.env   # start or resume
+uv run python -m scripts.run_test_batches --env a.env --rerun-failed # only what failed
+uv run python -m scripts.run_test_batches --status                   # print progress
+uv run python -m scripts.run_test_batches --fresh --env a.env        # forget saved results
+```
+
+Each `--env` file holds one database's settings as `KEY=value` lines (one file per database, so
+two workers never share a database). Progress is in `.test-runs/status.md` (and
+`.test-runs/state.json`; logs in `.test-runs/logs/`, none of it committed). Saved results belong
+to one commit: after new commits, use `--fresh`. The runner does not run vitest or `tests/live`.
+
+Last recorded full run (2026-10-27, one process, after Sprints 4 and 5): 1312 passed, 12 skipped
+(shape-specific, e.g. a tenant without lateness tiers or without the growth flag), 2 failed. Both
+failures were the admin-sweep test expecting an out-of-date list of report fields after two
+parallel branches each added one; fixed in the next commit and re-run green (14 passed). Chaos:
+green three times in a row. Web: 83 passed. **That is the last full run recorded here; it
+predates Sprints 6 to 12.** A fresh full run on the latest code is part of S12.12.
 
 **CI.** GitHub Actions (`.github/workflows/ci.yml`) runs on every push and pull request with
 no secrets and no database: `ruff check`, `ruff format --check`, the unit tests
@@ -208,15 +216,23 @@ DB-backed integration, isolation and chaos suites need Neon, so they run locally
 - Mock providers only; no real gateway, aggregator or POS integration.
 - Small eval set; a single seed of synthetic data.
 - One channel (web). Customer messages are templated in English, Hinglish (`hi-Latn`) and
-  Devanagari Hindi (`hi`), chosen by the customer; they are not generated, and no other
-  language is supported. The web app's own labels are English only. Inbound Hinglish
+  Devanagari Hindi (`hi`), in the language the customer writes in (there is no language picker);
+  they are not generated, and no other language is supported. The customer Privacy pages are in
+  the same three languages. Staff screens are English only. The Hindi and Hinglish wording still
+  awaits native review ([docs/HINDI-REVIEW.md](docs/HINDI-REVIEW.md)). Inbound Hinglish
   classification is covered by only a few eval scenarios.
 - The voucher check trusts the provider's confirmed status (there is no amount to compare).
-- Privacy (DPDP): prompts get order facts but no contact details (emails and phone numbers
+- Growth ROI is proven on one tenant (BrewCo). Its cost is an upper bound (the budget cap) and
+  message cost and gross margin are labelled estimates. Manual spend is entered by hand, not
+  verified, and is not apportioned to any campaign.
+- Portal pages on the demo show seeded demo rows, not real activity.
+- Privacy (DPDP): the position is **not counsel-checked**; prompts get order facts but no contact details (emails and phone numbers
   in customer messages are masked). `make retention` (dry run; `APPLY=1` to redact, irreversible) redacts message text and contact data
   on cases finished more than `support_retention_days` ago (default 365, never lower; provisional,
-  not legal advice; legal hold is set in the DB only). Consent records, access/erasure
-  requests and vendor DPAs are not built; they are needed before real customer data.
+  not legal advice; legal hold is set in the DB only). Marketing consent history, data download
+  and erasure requests are built but provisional, not legal advice. Vendor DPAs are not built,
+  and the retention periods for order and payment records are not researched. Get counsel's view
+  before real customer data.
 
 ## How it compares
 

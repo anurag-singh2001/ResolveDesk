@@ -23,14 +23,15 @@ Check it is up: `curl http://localhost:8000/health` → `{"status":"ok"}`.
 
 Ctrl+C in both terminals. If a port stays busy, see "Port 5173 already in use" below.
 
-## Demo (about 10 minutes)
+## Demo (about 15 minutes)
 
-Follow the README "Demo script" (steps 1–7): refund approved and confirmed; voucher auto-approved;
-outlet scope; payment timeout shown honestly; repeat complainer; the AI asks and the customer
-answers; insights and a win-back campaign. Extra Sprint 5 screens: customer **Privacy & data**
-(consent switch, download, erasure request) and the reply language (it follows what the customer writes).
+Follow [DEMO-SCRIPT.md](DEMO-SCRIPT.md): five support steps (refund approved and confirmed, voucher
+auto-approved, outlet scope, payment timeout shown honestly, the AI asks and the customer answers),
+then a short tour per role (customer, location manager, franchisee owner, HQ owner, platform
+operator) on both tenants. Growth is on for both tenants; the full campaign walk is proven on
+BrewCo only.
 
-Before showing step 4 (timeout) or the growth verdict, rehearse once. Reset the Demo controls clock
+Before showing the timeout or the growth verdict, rehearse once. Reset the Demo controls clock
 afterwards.
 
 ## Reset
@@ -48,15 +49,45 @@ afterwards.
 
 | Suite | Command | Notes |
 | --- | --- | --- |
-| Lint | `make lint` | |
+| Lint | `make lint` | `ruff check` and `ruff format --check` |
 | Unit | `uv run pytest tests/unit` | no DB needed (also runs in CI) |
-| Everything except chaos | `make test` | needs Neon; ~75 min |
+| Unit and integration | `make test` | **Not a full run.** Excludes the isolation, chaos and live tests (`-m "not isolation and not chaos and not live"`). Needs Neon |
 | Isolation | `make test-isolation` | |
-| Chaos | `make test-chaos` | ~13 min |
-| Web | `make web-test` | |
+| Chaos | `make test-chaos` | |
+| Web | `make web-test` | vitest; `cd web && npx tsc --noEmit -p .` for types |
 | Evals | `make eval` | needs LLM keys and a **scratch** DB (it refuses to reseed the demo DB) |
+| Full run, in batches | `scripts/run_test_batches.py` | see below |
 
 Point tests at a separate database (`TEST_DATABASE_URL`), never the demo one.
+
+### Full run in batches (`scripts/run_test_batches.py`)
+
+One pytest process over everything takes over four hours against the remote database, and a network
+drop spoils what is left. The runner splits `tests/unit` (one batch) and the `chaos`, `integration`
+and `isolation` folders (about 60 tests per batch) into named batches, runs them in parallel, saves
+each result as it finishes and retries a batch up to 3 times if it was lost to the network. A batch
+with no output for 15 minutes is treated as hung and killed. It does not run vitest or `tests/live`.
+
+```bash
+uv run python -m scripts.run_test_batches --env a.env --env b.env    # start, or resume
+uv run python -m scripts.run_test_batches --env a.env --rerun-failed # rerun only failed files
+uv run python -m scripts.run_test_batches --status                   # print progress
+uv run python -m scripts.run_test_batches --fresh --env a.env        # forget saved results
+uv run python -m scripts.run_test_batches --env a.env --only unit    # chosen batches
+```
+
+- **One `--env` file per database; one worker per file.** Each file has that database's settings as
+  `KEY=value` lines. Two workers must never share a database, so give each its own. Keep the files
+  out of git and do not paste them anywhere.
+- **Where to look:** `.test-runs/status.md` (a table of batches: status, passed, failed, time, and
+  the failing tests with a short reason), `.test-runs/state.json` and `.test-runs/logs/` (one log and
+  junit file per try). Database addresses in reasons are replaced with `<hidden>`. The folder is
+  git-ignored.
+- **Resume:** run the same command again; batches that passed are skipped. `--rerun-failed` reruns
+  only the files that failed, and keeps the earlier passed count.
+- **`--fresh`** forgets saved results. Results belong to one commit: after you commit or pull, the
+  runner refuses with "use --fresh". Use `--fresh` for a final run on the latest code.
+- A run is green only when every batch says `passed`. `make test` passing is not that.
 
 ## Troubleshooting
 
@@ -100,7 +131,15 @@ The role can read only the `platform_*_v` aggregate views (counts by tenant slug
 
 Open `http://localhost:5173/platform` (the web app). It has its own sign in (the platform admin email and password from the section above), its own shell and no business navigation. The token is kept in `sessionStorage` under `resolvedesk.platform.session`, separate from the business token; a 401 or 403 clears it. If the platform admin is not set up, the sign in answers 404 and the page says "The platform portal is not enabled".
 
-Pages: Health (businesses, cases, approvals, last system activity), Scheduled jobs (`GET /platform/jobs`), AI performance (`GET /platform/ai-usage`). Logs and alerts and Scenario lab say "Coming soon" and show no numbers. Migration 0034 adds the views `platform_llm_usage_v` and `platform_job_runs_v` (sums and counts by business slug, day, provider, model, purpose, outcome, job, status; no ids, no text, no error class), granted only to `resolvedesk_platform`. Cost shows as an estimate (micro-paise rounded down to whole paise).
+Pages: Health (businesses, cases, approvals, last system activity), Scheduled jobs (`GET /platform/jobs`, `GET /platform/scheduler-runs`; run history only, it cannot start or stop a job), Logs and alerts (`GET /platform/logs`, `/platform/alerts`), AI performance (`GET /platform/ai-usage`) and Scenario lab (below). Migration 0034 adds the views `platform_llm_usage_v` and `platform_job_runs_v` (sums and counts by business slug, day, provider, model, purpose, outcome, job, status; no ids, no text, no error class), granted only to `resolvedesk_platform`. Cost shows as an estimate (micro-paise rounded down to whole paise).
+
+### Scenario lab (S10.1)
+
+Scenario lab edits the scenario files in `tenants/<slug>/scenarios/` (checked against the same rules the evals use) and runs a few chosen ones, one run at a time, with the real models, against a **scratch database**, never the demo data. With no scratch database set up the page says so and you can still edit. Held-out scenarios are shown read-only and cannot be saved. A run compares with the last full eval report. The last real run (S10.1) stalled and is still to be retried, so treat running from the lab as unproven.
+
+### Demo rows in the portal
+
+On the demo the portal's Scheduled jobs, AI performance, Logs and Alerts pages show **seeded demo rows** from `scripts/seed_portal_demo.py` (see "Job scheduler" below), labelled `demo`. They are not real activity; do not read them as results.
 
 ## Clearing a case the AI could not handle (the stuck demo case O0005779)
 

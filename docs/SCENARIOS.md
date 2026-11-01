@@ -106,7 +106,7 @@ Ground rules that apply to every scenario (CLAUDE.md hard rules):
 | Provider record disagrees with ours | Escalated, never "confirmed" | needs a check | `tests/integration/test_workflow_resume.py` (mismatch) |
 | A confirmed refund on a case escalated for another reason | Still shows Confirmed (verified fact) | Confirmed | `test_a_confirmed_refund_stays_confirmed_when_another_proposal_escalates_the_case` |
 | Approved but stuck / operator releases a stuck refund | Quarantined, released only when the provider has no record | needs a check | `tests/integration/test_refund_release.py` |
-| Interrupted work after a crash/restart | `make sweep` / Dev panel finishes or reconciles it | — | `tests/integration/test_sweeper.py`, `test_workflow_resume.py` |
+| Interrupted work after a crash/restart | `make sweep` / Demo controls finishes or reconciles it | — | `tests/integration/test_sweeper.py`, `test_workflow_resume.py` |
 | API restarted mid-demo | With `MOCK_STATE_FILE` set, mock providers keep their records | — | `tests/unit/test_mock_persistence.py` |
 | Server clock drifts vs the database | Timeline steps never go back in time | — | `tests/unit/test_case_timeline_voucher.py` |
 
@@ -116,7 +116,7 @@ Ground rules that apply to every scenario (CLAUDE.md hard rules):
 
 | Situation | What happens | Proof |
 | --- | --- | --- |
-| Any user, any request | Sees only their own business's data (RLS); another tenant's id → 404 | `tests/isolation/` (206 tests) |
+| Any user, any request | Sees only their own business's data (RLS); another tenant's id → 404 | `tests/isolation/` |
 | Customer | Own orders and cases only | `tests/isolation/test_orders_scope.py`, `test_api_scope.py` |
 | Location manager | Only their outlet(s) | isolation + browser walkthrough (Neha sees only Baner) |
 | Franchisee owner | Their outlets; Insights numbers equal HQ's for those outlets | `tests/integration/test_insights_api.py` |
@@ -143,23 +143,36 @@ Ground rules that apply to every scenario (CLAUDE.md hard rules):
 
 | Situation | What happens | Proof |
 | --- | --- | --- |
-| Customer chooses English / Hinglish / हिन्दी on Help | Status, timeline and questions in that language; amounts as ₹1,00,000.00; month-name dates | `tests/unit/test_i18n.py`, `tests/integration/test_customer_language_api.py` |
+| Customer writes in English, Hinglish or हिन्दी (there is no language picker) | Status, timeline and questions come back in that language; amounts as ₹1,00,000.00; month-name dates | `tests/unit/test_i18n.py`, `tests/integration/test_customer_language_api.py` |
 | "Processing" vs "done" in Hindi | Kept distinct in every language (tested) | `test_i18n.py` |
 | Complaint written in Hinglish or Devanagari | Classified correctly | `sr-late-006`, `sr-missing-004`, `bc-missing-004`, other Hinglish scenarios |
 
 ---
 
-## 7. Staff insight and growth (BrewCo has the growth flag)
+## 7. Staff insight and growth (both tenants have the growth flag)
 
 | Situation | What happens | Proof |
 | --- | --- | --- |
-| HQ / franchisee opens Insights | Per outlet: cases, refunds, vouchers, decision time, repeat-customer rate | `test_insights_api.py` (browser: Baner 37% vs 84–93%) |
+| Staff opens Dashboard | Cases, remedy spend, decision time against the 240-minute target, decisions within it, repeat rate, AI accuracy, orders and average order value, by day or week over 7 to 366 days, for their scope only; drill by brand and location; a missing value is a gap, not zero | `tests/integration/test_metrics_api.py`, `web/src/pages/DashboardPage.test.tsx` |
+| Staff opens Segments | Customer counts per segment (new, active, loyal, at risk, lapsed, lapsed regulars, one-and-done) and first-order cohorts; no names or phones; small groups hidden; only the WhatsApp column reflects consent | `tests/integration/test_segments_api.py`, `tests/unit/test_segments_unit.py`, `SegmentsPage.test.tsx` |
+| HQ / franchisee opens Insights | Per outlet: cases, refunds, vouchers, decision time, repeat-customer rate | `test_insights_api.py` (browser: Baner 37% vs 84-93%) |
 | Repeat-rate drop | Growth → Refresh signals finds it (measured up to the latest data) with evidence and "not confirmed" causes | `test_growth.py` |
+| HQ opens Brand signals | Per brand repeat rate, before and recent; low volume labelled and not charted; other roles get 404 | `tests/integration/test_brand_signals.py`, `BrandSignalsPage.test.tsx` |
 | Propose a win-back campaign | Audience + holdout + budget cap; payload hash-bound, expires | `test_growth.py` |
-| Approve | Two different staff, one HQ; the same person twice is refused | `test_growth.py`, browser |
-| Send | Once per consented customer (idempotent key), survives messaging chaos | `tests/chaos/test_chaos_growth.py` |
+| Approve | Two different staff, one HQ, neither the proposer; the same person twice is refused | `test_growth.py`, browser |
+| Campaign calendar | Read-only list of campaigns in scope with windows, send states kept apart, and overlap / 30-day frequency-cap counts; warns on the approval screen, blocks nothing | `test_growth_calendar_api.py`, `tests/unit/test_growth_calendar.py`, `GrowthCalendarPage.test.tsx` |
+| Send | Once per consented customer (idempotent key), survives messaging chaos | `tests/chaos/test_chaos_growth.py`, `test_growth_send_cap.py` |
 | Measure after the window | Honest verdict: worked / did not work / inconclusive (too few people) | `test_growth.py`, browser (Inconclusive: 154 vs 17) |
+| Offer ROI | Offered vs held-out group; revenue or margin ROI (margin is an estimate); cost is an upper bound; failed and unknown sends stay in the offered group; "not enough people" instead of a headline when the groups are small. Proven on one tenant only | `test_growth_roi_api.py`, `tests/unit/test_growth_roi.py`, `RoiPanel.test.tsx` |
+| HQ enters manual spend | Rupees to integer paise, bounded, kept as typed and unverified; counts in the channel totals, not in any campaign's ROI | `test_growth_roi_api.py`, `ManualSpendPanel.test.tsx` |
 | Tenant without the growth flag | Growth pages and API hidden (404) | `test_growth.py` |
+
+### Platform operator (separate portal)
+
+| Situation | What happens | Proof |
+| --- | --- | --- |
+| Operator opens Scheduled jobs, Logs and alerts, AI performance | Counts only, no customer data; demo rows are labelled `demo` | `tests/integration/test_seed_portal_demo.py`, `web/src/platform/PlatformApp.test.tsx` |
+| Operator edits and runs scenarios in the Scenario lab | Files are validated; held-out files are read-only; runs go to a scratch database, one at a time. A real run is not yet proven | `tests/unit/test_scenario_lab.py`, `web/src/platform/LabPage.test.tsx` |
 
 ---
 
@@ -167,7 +180,7 @@ Ground rules that apply to every scenario (CLAUDE.md hard rules):
 
 | Situation | What happens | Proof |
 | --- | --- | --- |
-| Break the providers on purpose | Dev panel chaos presets | `tests/integration/test_admin_sweep.py`, browser |
+| Break the providers on purpose | Demo controls chaos presets | `tests/integration/test_admin_sweep.py`, browser |
 | Recover | Run sweeper button / `make sweep` | `test_sweeper.py` |
 | See an approval expire / a growth window pass | Simulated clock (display only; approvals still expire in real time) | `tests/integration/test_admin_clock.py`, `test_cases_api.py` |
 | After pulling code | `make migrate` also refreshes tenant packs (dev) | `tests/integration/test_pack_refresh.py` |
@@ -182,4 +195,7 @@ Ground rules that apply to every scenario (CLAUDE.md hard rules):
 - Payment disputes, chargebacks, fraud decisions, multi-order returns: out of scope; escalated.
 - Retention and privacy choices are provisional (not legal advice); the GST/accounting retention period for order records is not researched.
 - Erasure of customers with live logins relies on the request flow; staff cannot set legal hold from the UI yet.
-- Evals are a small set (36 scenarios) on one synthetic seed: read pass rates as direction.
+- Evals are a small set (42 scenario files, 8 of them held out) on one synthetic seed: read pass rates as direction. The README table is from an earlier, smaller set.
+- Offer ROI is proven end to end on one tenant (BrewCo). Spice Route has no campaign audience in the test data yet (S12.6).
+- The DPDP position is not checked by counsel. Portal pages on the demo show seeded demo rows.
+- Staff screens are English only; Hindi and Hinglish wording awaits native review.
