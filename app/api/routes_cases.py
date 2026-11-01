@@ -125,9 +125,10 @@ class CaseDetailOut(CaseOut):
     sources: list[SourceOut] = []
 
 
-def _out(db: Session, case: Case, now: datetime) -> CaseOut:
+def _out(db: Session, case: Case, now: datetime, order: Transaction | None = None) -> CaseOut:
     st = case_status(db, case, now)
-    order = db.get(Transaction, case.transaction_id) if case.transaction_id else None
+    if order is None and case.transaction_id:
+        order = db.get(Transaction, case.transaction_id)
     return CaseOut(
         id=case.id,
         transaction_id=case.transaction_id,
@@ -358,11 +359,14 @@ def list_cases(
         query = query.where(Case.transaction_id.in_(visible))
     cases = list(db.scalars(query))
     # One query for every order, instead of one per row: db.get() in _out then finds each in the
-    # session's identity map. (Each query is a round trip to the remote database.)
+    # dict that is passed to _out. (Each query is a round trip to the remote database.)
     order_ids = {c.transaction_id for c in cases if c.transaction_id}
-    if order_ids:
-        db.scalars(select(Transaction).where(Transaction.id.in_(order_ids))).all()
-    return [_out(db, case, now) for case in cases]
+    orders = (
+        {o.id: o for o in db.scalars(select(Transaction).where(Transaction.id.in_(order_ids)))}
+        if order_ids
+        else {}
+    )
+    return [_out(db, case, now, orders.get(case.transaction_id)) for case in cases]
 
 
 class QueueItemOut(BaseModel):

@@ -186,15 +186,40 @@ def _proposal_steps(
         if execution is not None
         else None
     )
-    return steps + _refund_steps(proposal, approval, execution, ledger, verification, now, lang)
+    case = session.get(Case, proposal.case_id)  # identity-map hit: the caller loaded it
+    escalated = case is not None and case.status == "escalated"
+    return steps + _refund_steps(
+        proposal, approval, execution, ledger, verification, now, lang, escalated
+    )
 
 
 def _refund_steps(
-    proposal, approval, execution, ledger, verification: str | None, now: datetime, lang: str
+    proposal,
+    approval,
+    execution,
+    ledger,
+    verification: str | None,
+    now: datetime,
+    lang: str,
+    escalated: bool = False,
 ) -> list[TimelineStep]:
     """Same rules as case_status (S12.5): "confirmed" needs the provider's success AND a
     verifier match. A mismatch is "needs a check" (the money's state is unknown, so neither
     "arrived" nor "failed" is said); a success not yet verified adds no step (still processing)."""
+    if (
+        escalated
+        and not (
+            execution is not None and execution.status == "succeeded" and verification == "verified"
+        )
+        and (execution is None or execution.status != "failed")
+    ):
+        # Same condition as case_status: handed to a person and not confirmed -> needs a check.
+        at = execution.updated_at if execution is not None else approval.decided_at
+        return [
+            TimelineStep(
+                at, "escalated", t("tl.passed.title", lang), t("tl.refund_check.text", lang)
+            )
+        ]
     if execution is not None and verification == "mismatch":
         return [
             TimelineStep(

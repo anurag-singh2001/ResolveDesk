@@ -677,3 +677,9 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Decision: every page except Login, plus the platform portal, is `React.lazy` in `web/src/App.tsx` (pages export named components, so each import maps `default`). `Suspense` with the existing `Loading` sits around the shell's `Outlet` (the nav stays on screen while a page loads) and around `PlatformApp`. Login and the shell stay eager.
 - Result: entry chunk 850 kB -> 204 kB (66 kB gzip). Recharts lands in its own `dashboard` chunk (385 kB), the portal is 25 kB, Help (manual text) 118 kB.
 - Why: one bundle made every first load pay for charts and the portal. Rejected: manualChunks vendor splitting only (does not stop pages loading up front).
+
+## 2026-11-01 S12 fix round (safety review)
+- `list_cases` now keeps the prefetched orders in an id-to-order dict passed to `_out` (the identity map is weak, so relying on it could silently bring the N+1 back).
+- The refund timeline adds the "needs a check" step when the case is escalated and the payout is unconfirmed (and not a plain failed execution), the same condition `case_status` uses.
+- Measured on the demo DB: rules summary = 3 statements, `GET /policies/rules-summary` = 5 including auth. The case-list test asserts exactly one order query (IN) and a non-empty list.
+- Verifications are append-only for the app role, so the mismatch regression test inserts a newer mismatch row, as the verifier does.

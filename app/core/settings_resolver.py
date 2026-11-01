@@ -66,7 +66,8 @@ def effective_settings(
     rows: list[TenantSetting] | None = None,
 ) -> dict[str, Any]:
     """Settings for the session's tenant, optionally narrowed to a brand and/or location.
-    A caller that already loaded the pack or the setting rows may pass them to save a query."""
+    A caller that already loaded the pack or the setting rows may pass them to save a query;
+    they must come from this same session and transaction (RLS scopes them to one tenant)."""
     pack = pack or tenant_pack(session)
     if rows is None:
         rows = list(session.scalars(select(TenantSetting)))

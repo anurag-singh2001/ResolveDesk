@@ -514,27 +514,28 @@ def test_timeline_and_status_agree_after_a_verification_mismatch(api, app_engine
         json={"decision": "approved", "note": "ok"},
     )
     with tenant_session(f["tid"], app_engine) as s:
-        s.execute(
-            update(Verification)
-            .where(
-                Verification.execution_id.in_(
+        # verifications are append-only for the app role: add a newer, mismatching one, as the
+        # verifier does, instead of rewriting the earlier row.
+        s.add(
+            Verification(
+                tenant_id=f["tid"],
+                execution_id=s.scalar(
                     select(Execution.id).where(
                         Execution.proposal_id == uuid.UUID(opened["proposal_id"])
                     )
-                )
-            )
-            .values(
+                ),
                 status="mismatch",
                 detail={"reason": "provider has no record of this refund"},
             )
         )
+        s.flush()
         s.execute(update(Case).where(Case.id == uuid.UUID(opened["id"])).values(status="escalated"))
     steps = api.get(f"/cases/{opened['id']}/timeline", headers=f["customer"]).json()
     case = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()
     assert steps[-1]["stage"] == "escalated"
     assert all(st["stage"] != "confirmed" for st in steps)
     assert "confirmed" not in " ".join(st["title"] + st["text"] for st in steps).lower()
-    assert case["status"] == steps[-1]["stage"] == "escalated"
+    assert case["stage"] == steps[-1]["stage"] == "escalated"
 
 
 def test_declined_case_timeline_ends_declined(api, flow):
@@ -629,3 +630,32 @@ def test_one_customer_opening_two_cases_at_once_does_not_deadlock(
             cases = select(Case.id).where(Case.tenant_id == f["tid"], Case.transaction_id == other)
             s.execute(delete(Ticket).where(Ticket.tenant_id == f["tid"], Ticket.case_id.in_(cases)))
             s.execute(delete(Case).where(Case.tenant_id == f["tid"], Case.transaction_id == other))
+
+
+def test_case_list_loads_orders_in_one_query(api, app_engine, flow):
+    """S12.3: the list must not look up each case's order separately (a remote round trip each)."""
+    from tests.integration.test_query_counts import _Count
+
+    f = flow
+    _open(api, f)
+    with tenant_session(f["tid"], app_engine) as s:
+        others = s.scalars(
+            select(Transaction.id)
+            .where(Transaction.customer_id == s.get(Transaction, f["order_id"]).customer_id)
+            .where(Transaction.id != f["order_id"])
+            .limit(4)
+        ).all()
+    for order_id in others:  # one case per order: open more on the customer's other orders
+        api.post(
+            "/cases",
+            headers=f["customer"],
+            json={"transaction_id": str(order_id), "category": "missing_items", "message": "x"},
+        )
+    with _Count(app_engine) as c:
+        resp = api.get("/cases?limit=20", headers=f["hq"])
+    assert resp.status_code == 200
+    assert len(resp.json()) >= 2, "the list must not be empty, or the count proves nothing"
+    order_loads = [q for q in c.statements if "FROM transactions" in q]
+    assert all("transactions.id IN" in q for q in order_loads)
+    assert len(order_loads) == 1, order_loads  # the single prefetch (IN), no per-row lookup
+    assert len(c.statements) <= 2 + 8 * len(resp.json()), len(c.statements)

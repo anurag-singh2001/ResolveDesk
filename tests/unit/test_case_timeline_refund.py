@@ -9,7 +9,7 @@ from app.engine.case_timeline import _refund_steps
 
 NOW = datetime(2026, 11, 1, 12, tzinfo=UTC)
 PROPOSAL = SimpleNamespace(amount_paise=25_000)
-APPROVAL = SimpleNamespace(expires_at=NOW + timedelta(hours=1))
+APPROVAL = SimpleNamespace(expires_at=NOW + timedelta(hours=1), decided_at=NOW)
 LANGS = ["en", "hi-Latn", "hi"]
 
 
@@ -54,3 +54,14 @@ def test_unverified_failure_is_unknown_and_verified_failure_is_failed():
 def test_in_flight_adds_no_step():
     assert _steps(_exec("submitted"), None) == []
     assert _steps(None, None) == []
+
+
+def test_escalated_and_unconfirmed_is_a_check_like_case_status():
+    for ex in (None, _exec("submitted"), _exec("unknown")):
+        (step,) = _refund_steps(PROPOSAL, APPROVAL, ex, None, None, NOW, "en", True)
+        assert step.stage == "escalated" and "needs a check" in step.text
+    # a confirmed payout stays confirmed, and a failed execution keeps its own rule
+    (done,) = _refund_steps(
+        PROPOSAL, APPROVAL, _exec("succeeded"), None, "verified", NOW, "en", True
+    )
+    assert done.stage == "confirmed"
