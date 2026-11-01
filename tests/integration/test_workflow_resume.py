@@ -8,7 +8,7 @@ import json
 import subprocess
 import sys
 import uuid
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -60,6 +60,15 @@ def clean_mocks():
     reset_mocks()
 
 
+@pytest.fixture(autouse=True)
+def fresh_now(monkeypatch):
+    # after_decision reads the real clock, and approvals last 4 hours. NOW is set when the module
+    # is imported, so late in a long run every approval here would already look expired.
+    now = datetime.now(UTC)
+    monkeypatch.setattr(sys.modules[__name__], "NOW", now)
+    monkeypatch.setattr("tests.integration.test_agent_graph.NOW", now)
+
+
 @pytest.fixture
 def hq(app_engine, policies_loaded, tenant, case):  # noqa: F811
     cfg = policies_loaded[tenant.name]
@@ -68,8 +77,8 @@ def hq(app_engine, policies_loaded, tenant, case):  # noqa: F811
         return load_context(s, case["tid"], s.scalar(select(User.id).where(User.email == email)))
 
 
-def _deps(app_engine, clf=None, res=None, now=NOW):
-    return graph.Deps(app_engine, clf, res, EMBEDDER, now=now)
+def _deps(app_engine, clf=None, res=None, now=None):
+    return graph.Deps(app_engine, clf, res, EMBEDDER, now=now or NOW)
 
 
 def _paused_refund(app_engine, case):  # noqa: F811
@@ -81,9 +90,9 @@ def _paused_refund(app_engine, case):  # noqa: F811
     return uuid.UUID(out["proposal_id"]), uuid.UUID(out["run_id"])
 
 
-def _decide(app_engine, case, hq, pid, decision, now=NOW):  # noqa: F811
+def _decide(app_engine, case, hq, pid, decision, now=None):  # noqa: F811
     with tenant_session(case["tid"], app_engine) as s:
-        decide(s, hq, pid, decision, now)
+        decide(s, hq, pid, decision, now or NOW)
 
 
 def _state(app_engine, case, pid=None, run_id=None):  # noqa: F811

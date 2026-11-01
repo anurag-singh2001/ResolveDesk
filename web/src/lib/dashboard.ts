@@ -6,7 +6,8 @@ export const NO_DATA = "No data";
 export function formatBp(bp: number | null | undefined): string {
   if (bp === null || bp === undefined) return NO_DATA;
   const b = Math.trunc(bp);
-  return `${Math.floor(b / 100)}.${String(b % 100).padStart(2, "0")}%`;
+  const abs = Math.abs(b);
+  return `${b < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}%`;
 }
 
 export function formatBpShort(bp: number): string {

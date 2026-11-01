@@ -296,7 +296,7 @@ Clicks NOT performed in the browser: S7.4 re-run, S7.5 propose, S7.6 reply and c
 
 | Story (SP) | Verdict | Evidence / what is missing |
 | --- | --- | --- |
-| S7.1 (3) | open | 1c46a1f; suite pass; staff case page not walked through, only the approval detail |
+| S7.1 (3) | TICKED | 1c46a1f; suite pass; staff case page read on O0005931: items, totals, promised, delivered, exact message |
 | S7.2 (5) | TICKED | f91a79d, safety clean; suite; eval 0 errors; franchisee sees own 2 outlets only, HQ all |
 | S7.3 (3) | TICKED | f91a79d; Cases to handle opened per role |
 | S7.4 (3) | open | b3535c7, dfe6bca; Re-run click and sweeper retry not exercised |
@@ -311,7 +311,7 @@ Clicks NOT performed in the browser: S7.4 re-run, S7.5 propose, S7.6 reply and c
 | S7.D1 (5) | open | no design artefact in docs; owner to confirm |
 | S7.D2 (8) | open | no wireframes or approval recorded; owner to confirm |
 
-Velocity: planned 60 SP, done (ticked) 11 SP (S7.2 5, S7.3 3, S7.8 3). Code merged: all of S7.1-S7.12 (47 SP), so the gap is verification, not building. Carry-over with points unchanged: S7.1 3, S7.4 3, S7.5 8, S7.6 5, S7.7 1, S7.9 5, S7.10 5, S7.11 1, S7.12 5, S7.D1 5, S7.D2 8 = 49 SP.
+Velocity: planned 60 SP, done (ticked) 14 SP (S7.1 3, S7.2 5, S7.3 3, S7.8 3). Code merged: all of S7.1-S7.12 (47 SP), so the gap is verification, not building. Carry-over with points unchanged: S7.4 3, S7.5 8, S7.6 5, S7.7 1, S7.9 5, S7.10 5, S7.11 1, S7.12 5, S7.D1 5, S7.D2 8 = 46 SP.
 
 Owner questions: (1) were S7.D1/S7.D2 delivered, and where are the artefacts or approval? (2) refund fit to policy, four-eyes on the S7.10 switch, and the "no remedy due" wording. (3) native-speaker review of Hinglish/Devanagari.
 
@@ -323,7 +323,7 @@ Went well:
 - The eval on the merged head held: 0 over rule, 0 errors, injections held.
 
 Hurt:
-- Verification lagged building by days; the first review draft had 0 SP ticked, now 11 SP.
+- Verification lagged building by days; the first review draft had 0 SP ticked, now 14 SP.
 - Stale EPICS boxes: S11.1 research was redone needlessly because its box was unticked although ab98d85 existed.
 - Low memory killed a background run; an eval was killed by a too-short output-based hang limit; one early eval shared a DB with a builder and crashed.
 - Design stories left no artefact in the repo.

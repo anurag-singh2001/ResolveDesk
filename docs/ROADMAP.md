@@ -47,7 +47,7 @@ v1 is complete (Sprints 0-6 closed, merged to main at cf6a861, CI green). The ow
 | 4 | not estimated in SP | not estimated in SP | S/M/L estimates only |
 | 5 | not estimated in SP | not estimated in SP | S/M/L estimates only |
 | 6 | not estimated in SP | not estimated in SP | S/M/L estimates only |
-| 7 | 60 | 11 | Ticked 2026-11-01: S7.2, S7.3, S7.8; 49 SP carry over |
+| 7 | 60 | 14 | Ticked 2026-11-01: S7.1, S7.2, S7.3, S7.8; 46 SP carry over |
 | 8 | 42 (39 core + 3 stretch S8.5c; incl. 5 carry-over S7.9) | 15 | Ticked: S8.1, S8.2, S8.5a (S8.4 2 SP also ticked) | Re-estimated at planning: S8.5 split 5 -> 16, S8.7 8 -> 5; S8.5e (8) moved to Sprint 9 |
 | 9 | 39 (31 core S9.1-S9.5 + 8 S8.5e if capacity allows) | 0 | All merged, none ticked: safety reports not filed, populated views not seen | Planned 2026-10-31, see sprint-9.md; starts only after Sprint 8 stories are merged; migrations from 0028 |
 | 10 | 24 | | |

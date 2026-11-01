@@ -66,6 +66,8 @@ describe("dashboard formatting", () => {
     expect(formatBp(3125)).toBe("31.25%");
     expect(formatBp(5)).toBe("0.05%");
     expect(formatBp(0)).toBe("0.00%");
+    expect(formatBp(-267)).toBe("-2.67%");
+    expect(formatBp(-5)).toBe("-0.05%");
     expect(formatBp(null)).toBe("No data");
     expect(bucketLabel("2026-03-09", "week")).toBe("Week of 9 Mar");
     expect(timezoneLabel("Asia/Kolkata")).toBe("Asia/Kolkata (IST)");
