@@ -64,6 +64,9 @@ class CampaignOut(BaseModel):
     approvals: list[dict]
     fully_approved: bool
     playbook: dict | None
+    # S12.8: the calendar's warnings, as counts, so the approver sees clashes where they approve.
+    overlap_customers: int = 0
+    frequency_cap_customers: int = 0
 
 
 def _signal_out(db: Session, s: Signal) -> SignalOut:
@@ -73,9 +76,13 @@ def _signal_out(db: Session, s: Signal) -> SignalOut:
     return out
 
 
-def _campaign_out(db: Session, c: Campaign, now: datetime) -> CampaignOut:
+def _campaign_out(ctx: TenantContext, db: Session, c: Campaign, now: datetime) -> CampaignOut:
     approvals = camp.approvals_of(db, c)
     entry = db.scalar(select(PlaybookEntry).where(PlaybookEntry.campaign_id == c.id))
+    # Same numbers and the same scope as GET /growth/calendar (one source, called directly).
+    from app.api.routes_growth_calendar import calendar  # local: that module imports this one
+
+    listed = {x.id: x for x in calendar(None, None, ctx, db, now).campaigns}.get(c.id)
     return CampaignOut(
         id=c.id,
         signal_id=c.signal_id,
@@ -97,6 +104,8 @@ def _campaign_out(db: Session, c: Campaign, now: datetime) -> CampaignOut:
             }
             for a in approvals
         ],  # fmt: skip
+        overlap_customers=listed.overlap_customers if listed else 0,
+        frequency_cap_customers=listed.frequency_cap_customers if listed else 0,
         fully_approved=camp.dual_approved(
             camp.valid_approvals(c, approvals, now), camp.approvers_needed(db, c)
         ),
@@ -154,7 +163,7 @@ def propose_campaign(
         raise not_found() from None
     except ProposalError as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
-    return _campaign_out(db, c, now)
+    return _campaign_out(ctx, db, c, now)
 
 
 @router.get("/campaigns/{campaign_id}")
@@ -168,7 +177,7 @@ def get_campaign(
         c = camp.load_campaign(db, ctx, campaign_id)
     except camp.NotFound:
         raise not_found() from None
-    return _campaign_out(db, c, now)
+    return _campaign_out(ctx, db, c, now)
 
 
 class DecisionIn(BaseModel):
@@ -208,7 +217,7 @@ def approve_campaign(
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     if ready:
         background.add_task(_send, engine, ctx.tenant_id, campaign_id, datetime.now(UTC))
-    return _campaign_out(db, camp.load_campaign(db, ctx, campaign_id), now)
+    return _campaign_out(ctx, db, camp.load_campaign(db, ctx, campaign_id), now)
 
 
 @router.post("/campaigns/{campaign_id}/verdict")
@@ -225,4 +234,4 @@ def campaign_verdict(
         raise not_found() from None
     except NotReady as exc:
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from None
-    return _campaign_out(db, c, now)
+    return _campaign_out(ctx, db, c, now)

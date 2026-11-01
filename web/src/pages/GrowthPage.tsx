@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { errorMessage } from "../api/client";
 import type { Campaign, GrowthSignal } from "../api/types";
@@ -58,6 +59,14 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
           ["Sent", current.sent_at ? formatDateTime(current.sent_at) : "Not sent"],
         ]}
       />
+      {pending && (current.overlap_customers > 0 || current.frequency_cap_customers > 0) && (
+        <Alert tone="warning">
+          <span data-testid="calendar-warning">
+            Heads up, nothing is blocked: {current.overlap_customers} customer{current.overlap_customers === 1 ? "" : "s"} also in an overlapping campaign and {current.frequency_cap_customers} inside the 30-day frequency cap. See the{" "}
+            <Link to="/growth/calendar" className="underline underline-offset-2">campaign calendar</Link>.
+          </span>
+        </Alert>
+      )}
       {pending && (
         <>
           <Alert tone="info">

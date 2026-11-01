@@ -89,6 +89,8 @@ export function AppShell() {
   const base = navFor(me.role, me.growth_enabled === true);
   const nav = chaos ? [...base.slice(0, -1), { to: "/demo", label: "Demo controls", icon: "dev" as const }, base[base.length - 1]] : base;
 
+  // A parent item (/growth) must not stay lit on its children (/growth/calendar): match exactly.
+  const hasChild = (to: string) => nav.some((o) => o.to.startsWith(`${to}/`));
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cx(
       "flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors duration-200",
@@ -134,7 +136,7 @@ export function AppShell() {
           <ul className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {nav.map((item) => (
               <li key={item.to} className="shrink-0 whitespace-nowrap">
-                <NavLink to={item.to} className={linkClass}>
+                <NavLink to={item.to} end={hasChild(item.to)} className={linkClass}>
                   <Icon name={item.icon} />
                   {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                 </NavLink>
@@ -150,7 +152,7 @@ export function AppShell() {
             <ul className="space-y-1" data-testid="side-nav">
               {nav.map((item) => (
                 <li key={item.to}>
-                  <NavLink to={item.to} className={linkClass}>
+                  <NavLink to={item.to} end={hasChild(item.to)} className={linkClass}>
                     <Icon name={item.icon} />
                     {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                   </NavLink>

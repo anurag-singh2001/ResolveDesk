@@ -137,3 +137,17 @@ def test_customers_and_anonymous_are_refused(cal):
     finally:
         api.app.dependency_overrides[get_clock] = held
     assert api.get(URL, headers=token).status_code == 403
+
+
+def test_campaign_detail_carries_the_same_warning_counts_as_the_calendar(cal):
+    """S12.8: the approver's screen (GET /growth/campaigns/{id}) shows what the calendar shows."""
+    api, cfg, tid, headers, staff, hq = cal
+    rows = api.get(URL, headers=headers[hq]).json()["campaigns"]
+    assert rows
+    for r in rows:
+        detail = api.get(f"/growth/campaigns/{r['id']}", headers=headers[hq])
+        assert detail.status_code == 200, detail.text
+        body = detail.json()
+        assert body["overlap_customers"] == r["overlap_customers"]
+        assert body["frequency_cap_customers"] == r["frequency_cap_customers"]
+        assert not ({"customer_ids", "customers", "phones"} & set(body))  # counts only
