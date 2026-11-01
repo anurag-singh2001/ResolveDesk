@@ -194,3 +194,12 @@ These are non-blockers, logged here and not scheduled.
 
 ### Growth flag on for spice_route (2026-11-01)
 Owner decision: `growth: true` in the tenant file. Tests with the flag on: test_growth 30 passed, brand signals 19 passed, tenant loader 10 passed. Known gap: that tenant's simulation plants no repeat-rate drop and has no third staff user at its location, so its end-to-end campaign flow and 7 campaign tests skip. Its campaign flow is therefore not exercised by a test.
+
+## Addendum (2026-11-01): safety reports filed, decisions made
+
+Safety reports for S9.1, S9.2, S9.4 and S8.5e are filed (coordinator). S9.1 and S9.2 TICKED: done-when met by the filed reports plus tests in the 2408-pass suite on 2f84f23 and the portal sign-in seen. Not ticked: S9.4 (no alert rule or log row seen firing; empty state only), S9.3 (done-when mismatch on pack refresh, Jobs page empty and omits platform_job_runs), S9.5 (populated views not seen), S8.5e (approve not clicked). Next: seed one failed job, some usage rows and an alert on the demo DB, then walk S9.3-S9.5 populated.
+
+Velocity: ticked now 13 of 39 SP (S9.1 8, S9.2 5). Open 26: S9.3 5, S9.4 5, S9.5 8, S8.5e 8.
+
+### Safety report filed 2026-11-01: S10.2
+Static read by safety-reviewer before commit. Verdict: clean. Scope comes from membership, ids only narrow, out of scope and other tenants are 404, all roles outside the three metric roles get 403, SQL substitution uses validated literals, joins are one to one, money stays integer paise. Fixed from its findings: decision time and SLA count human approvals only; repeat orders look back only through brands in scope. Left open: bucketing by `updated_at`, and no value-level test of AI accuracy.

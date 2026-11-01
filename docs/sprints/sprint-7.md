@@ -344,3 +344,23 @@ Previous retro actions: no Sprint 6 retro action is tracked in the sprint files;
 
 ### Safety report filed 2026-11-01: S7.5
 Static read by safety-reviewer, no tests run. Verdict: clean. Limits, scope, four eyes and idempotency are enforced server-side. The reviewer could not find the refundable-balance lock; the coordinator confirmed it: `order_facts(lock=True)` takes `with_for_update()` (app/engine/eligibility.py:121) and both reservation paths in app/engine/executor.py use it. Non-blocker: four eyes is skipped when `self_approved` is set, which is the S7.10 switch path and an open owner decision.
+
+## Addendum: click-through on the demo DB (2026-11-01, coordinator's observations; not re-run by scrum-master)
+
+Safety report for S7.5 filed. Decisions: growth on for spice_route (a902a69); main merges when the final suite is green.
+
+| Story | Verdict | Evidence |
+| --- | --- | --- |
+| S7.4 (3) | TICKED | O0005779 re-run: audit case.ai_rerun_requested then case.ai_rerun_result (31 Oct); sweeper retry covered by tests, not clicked |
+| S7.5 (8) | TICKED | HQ recategorised to Wrong item; Rs 999 refused by server ("between Rs 0.01 and Rs 304.00"); Rs 304 refund proposed; self-approval refused by server (message bug fixed); safety report filed |
+| S7.6 (5) | TICKED | template reply on timeline in the customer's language; close "No remedy due" has confirm step, customer told |
+| S7.7 (1) | TICKED | O0005779 Confirmed, Rs 100 voucher |
+| S7.10 (5) | TICKED | manager switched refund Rs 304 to voucher Rs 200 with reason; old proposal refused on re-approve; HQ approved the new one; voucher issued, case Confirmed; approve-at-switch path not used |
+| S7.9 (5) | open | report form shows voucher and refund priced to the order, case moved to awaiting approval; a choice was not clicked |
+| S7.11 (1) | open | repeat claimant shown as a person-must-decide note, not red; web test run not recorded |
+| S7.12 (5) | open | Hinglish and Devanagari got replies in that language; eval has no per-language table |
+| S7.D1 (5), S7.D2 (8) | open | owner |
+
+Velocity: ticked now 36 of 60 SP (14 + 3 + 8 + 5 + 1 + 5). Open 24 SP: S7.9 5, S7.11 1, S7.12 5, D1 5, D2 8.
+
+Findings (not ticked): the no-remedy closing message points disputes to the Privacy desk; O0003646 shows Refund confirmed while status says needs a check (mock state lost at restart, per RUNBOOK; left open); AI proposal amounts show on the customer timeline but staff proposals do not until approved.

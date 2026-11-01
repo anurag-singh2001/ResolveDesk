@@ -143,3 +143,36 @@ Not completable without these: E0.3, E7.2, native review, D1-gated Sprint 12 bui
 3. Safety-reviewer files reports for S9.1, S9.2, S9.4, S8.5e, S7.5.
 4. Seed portal demo rows (D7) and add platform_job_runs to Jobs page (D6).
 5. Read the full-suite result on 30edeae; run `make lint`; confirm CI; then ask for the main merge (D8).
+
+## 7. Update after the 2026-11-01 click-through (supersedes sections 1.1-1.4 and the decision table where it differs)
+
+Decisions made: growth on for spice_route (a902a69); S11.3 split accepted (D9 done); main merges when the final suite is green (D8 given, conditional). Safety reports filed for S8.5e, S9.1, S9.2, S9.4, S7.5 (the safety-report action in Batch 0 is done; S10.2 and S11.3b still need one).
+
+Ticked now (9 stories, 54 SP): S7.4, S7.5, S7.6, S7.7, S7.10, S8.5b, S9.1, S9.2, S10.3.
+
+Open, with the single thing that closes each
+| Story (SP) | Left to do | Who |
+| --- | --- | --- |
+| S7.9 (5) | click one voucher and one refund choice on the report form, see it in the proposal; D2 | human/main |
+| S7.11 (1) | record the web test run (with S8.7) | main |
+| S7.12 (5) | eval scenarios per language with a per-language result, both tenants | builder + eval-runner |
+| S7.D1, S7.D2 (13) | owner delivers/approves designs (D1) | human |
+| S8.3 (3) | confirm the older-section fallback text on screen, or fix the v3 anchor mismatch | main/builder |
+| S8.5c (3) | click the JSON download | main |
+| S8.5d (5) | request, confirm and withdraw an erasure on a throwaway customer | main |
+| S8.5e (8) | approve and reject on a throwaway customer (dry run already seen) | main + human watch |
+| S8.6 (3) | D3 wording | human |
+| S8.7 (5) | `make web-test` and build counts, Devanagari check | main |
+| S9.3 (5) | D4 amend done-when; add platform_job_runs to the Jobs page; walk populated | builder |
+| S9.4 (5) | show one rule firing (seed a failed job); populated logs | builder/main |
+| S9.5 (8) | walk populated health, jobs, logs, alerts, AI pages after seeding | main |
+| S10.1 (8) | one real scratch-DB run and compare (needs a scratch DB created by the owner or a builder; main session may not touch DBs without approval) | main + eval-runner |
+| S10.2 (8) | safety review (tenancy) filed; scope tests both tenants cited | safety-reviewer |
+| S11.2, S11.3a, S11.4 (8+0+5) | see them on Spice Route with growth on; S11.2 safety review advised | main |
+| S11.3b ROI (about 8) | build and safety-review; first add an end-to-end Spice Route campaign test (no such test exists) | builder + safety-reviewer |
+
+New SP totals (planned vs ticked): Sprint 7 60/36, Sprint 8 42/18, Sprint 9 39/13, Sprint 10 24/8, Sprint 11 24/3. Open SP: 24 + 19 + 26 + 16 + 21 = 106, plus Sprint 12 about 30 (unsized, gated on D1) = about 136 SP. Of the 106, 13 SP are human-gated designs (D1/D2), about 8 SP is the unbuilt S11.3b, and the rest is clicks, evidence and small fixes.
+
+Findings added to the backlog (to be sized at next planning, none ticked or counted): (a) no-remedy closing message points disputes to the Privacy desk, wording fix (1 SP); (b) O0003646 shows Refund confirmed while status says needs a check after mock state loss (needs human reconcile or documented limit); (c) staff proposal amounts are hidden from the customer timeline until approved (confirm intended); (d) mixed Hinglish and English on the Privacy page, needs the native review; (e) policy page and case lists take 5-9 s to load, performance story for Sprint 12 (3 SP); (f) no end-to-end Spice Route campaign test (add with S11.3b).
+
+Revised first five actions: (1) Spice Route views of S11.2, S11.3a, S11.4 with growth on; (2) seed portal rows and fix the Jobs page, then walk S9.3-S9.5; (3) remaining action clicks (S7.9 choice, S8.5c JSON, S8.5d, S8.5e on a throwaway customer); (4) S7.12 per-language eval and S10.1 real scratch run; (5) read the final suite result, lint, CI, then merge to main.

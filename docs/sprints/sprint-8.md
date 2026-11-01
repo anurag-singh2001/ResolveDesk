@@ -266,3 +266,16 @@ Action: one eval DB per run and a time-based (not output-based) hang limit, set 
 
 Previous retro action (Sprint 7: tick the same day, one click-through per batch): partly done. Ticks happened only at this review; one walkthrough session was held 2026-11-01 but skipped the action clicks.
 
+
+## Addendum: click-through on the demo DB (2026-11-01, coordinator's observations; not re-run by scrum-master)
+
+| Story | Verdict | Evidence |
+| --- | --- | --- |
+| S8.5b (3) | TICKED | consent off by default, on then off, each change in history with wording version; help messages always on |
+| S8.3 (3) | open | link "Late delivery policy, section 2.1" opens /policies at an older v3 anchor; older-section fallback text not confirmed |
+| S8.5c (3) | open | readable export opened, own data only, print option; JSON download not clicked |
+| S8.5d (5) | open | remove/keep/wait lists, deferred status with reason and target date, withdraw button seen; not clicked |
+| S8.5e (8) | open | safety report filed; queue (masked ref, target date, days left) and dry run (counts, kept/removed, valid-until) seen; approve not clicked to avoid a real erasure |
+| S8.6, S8.7 | open | no new evidence; owner decision D3, web test/build counts and Devanagari check outstanding |
+
+Velocity: ticked now 18 of 42 SP (15 + S8.5b 3). Finding: mixed Hinglish and English on the Privacy page; policy page and case lists load slowly (about 5-9 s).
