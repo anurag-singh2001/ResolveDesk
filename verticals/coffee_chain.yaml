@@ -29,6 +29,9 @@ settings:
   # choice, never described as a legal deadline). Provisional, not legal advice.
   privacy_contact_name: {kind: value, default: ""}
   privacy_contact_email: {kind: value, default: ""}
+  # Where a customer disputes a decision (closing messages). Never the privacy contact.
+  support_contact_name: {kind: value, default: ""}
+  support_contact_email: {kind: value, default: ""}
   grievance_target_days: {kind: limit, default: 30}
   # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
   business_timezone: {kind: value, default: "Asia/Kolkata"}

@@ -1010,7 +1010,8 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi": "हमने इस केस को सुलझा हुआ मानकर बंद कर दिया है।",
     },
     # Owner decision M2 (2026-10-31): a reason, a way to contest, and the National Consumer
-    # Helpline. {contact} is the privacy and grievance contact; {days} the settlement target.
+    # Helpline. {contact} is the tenant's support contact (S12.1), not the privacy desk;
+    # {days} the settlement target.
     "close.no_remedy": {
         "en": "We have looked at your case again and, based on the records for this order, we "
         "are not able to offer a refund or voucher this time. If you think we have missed "
@@ -1031,15 +1032,17 @@ TEMPLATES: dict[str, dict[str, str]] = {
     # Same sentence without the contact clause, used only while no contact is set.
     "close.no_remedy_nocontact": {
         "en": "We have looked at your case again and, based on the records for this order, we "
-        "are not able to offer a refund or voucher this time. You can call the National "
-        "Consumer Helpline on 1915 (consumerhelpline.gov.in) if you think we have missed "
-        "something.",
+        "are not able to offer a refund or voucher this time. If you think we have missed "
+        "something, please contact the support team of the place you ordered from, or call the "
+        "National Consumer Helpline on 1915 (consumerhelpline.gov.in).",
         "hi-Latn": "Humne aapka case dobara dekha. Is order ke records ke hisaab se hum is baar "
         "refund ya voucher nahi de paa rahe hain. Agar aapko lagta hai ki kuch chhoot gaya hai, to "
-        "aap National Consumer Helpline 1915 (consumerhelpline.gov.in) par sampark kar sakte hain.",
+        "jahan se order kiya tha wahan ki support team se sampark kijiye, ya National Consumer "
+        "Helpline 1915 (consumerhelpline.gov.in) par call kijiye.",
         "hi": "हमने आपका केस दोबारा देखा। इस ऑर्डर के रिकॉर्ड के आधार पर हम इस बार रिफंड या "
-        "वाउचर नहीं दे पा रहे हैं। अगर आपको लगता है कि कुछ छूट गया है, तो आप राष्ट्रीय "
-        "उपभोक्ता हेल्पलाइन 1915 (consumerhelpline.gov.in) पर संपर्क कर सकते हैं।",
+        "वाउचर नहीं दे पा रहे हैं। अगर आपको लगता है कि कुछ छूट गया है, तो जहाँ से ऑर्डर किया था "
+        "वहाँ की सपोर्ट टीम से संपर्क करें, या राष्ट्रीय उपभोक्ता हेल्पलाइन 1915 "
+        "(consumerhelpline.gov.in) पर कॉल करें।",
     },
     "close.duplicate": {
         "en": "We have closed this case because it repeats another report of yours.",

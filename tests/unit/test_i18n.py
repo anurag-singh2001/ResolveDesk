@@ -178,3 +178,22 @@ def test_the_response_line_promises_only_what_the_system_does():
     for lang, text in TEMPLATES["held.contact.target"].items():
         assert "{days}" in text and "{hours}" not in text and "48" not in text, lang
     assert "straight away" in TEMPLATES["held.contact.target"]["en"]
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_no_remedy_close_names_the_support_contact_never_the_privacy_one(lang):
+    from app.engine.privacy import close_text
+
+    s = {
+        "privacy_contact_name": "Priv",
+        "privacy_contact_email": "priv@example.com",
+        "support_contact_name": "Help",
+        "support_contact_email": "help@example.com",
+        "grievance_target_days": 30,
+    }
+    text = close_text("no_remedy", s, lang)
+    assert "Help (help@example.com)" in text and "priv@" not in text
+    bare = close_text(
+        "no_remedy", {**s, "support_contact_name": "", "support_contact_email": ""}, lang
+    )
+    assert "priv@" not in bare and "help@" not in bare and "1915" in bare and "{" not in bare

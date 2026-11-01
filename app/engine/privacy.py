@@ -37,12 +37,19 @@ def contact_line(settings: dict[str, Any]) -> str | None:
     return (f"{name} ({email})" if name and email else (email or name)) or None
 
 
+def support_line(settings: dict[str, Any]) -> str | None:
+    """Where a customer disputes a decision, or None while none is set. Never falls back to the
+    privacy contact: that desk handles data requests, not complaints."""
+    name, email = settings.get("support_contact_name"), settings.get("support_contact_email")
+    return (f"{name} ({email})" if name and email else (email or name)) or None
+
+
 def close_text(reason: str, settings: dict[str, Any], language: object = None) -> str:
     """What the customer reads when a person closes the case. Templates only. The no-remedy
-    wording names the contact and the National Consumer Helpline (owner decision M2); with no
-    contact set it drops that clause rather than point at nobody."""
+    wording names the support contact and the National Consumer Helpline (owner decision
+    M2); with no contact set it drops that clause rather than point at nobody."""
     if reason == "no_remedy":
-        contact = contact_line(settings)
+        contact = support_line(settings)
         days = settings["grievance_target_days"]
         if contact:
             return t("close.no_remedy", language, contact=contact, days=days)

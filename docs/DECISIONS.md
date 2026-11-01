@@ -638,3 +638,7 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: the held-out set is what keeps eval results honest; if it can be edited from the lab it can be tuned until it passes. Checking the file on disk (not just the submitted text) closes the flip-the-flag route.
 - Alternative rejected: only hiding the button (the server would still accept a direct PUT).
 - Open: a held-out scenario still has to be added or changed by hand in the tenant folder; the lab cannot create one.
+## 2026-11-01 - Support contact for no-remedy closings, separate from privacy (S12.1)
+- Decision: new org settings `support_contact_name` / `support_contact_email` (value, default empty, in both vertical packs; set in both tenant files). `close_text("no_remedy")` uses them via `support_line`, never the privacy contact. With none set it uses `close.no_remedy_nocontact`, reworded to point at "the support team of the place you ordered from" plus the National Consumer Helpline. Privacy-request messages still use the privacy contact.
+- Why: the privacy desk handles data requests, so it was the wrong place to send a customer disputing a refusal. An empty setting must not borrow another desk's address.
+- Alternative rejected: falling back to the privacy contact when support is unset (recreates the bug).

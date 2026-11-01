@@ -358,19 +358,22 @@ def test_close_with_each_reason_is_stored_audited_and_shown_to_the_customer(worl
 def test_no_remedy_close_text_gives_a_reason_the_contact_and_the_helpline(lang):
     """M2: no legal-sounding 'remedy', no 'compensation' word in Hindi; a way to contest."""
     settings = {
-        "privacy_contact_name": "Desk",
-        "privacy_contact_email": "desk@example.test",
+        "privacy_contact_name": "Privacy",
+        "privacy_contact_email": "privacy@example.test",
+        "support_contact_name": "Desk",
+        "support_contact_email": "desk@example.test",
         "grievance_target_days": 30,
     }
     text = close_text("no_remedy", settings, lang)
-    assert "Desk (desk@example.test)" in text and "1915" in text
+    assert "Desk (desk@example.test)" in text and "privacy@" not in text and "1915" in text
     assert "consumerhelpline.gov.in" in text and "30" in text and "{" not in text
     assert "remedy" not in text.lower() and "muaavza" not in text and "मुआवज़ा" not in text
     # With no contact set the sentence drops that clause instead of pointing at nobody.
     bare = close_text(
-        "no_remedy", {**settings, "privacy_contact_email": "", "privacy_contact_name": ""}, lang
+        "no_remedy", {**settings, "support_contact_email": "", "support_contact_name": ""}, lang
     )
     assert "1915" in bare and "{" not in bare and "desk@" not in bare
+    assert "privacy@" not in bare  # the neutral line never borrows the privacy contact
 
 
 def test_closed_case_refuses_reply_and_second_close(world):
