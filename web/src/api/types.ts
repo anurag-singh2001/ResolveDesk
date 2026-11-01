@@ -520,7 +520,7 @@ export interface PrivacyContact {
 
 export interface DataHeld {
   language: string;
-  headings: Record<"title" | "item" | "yours" | "purpose" | "keep" | "use" | "processors" | "not_kept" | "contact", string>;
+  headings: Record<"title" | "item" | "yours" | "purpose" | "keep" | "use" | "processors" | "not_kept" | "contact" | "page_title" | "page_subtitle" | "download_title" | "download_body" | "readable_link", string>;
   items: HeldItem[];
   processors: { name: string; role: string; data: string }[];
   not_kept: string[];

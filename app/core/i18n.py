@@ -518,6 +518,39 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Aapke data ke bare mein sawal",
         "hi": "आपके डेटा के बारे में सवाल",
     },
+    # Privacy page frame (S12.2): the page title and download card come from the same locale
+    # as the rest of the page, so nothing on it is left in English inside Hindi.
+    "held.h.page_title": {
+        "en": "Privacy & data",
+        "hi-Latn": "Privacy aur data",
+        "hi": "प्राइवेसी और डेटा",
+    },
+    "held.h.page_subtitle": {
+        "en": "Choose what we may send you, see what we hold, or ask us to erase it.",
+        "hi-Latn": "Chuniye ki hum aapko kya bhej sakte hain, dekhiye ki hamare paas kya hai, "
+        "ya use mitane ko kahiye.",
+        "hi": "चुनिए कि हम आपको क्या भेज सकते हैं, देखिए कि हमारे पास क्या है, या उसे मिटाने के लिए कहिए।",
+    },
+    "held.h.download_title": {
+        "en": "Download my data",
+        "hi-Latn": "Mera data download karein",
+        "hi": "मेरा डेटा डाउनलोड करें",
+    },
+    "held.h.download_body": {
+        "en": "A copy of your details, orders, cases and choices, and the companies that process "
+        "data for us. The file is for other software; the readable version is for you.",
+        "hi-Latn": "Aapki jaankari, orders, cases aur chunav ki ek copy, aur un companies ki "
+        "list jo hamare liye data sambhalti hain. Yeh file doosre software ke liye hai; "
+        "padhne layak version aapke liye hai.",
+        "hi": "आपकी जानकारी, ऑर्डर, केस और आपके चुनावों की एक कॉपी, और उन कंपनियों की सूची जो "
+        "हमारे लिए डेटा संभालती हैं। यह फ़ाइल दूसरे सॉफ़्टवेयर के लिए है; पढ़ने लायक रूप आपके "
+        "लिए है।",
+    },
+    "held.h.readable_link": {
+        "en": "Open readable version",
+        "hi-Latn": "Padhne layak version kholein",
+        "hi": "पढ़ने लायक रूप खोलें",
+    },
     # ---- erasure explained and tracked (S8.5d, app/engine/erasure_info.py). Hindi copy awaits
     # native review (docs/DECISIONS.md). The lists must match what data_rights._redact and
     # erasure_block really do; tests/integration/test_erasure_info.py checks that.

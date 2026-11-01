@@ -348,7 +348,7 @@ export function PrivacyPage() {
   const current = latest ?? consents.data;
   return (
     <>
-      <PageHeader title="Privacy & data" subtitle="Choose what we may send you, see what we hold, or ask us to erase it." />
+      <PageHeader title={held.data?.headings.page_title ?? ""} subtitle={held.data?.headings.page_subtitle} />
       <div className="space-y-4">
         {held.data && (
           <Card className="p-4">
@@ -369,24 +369,24 @@ export function PrivacyPage() {
         ) : (
           <ConsentCard data={current} onChange={setLatest} />
         )}
+        {held.data && (
         <Card className="p-5">
-          <h2 className="font-montserrat text-base font-semibold text-foreground">Download my data</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            A copy of your details, orders, cases and choices, and the companies that process data for us. The file is for other software; the readable version is for you.
-          </p>
+          <h2 className="font-montserrat text-base font-semibold text-foreground">{held.data.headings.download_title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{held.data.headings.download_body}</p>
           {dlError && <Alert>{dlError}</Alert>}
           <div className="mt-3">
             <Button variant="outline" loading={downloading} onClick={() => void download()}>
-              Download my data
+              {held.data.headings.download_title}
             </Button>
             <Link
               to="/privacy/export"
               className="ml-4 text-sm font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand"
             >
-              Open readable version
+              {held.data.headings.readable_link}
             </Link>
           </div>
         </Card>
+        )}
         <ErasureCard />
         {held.data && (
           <footer className="border-t border-border pt-3">

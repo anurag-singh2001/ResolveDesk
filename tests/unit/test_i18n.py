@@ -197,3 +197,17 @@ def test_no_remedy_close_names_the_support_contact_never_the_privacy_one(lang):
         "no_remedy", {**s, "support_contact_name": "", "support_contact_email": ""}, lang
     )
     assert "priv@" not in bare and "help@" not in bare and "1915" in bare and "{" not in bare
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_privacy_page_copy_comes_from_one_locale(lang):
+    """S12.2: every privacy-page heading exists in this language; none falls back to English."""
+    from app.engine import consent_benefits, data_held
+
+    keys = [f"held.h.{k}" for k in data_held.HEADINGS]
+    keys += [f"consent.h.{k}" for k in consent_benefits.HEADINGS]
+    for key in keys:
+        variants = TEMPLATES[key]
+        assert variants.get(lang, "").strip(), (key, lang)
+        if lang == "hi" and len(variants["en"]) > 4:
+            assert variants[lang] != variants["en"], (key, lang)

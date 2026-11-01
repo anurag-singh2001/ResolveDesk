@@ -642,3 +642,7 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Decision: new org settings `support_contact_name` / `support_contact_email` (value, default empty, in both vertical packs; set in both tenant files). `close_text("no_remedy")` uses them via `support_line`, never the privacy contact. With none set it uses `close.no_remedy_nocontact`, reworded to point at "the support team of the place you ordered from" plus the National Consumer Helpline. Privacy-request messages still use the privacy contact.
 - Why: the privacy desk handles data requests, so it was the wrong place to send a customer disputing a refusal. An empty setting must not borrow another desk's address.
 - Alternative rejected: falling back to the privacy contact when support is unset (recreates the bug).
+## 2026-11-01 - Privacy page frame text served from the locale (S12.2)
+- Decision: the page title, subtitle, download card text and readable-version link were hard-coded English in `PrivacyPage.tsx`. They are now `held.h.*` keys (page_title, page_subtitle, download_title, download_body, readable_link) returned in the existing `headings` of the data-held response, so the whole page comes from one locale. A unit test checks every held and consent heading exists in all three languages and that Hindi never equals English.
+- Why: one language per page with no new endpoint; a missing key already fails the template coverage test, so there is no silent English fallback.
+- Alternative rejected: a client-side string table (a second copy of the Hindi to keep in step).

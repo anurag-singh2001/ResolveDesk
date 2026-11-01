@@ -162,6 +162,11 @@ function held(notKept: string[] = []): DataHeld {
       processors: "Who else sees it",
       not_kept: "What we do not keep",
       contact: "Questions about your data",
+      page_title: "Privacy & data",
+      page_subtitle: "Choose what we may send you, see what we hold, or ask us to erase it.",
+      download_title: "Download my data",
+      download_body: "A copy of your details.",
+      readable_link: "Open readable version",
     },
     items: [
       {
@@ -254,6 +259,13 @@ describe("privacy page", () => {
     expect(calls.filter((c) => c.method === "POST").map((c) => c.body)).toEqual([{ granted: false }]);
     expect(screen.getByTestId("consent-history")).toHaveTextContent("stopped Offers and vouchers On WhatsApp");
     expect(screen.getByTestId("consent-history")).toHaveTextContent("Wording version: v1");
+  });
+
+  it("takes the page title, download card and link from the served locale", async () => {
+    setup();
+    renderApp("/privacy");
+    expect(await screen.findByRole("heading", { name: "Privacy & data" })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Open readable version" })).toBeInTheDocument();
   });
 
   it("downloads the data", async () => {

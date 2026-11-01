@@ -43,7 +43,22 @@ RETENTION_CONFIRMED = False
 # promised: the status page shows receipt at once.
 MAX_TARGET_DAYS = 90  # sanity bound on the tenant setting; NOT a statement of any legal limit
 DEFAULT_RECORD_YEARS = 8  # payment and refund records: 8 financial years (owner decision P1)
-HEADINGS = ("title", "item", "yours", "purpose", "keep", "use", "processors", "not_kept", "contact")
+HEADINGS = (
+    "title",
+    "item",
+    "yours",
+    "purpose",
+    "keep",
+    "use",
+    "processors",
+    "not_kept",
+    "contact",
+    "page_title",
+    "page_subtitle",
+    "download_title",
+    "download_body",
+    "readable_link",
+)
 RETENTION_FLOOR_DAYS = 365  # same one-year floor the retention job applies
 
 
