@@ -600,3 +600,21 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: S11.3a and S11.4 need both tenants, and brand signals matter most for the 3-brand tenant.
 - Alternative rejected: leaving growth off and ungating the read-only pages (keeps two meanings of the flag).
 - Open: the tenant's simulation plants no repeat-rate drop and has no third staff user, so its campaign flow is not covered end to end. Adding them changes seeded data and needs a golden refresh.
+
+## 2026-11-01 - Portal Jobs page shows platform-level runs (migration 0035)
+- Decision: new view `platform_scheduler_runs_v` (day, job, status, run and finished counts, summed duration, last start; no id, counts payload or error class), granted to the platform role exactly as 0034, served by `GET /platform/scheduler-runs`. The Jobs page fetches it next to `/platform/jobs` and shows those rows under the business label "Platform". The scheduler does write this table (skipped ticks and failures outside any tenant).
+- Why: the table has no tenant, so it cannot join the tenant view; a separate route leaves the `/platform/jobs` response shape (tenant_slug always set) unchanged.
+- Alternative rejected: a nullable tenant_slug on the existing view (changes an existing contract and its tests); letting the platform role read the raw table (rule: named views only).
+- Open: migration and DB tests written, not run (suite running on another DB).
+
+## 2026-11-01 - Portal demo rows script (scripts/seed_portal_demo.py)
+- Decision: a hand-run, dev-only script (refuses unless APP_ENV=dev) writes demo-labelled job runs, LLM usage, one error count and one open alert for every tenant found in `organizations`. Tenant rows get fixed uuid5 ids and `ON CONFLICT DO NOTHING`; the error count is set, not added; the alert is refreshed on its one-open-per-(rule, scope) index.
+- Why: the app role has no grant on `error_logs` and `alerts` (0033), and the counter function adds on every call, which is not repeatable. The owner connection (as `make refresh`) gives exact idempotency. Pure row builders keep the guard and shapes unit-testable without a database.
+- Alternative rejected: going through `log_error_count` and `alerts_apply` as the app role (every rerun would inflate the count); a Make target (too easy to run by accident).
+- Open: the failed demo job can trigger the real `job_failed` alert on the next pass (useful for S9.4 but it is a real-looking alert). Integration test written, not run.
+
+## 2026-11-01 - Per-language eval pass rate (S7.12, reporting only)
+- Decision: `evals/run.py` prints, and writes to the markdown and JSON twin, the pass rate per (tenant, pipeline, language). Language is the scenario's new optional `language` field, else `hinglish` for kind hinglish, else `devanagari` if the message has Devanagari letters, else `en`. The JSON keeps its existing keys and adds `languages` and a `language` per scenario. It reuses `score(...).passed`; scoring is untouched.
+- Why: no language field existed, and `kind` alone cannot tell Hindi script from English; an optional field lets scenario authors label exactly, the detector covers unlabelled ones.
+- Alternative rejected: a language-detection library (a dependency and a guess for short messages); making the field required (edits every scenario file).
+- Open: Hindi-script and Hinglish scenarios per tenant still have to be written; a real eval run (scratch DB) was not done here.

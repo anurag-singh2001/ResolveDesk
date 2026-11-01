@@ -106,6 +106,33 @@ def summarize(results: list[Result], model: str) -> dict[str, str]:
     }
 
 
+def language_of(sc) -> str:
+    """The language label used only for reporting: the scenario's own `language` if set,
+    else 'hinglish' for kind hinglish, 'devanagari' if the message has Devanagari letters,
+    else 'en'. Never feeds scoring."""
+    if sc.language:
+        return sc.language
+    if sc.kind == "hinglish":
+        return "hinglish"
+    if any("ऀ" <= ch <= "ॿ" for ch in sc.message):
+        return "devanagari"
+    return "en"
+
+
+def by_language(results: list[Result]) -> list[dict]:
+    """Pass rate per (tenant, pipeline, language), using the same `score(...).passed` as the
+    main table. Sorted so the output is stable."""
+    groups: dict[tuple[str, str, str], list[bool]] = {}
+    for r in results:
+        key = (r.scenario.tenant, r.pipeline, language_of(r.scenario))
+        groups.setdefault(key, []).append(score(r).passed)
+    return [
+        {"tenant": t, "pipeline": p, "language": lang, "cases": len(v), "passed": sum(v),
+         "pass": _pct(sum(v), len(v))}
+        for (t, p, lang), v in sorted(groups.items())
+    ]  # fmt: skip
+
+
 COLUMNS = [
     ("cases", "n"),
     ("pass", "pass"),

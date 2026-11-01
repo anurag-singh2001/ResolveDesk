@@ -3,13 +3,22 @@ import { formatDateTime, humanize } from "../lib/format";
 import { useApi } from "../lib/useApi";
 import { Section, Tile, TileGrid, sum } from "./parts";
 import { usePlatform } from "./session";
-import type { JobRunRow } from "./types";
+import type { JobRunRow, SchedulerRunRow } from "./types";
+
+// Platform-level runs have no business; they show under this label.
+export const PLATFORM_LABEL = "Platform";
 
 const STATUSES = ["ok", "failed", "skipped", "running"] as const;
 
 export function JobsPage() {
   const { get } = usePlatform();
-  const { data, error, loading, reload } = useApi(() => get<JobRunRow[]>("/jobs"), [get]);
+  const { data, error, loading, reload } = useApi(async () => {
+    const [tenantRuns, platformRuns] = await Promise.all([
+      get<JobRunRow[]>("/jobs"),
+      get<SchedulerRunRow[]>("/scheduler-runs"),
+    ]);
+    return [...tenantRuns, ...platformRuns.map((r) => ({ ...r, tenant_slug: PLATFORM_LABEL }))];
+  }, [get]);
 
   const groups = new Map<string, JobRunRow[]>();
   for (const r of data ?? []) {
@@ -53,7 +62,7 @@ export function JobsPage() {
                     const last = rows.map((r) => r.last_started_at).filter((x): x is string => !!x).sort().pop() ?? null;
                     return (
                       <tr key={key}>
-                        <td className={cx(tdClass, "font-mono")}>{rows[0].tenant_slug}</td>
+                        <td className={cx(tdClass, rows[0].tenant_slug !== PLATFORM_LABEL && "font-mono")}>{rows[0].tenant_slug}</td>
                         <td className={tdClass}>{humanize(rows[0].job)}</td>
                         {STATUSES.map((s) => (
                           <td key={s} className={cx(tdClass, numClass, "text-right")}>{count(rows, s)}</td>

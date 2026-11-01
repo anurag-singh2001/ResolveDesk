@@ -26,6 +26,9 @@ const jobs = [
   { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "ok", run_count: 6, finished_count: 6, duration_ms_total: 600, last_started_at: "2026-10-30T09:00:00Z" },
   { tenant_slug: "alpha", day: "2026-10-30", job: "sweep", status: "failed", run_count: 1, finished_count: 1, duration_ms_total: 50, last_started_at: "2026-10-30T09:30:00Z" },
 ];
+const schedulerRuns = [
+  { day: "2026-10-30", job: "retention", status: "skipped", run_count: 3, finished_count: 3, duration_ms_total: 0, last_started_at: "2026-10-30T10:00:00Z" },
+];
 const alerts = [
   { rule: "job_failed", scope: "sweep", status: "open", value: 3, threshold: 1, opened_at: "2026-10-30T09:00:00Z", last_seen_at: "2026-10-30T09:30:00Z", resolved_at: null },
   { rule: "escalation_spike", scope: "alpha", status: "resolved", value: 9, threshold: 5, opened_at: "2026-10-29T09:00:00Z", last_seen_at: "2026-10-29T10:00:00Z", resolved_at: "2026-10-29T11:00:00Z" },
@@ -40,6 +43,7 @@ const data = {
   "GET /platform/activity": { body: activity },
   "GET /platform/ai-usage": { body: usage },
   "GET /platform/jobs": { body: jobs },
+  "GET /platform/scheduler-runs": { body: schedulerRuns },
   "GET /platform/alerts": { body: alerts },
   "GET /platform/logs": { body: logs },
 };
@@ -155,6 +159,15 @@ describe("platform portal", () => {
     const row = (await screen.findByText("Sweep", { selector: "td" })).closest("tr")!;
     expect(within(row).getByText("6")).toBeInTheDocument();
     expect(within(row).getByText("92 ms")).toBeInTheDocument();
+  });
+
+  it("shows platform-level runs beside the business runs", async () => {
+    sessionStorage.setItem(PLATFORM_KEY, JSON.stringify({ token: "plat-tok", expiresAt: null }));
+    mockFetch(data);
+    renderApp("/platform/jobs");
+    const row = (await screen.findByText("Retention", { selector: "td" })).closest("tr")!;
+    expect(within(row).getByText("Platform")).toBeInTheDocument();
+    expect(within(row).getByText("3")).toBeInTheDocument();
   });
 
   it("shows AI performance with money in mono and rates from the counts", async () => {

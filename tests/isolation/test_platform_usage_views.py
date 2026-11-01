@@ -26,8 +26,8 @@ from tests.isolation.test_platform_admin import (  # noqa: F401  (fixtures)
 
 pytestmark = pytest.mark.isolation
 
-VIEWS = ["platform_llm_usage_v", "platform_job_runs_v"]
-ROUTES = ["ai-usage", "jobs"]
+VIEWS = ["platform_llm_usage_v", "platform_job_runs_v", "platform_scheduler_runs_v"]
+ROUTES = ["ai-usage", "jobs", "scheduler-runs"]
 # "tokens_in" and "tokens_out" are counts, not credentials: the one allowed exception.
 COUNT_COLUMNS = {"tokens_in", "tokens_out"}
 
@@ -95,7 +95,7 @@ def test_reads_are_audited(papi, owner_engine):  # noqa: F811
         assert route == f"GET /platform/{path}"
 
 
-@pytest.mark.parametrize("table", ["llm_usage", "job_runs"])
+@pytest.mark.parametrize("table", ["llm_usage", "job_runs", "platform_job_runs"])
 def test_platform_role_cannot_select_the_raw_tables(platform_engine, table):  # noqa: F811
     with platform_engine.connect() as c, pytest.raises(ProgrammingError, match="permission denied"):
         c.execute(text(f"SELECT 1 FROM {table} LIMIT 1"))
@@ -137,3 +137,38 @@ def test_views_not_owned_by_the_platform_role(platform_engine):  # noqa: F811
             text("SELECT viewowner FROM pg_views WHERE viewname = ANY(:v)"), {"v": VIEWS}
         ).scalars().all()  # fmt: skip
     assert len(owners) == len(VIEWS) and ROLE not in owners
+
+
+def test_scheduler_runs_are_counts_only_and_match_the_table(papi, owner_engine):  # noqa: F811
+    with owner_engine.begin() as c:
+        c.execute(
+            text(
+                "INSERT INTO platform_job_runs (id, job, status, started_at, finished_at, "
+                "counts, error_class) VALUES (gen_random_uuid(), 'view_probe', 'skipped', "
+                "now(), now(), '{}', 'ProbeError')"
+            )
+        )
+    try:
+        rows = papi.get("/platform/scheduler-runs", headers=_platform_headers(papi)).json()
+        probe = [r for r in rows if r["job"] == "view_probe"]
+        assert sum(r["run_count"] for r in probe) == 1
+        assert all(
+            set(r)
+            == {
+                "day",
+                "job",
+                "status",
+                "run_count",
+                "finished_count",
+                "duration_ms_total",
+                "last_started_at",
+            }  # fmt: skip
+            for r in rows
+        )
+        assert (
+            "ProbeError"
+            not in papi.get("/platform/scheduler-runs", headers=_platform_headers(papi)).text
+        )
+    finally:
+        with owner_engine.begin() as c:
+            c.execute(text("DELETE FROM platform_job_runs WHERE job = 'view_probe'"))

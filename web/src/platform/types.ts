@@ -21,6 +21,11 @@ export interface JobRunRow {
   finished_count: number; duration_ms_total: number; last_started_at: string | null;
 }
 
+export interface SchedulerRunRow {
+  day: string; job: string; status: string; run_count: number;
+  finished_count: number; duration_ms_total: number; last_started_at: string | null;
+}
+
 export interface LabScenarioItem { id: string; kind: string; held_out: boolean; message: string }
 export interface LabListing { tenants: string[]; scratch_configured: boolean; scenarios: LabScenarioItem[] }
 export interface LabCompareRow { id: string; pipeline: string; before: string; now: string; change: string }
