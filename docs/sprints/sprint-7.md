@@ -287,3 +287,57 @@ Observation: about 52 SP produced against a 40 SP capacity assumption, but 0 SP 
 7. Campaign dual approval (S11 marketing).
 8. Sprint 8 dates.
 9. Human-only items still open: E0.3 rotate Neon owner password, E7.2 copy .env to the clean clone, Hinglish/Devanagari native review.
+
+## Sprint Review (final, 2026-11-01)
+
+Evidence base (2026-11-01, from the coordinator, not re-run by the scrum-master): full suite on 2f84f23 (holds all Sprint 7-9 code) 2408 passed, 34 skipped, 2 failed in 4h05; both failures were tests/integration/test_history_db.py::test_reload_with_same_seed_is_identical (test-order problem), fixed in 2ebcb06, 3 passed on rerun. A final full run on 2ebcb06 is PENDING. Eval evals/reports/eval-20261031-202218.md: agents BrewCo 92%, Spice Route 93%, 0 over rule, 0 errors, injections held; bc-wrong-002 and sr-quality-002 escalated rather than proposed. Browser walkthrough on the demo DB (migrated 0027 to 0034): no console errors on both HQ pages, franchisee (own 2 outlets only), location manager, customer, Approvals, Cases to handle, Policies, Privacy, Demo controls, platform portal; 375px overflow check on 8 pages; light and dark on the dashboard. `make lint` and CI were not re-run by the scrum-master; both stay on the final-run checklist.
+
+Clicks NOT performed in the browser: S7.4 re-run, S7.5 propose, S7.6 reply and close reason, S7.10 switch remedy, S7.12 language per message, S7.11 fair-use chip. Those pages were read, the actions were not done. S7.7 O0005779 was seen only in the customer's case list.
+
+| Story (SP) | Verdict | Evidence / what is missing |
+| --- | --- | --- |
+| S7.1 (3) | open | 1c46a1f; suite pass; staff case page not walked through, only the approval detail |
+| S7.2 (5) | TICKED | f91a79d, safety clean; suite; eval 0 errors; franchisee sees own 2 outlets only, HQ all |
+| S7.3 (3) | TICKED | f91a79d; Cases to handle opened per role |
+| S7.4 (3) | open | b3535c7, dfe6bca; Re-run click and sweeper retry not exercised |
+| S7.5 (8) | open | db1768b, a44f65a; propose flow not clicked; no filed safety-clean report |
+| S7.6 (5) | open | 55c0330, fb0bee4; reply and close not clicked |
+| S7.7 (1) | open | O0005779 not re-run and viewed as staff |
+| S7.8 (3) | TICKED | d1b5995; suite; eval 0 proposals over the rule |
+| S7.9 (5) | open | 3425721; report-form choice not clicked; refund-fit decision pending |
+| S7.10 (5) | open | 5500c00, eec63f0; switch not clicked; four-eyes decision pending |
+| S7.11 (1) | open | d1b5995; chip not seen, web test not recorded |
+| S7.12 (5) | open | 5025c9f, 4197f75; eval report has no per-language result; language per message not exercised |
+| S7.D1 (5) | open | no design artefact in docs; owner to confirm |
+| S7.D2 (8) | open | no wireframes or approval recorded; owner to confirm |
+
+Velocity: planned 60 SP, done (ticked) 11 SP (S7.2 5, S7.3 3, S7.8 3). Code merged: all of S7.1-S7.12 (47 SP), so the gap is verification, not building. Carry-over with points unchanged: S7.1 3, S7.4 3, S7.5 8, S7.6 5, S7.7 1, S7.9 5, S7.10 5, S7.11 1, S7.12 5, S7.D1 5, S7.D2 8 = 46 SP.
+
+Owner questions: (1) were S7.D1/S7.D2 delivered, and where are the artefacts or approval? (2) refund fit to policy, four-eyes on the S7.10 switch, and the "no remedy due" wording. (3) native-speaker review of Hinglish/Devanagari.
+
+## Sprint Retro (2026-11-01)
+
+Went well:
+- Building outpaced the plan: all 47 SP of code merged, and money or customer-text stories passed safety reviews that found real bugs before merge (S7.8 KeyError, S7.5 four-eyes, S7.6 payout-settled close rule).
+- The full suite on 2f84f23 passed apart from two test-order failures, fixed in 2ebcb06.
+- The eval on the merged head held: 0 over rule, 0 errors, injections held.
+
+Hurt:
+- Verification lagged building by days; the first review draft had 0 SP ticked, now 11 SP.
+- Stale EPICS boxes: S11.1 research was redone needlessly because its box was unticked although ab98d85 existed.
+- Low memory killed a background run; an eval was killed by a too-short output-based hang limit; one early eval shared a DB with a builder and crashed.
+- Design stories left no artefact in the repo.
+
+Action for next sprint: tick or annotate EPICS the same day a story merges, and hold one browser click-through session per merge batch so the action stories (S7.4-S7.7, S7.9-S7.12) can close.
+
+Previous retro actions: no Sprint 6 retro action is tracked in the sprint files; nothing to report.
+
+### Agent scorecard (evidence only)
+| Agent | Tasks done | First-try test pass | Rework commits | Safety found/missed | Eval delta | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| Main session (Opus coordinator) | merges, research commits, integration | full suite first run: 2 failed of 2444 | test fixes 6f78d12, c7e1ec2, c86cca0, 2ebcb06 | n/a | n/a | model trailer not checked |
+| Sonnet builders | S7.1-S7.12 code | no per-story first-try data | review-fix commits on S7.2, S7.4, S7.5, S7.6, S7.8, S7.9, S7.10, S7.12 | n/a | n/a | rework mostly from safety findings |
+| safety-reviewer (Sonnet) | reviews per sprint notes | n/a | n/a | found: S7.8 KeyError, S7.5 blockers, S7.6 and S7.12 fixes; missed: no data | n/a | no filed report text for S7.5 |
+| test-runner (Haiku) | targeted runs, one full suite | see main row | n/a | n/a | n/a | one run killed by low memory |
+| eval-runner (Haiku) | eval-20261031-202218 | n/a | one crash (shared DB), one killed (hang limit) | n/a | agents 92%/93%, 0 over rule | no earlier baseline cited, so no delta |
+| business-analyst (Sonnet) | S8.4, S11.1 research | n/a | S11.1 redone needlessly | n/a | n/a | |

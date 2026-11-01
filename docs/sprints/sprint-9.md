@@ -145,8 +145,37 @@ Tests added and passing for both tenants (never naming a tenant), `make lint` cl
 - Verification (walkthroughs, safety reviews) was the Sprint 7 bottleneck; plan Review time, do not treat build completion as done.
 - Migration number collisions between parallel lanes: use the reserved numbers above and rebase before merging.
 
-## Daily Scrum, Review, Retro
-(To be added when the sprint starts.)
+## Sprint Review (2026-11-01, provisional: the sprint was built inside the Sprint 8 integration)
+
+Evidence base (2026-11-01, from the coordinator, not re-run by the scrum-master): full suite on 2f84f23 (holds all Sprint 7-9 code) 2408 passed, 34 skipped, 2 failed in 4h05; both failures were tests/integration/test_history_db.py::test_reload_with_same_seed_is_identical (test-order problem), fixed in 2ebcb06, 3 passed on rerun. A final full run on 2ebcb06 is PENDING. Eval evals/reports/eval-20261031-202218.md: agents BrewCo 92%, Spice Route 93%, 0 over rule, 0 errors, injections held; bc-wrong-002 and sr-quality-002 escalated rather than proposed. Browser walkthrough on the demo DB (migrated 0027 to 0034): no console errors on both HQ pages, franchisee (own 2 outlets only), location manager, customer, Approvals, Cases to handle, Policies, Privacy, Demo controls, platform portal; 375px overflow check on 8 pages; light and dark on the dashboard. `make lint` and CI were not re-run by the scrum-master; both stay on the final-run checklist.
+
+Sprint 9 stories were built and merged in integ/s8b (21d1255 S9.1+S9.2, d15bc6a and 395e52c S9.3, ad30d60 S9.4, 1323123 S9.5, 1a92b26 S8.5e). Portal pages walked: sign-in, Health, Jobs, Logs and alerts, AI performance, Scenario lab. Jobs, alerts, logs and AI usage have NO rows on the demo DB, so only empty states were seen.
+
+| Story (SP) | Verdict | Evidence / what is missing |
+| --- | --- | --- |
+| S9.1 (8) | open | 21d1255, review-fix commits; no filed safety report in the sprint notes; sign-in seen |
+| S9.2 (5) | open | 21d1255; no filed safety report; AI usage view empty |
+| S9.3 (5) | open | d15bc6a, 395e52c, migration 0032; done-when includes pack refresh but DECISIONS rejected scheduling it (mismatch, owner to resolve); Jobs page empty and omits platform_job_runs (known gap below) |
+| S9.4 (5) | open | 00088cc, ea9e87c, ad30d60 (0033); no filed safety report; logs and alerts only empty state |
+| S9.5 (8) | open | 98828b5, a346e28, 514263e (0034); walkthrough saw empty states only, no populated views |
+| S8.5e (8) | open | see sprint-8 |
+
+Honest note on safety: the sprint notes lack filed reports for S9.1, S9.2, S9.4 and S8.5e; only "review fixes" commits exist (ea9e87c, af55b9b, 395e52c), which suggests reviews happened but the reports are not recorded. Not counted as safety clean until filed.
+
+Velocity: planned 39 SP, done (ticked) 0 SP. Merged code 39 SP.
+
+Owner questions: (1) pack refresh in the scheduler: keep it rejected and amend the S9.3 done-when, or build it? (2) file or re-run the safety reviews for S9.1, S9.2, S9.4, S8.5e. (3) add platform_job_runs to the portal Jobs page. (4) seed some rows or run a job so populated views can be walked.
+
+## Sprint Retro (2026-11-01)
+
+Went well: the aggregate-only platform path and the portal were built and merged with migrations 0032-0034, and the portal opens without console errors.
+
+Hurt: safety reports not filed; empty demo data hid populated-view issues (the Jobs page already misses platform_job_runs); verification lag again.
+
+Action: every safety review ends with a pasted report in the sprint file before merge; seed demo job and usage rows before a portal walkthrough.
+
+Previous retro actions (Sprint 8: separate eval DB, time-based hang limit): the final eval ran cleanly (eval-20261031-202218); otherwise not evidenced.
+
 
 ### Known gaps
 - 2026-11-01: the portal Jobs page omits `platform_job_runs`, so platform-level job runs are not shown there. Logged by the owner; not yet scheduled.

@@ -226,5 +226,43 @@ Note: S7.9 is counted in both Sprint 7 (47) and Sprint 8 (carry-over); the true 
 3. Lifting the `.env` deny rule (or pasting values) so the portal and evals can run for real; also needed for the real walkthrough.
 Others: highlight case (default sentence case), S7.5 defaults (four eyes, no staff auto-approve), campaign dual approval, Sprint 8 dates, customers seeing other brands' policies, real Reset demo, JSON export case ids, Hindi/Hinglish native review.
 
-## Retro, Review
-(To be added at Sprint 8 close.)
+## Sprint Review (final, 2026-11-01)
+
+Evidence base (2026-11-01, from the coordinator, not re-run by the scrum-master): full suite on 2f84f23 (holds all Sprint 7-9 code) 2408 passed, 34 skipped, 2 failed in 4h05; both failures were tests/integration/test_history_db.py::test_reload_with_same_seed_is_identical (test-order problem), fixed in 2ebcb06, 3 passed on rerun. A final full run on 2ebcb06 is PENDING. Eval evals/reports/eval-20261031-202218.md: agents BrewCo 92%, Spice Route 93%, 0 over rule, 0 errors, injections held; bc-wrong-002 and sr-quality-002 escalated rather than proposed. Browser walkthrough on the demo DB (migrated 0027 to 0034): no console errors on both HQ pages, franchisee (own 2 outlets only), location manager, customer, Approvals, Cases to handle, Policies, Privacy, Demo controls, platform portal; 375px overflow check on 8 pages; light and dark on the dashboard. `make lint` and CI were not re-run by the scrum-master; both stay on the final-run checklist.
+
+Clicks NOT performed: S8.5e approve/reject and dry run, S8.5c export, S8.5d erasure, S8.5b consent toggles. Ask the customer on O0005931 (S8.10, outside this sprint's plan): form, rule limits, confirm step, customer view and timeline seen; the customer's answer not yet given.
+
+| Story (SP) | Verdict | Evidence / what is missing |
+| --- | --- | --- |
+| S7.9 carry-over (5) | open | see sprint-7 |
+| S8.1 (5) | TICKED | 76d1173, merge 2b1a089; Our policies and staff Policies opened |
+| S8.2 (5) | TICKED | 5bf223b, merge a0f1f61; Rules in plain words seen |
+| S8.3 (3) | open | ef33ab8; citation click to the section not exercised |
+| S8.4 (2, done earlier) | TICKED | fecf31c; privacy-page-needs.md exists. Limit: Swiggy and Starbucks India read from secondary sources, labelled as such; owner paste of primary pages optional |
+| S8.5a (5) | TICKED | 8cb6e85, 0ba2fe4, merge d71ff3b; Privacy page opened |
+| S8.5b (3) | open | 61fdc38 (0027); toggles not clicked |
+| S8.5c (3, stretch) | open | b613dd8; export not performed |
+| S8.5d (5) | open | 89900cb (0026); erasure flow not performed |
+| S8.5e (8, planned Sprint 9) | open | 1a92b26; approve/reject and dry run not clicked; no filed safety report |
+| S8.6 (3) | open | ee6cfce; Demo controls opened. Done-when says "guarded reset-demo", RUNBOOK says Reset demo is disabled on purpose; owner to confirm disabled satisfies it |
+| S8.7 (5) | open | f11eaca; walkthrough done (both tenants, roles, light/dark, 375px on 8 pages, no console errors); web test and build counts and Devanagari check not recorded |
+
+Velocity: planned 42 SP (S8.5e 8 moved to Sprint 9), done (ticked) 15 SP (S8.1 5, S8.2 5, S8.5a 5; S8.4 2 SP ticked, counted earlier). Merged but unticked: S8.3 3, S8.5b 3, S8.5c 3, S8.5d 5, S8.6 3, S8.7 5, S7.9 5.
+
+Owner questions: S8.6 reset-demo wording; privacy figures and labels; refund fit, "no remedy due" wording and four-eyes on switch; web test and build evidence for S8.7.
+
+## Sprint Retro (2026-11-01)
+
+Went well: most Sprint 8 stories merged in two days with a safety review on each sensitive one, and the walkthrough found no console errors across roles, themes and 375px.
+
+Hurt:
+- Verification lagging building, again: 0 ticks at the 2026-10-31 stand-up, 15 SP now.
+- Free memory of 1.6-2.2 GB killed background runs twice.
+- An eval ran on the same DB as a builder and crashed; a later eval was killed by an output-based hang limit that was too short.
+- Stale EPICS boxes led to S11.1 being redone.
+- Migration renumbering (0029 to 0027, 0026) cost rebase work.
+
+Action: one eval DB per run and a time-based (not output-based) hang limit, set before any eval starts.
+
+Previous retro action (Sprint 7: tick the same day, one click-through per batch): partly done. Ticks happened only at this review; one walkthrough session was held 2026-11-01 but skipped the action clicks.
+
