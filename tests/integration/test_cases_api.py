@@ -12,6 +12,7 @@ from app.core.models import (
     Approval,
     Case,
     Customer,
+    Execution,
     LineItem,
     Location,
     RefundOperation,
@@ -19,6 +20,7 @@ from app.core.models import (
     TicketMessage,
     Transaction,
     User,
+    Verification,
 )
 from app.core.tenancy import tenant_id_for
 from app.engine.approvals import check_usable
@@ -499,6 +501,40 @@ def test_timeline_follows_the_refund_in_code_written_steps(api, app_engine, flow
     text = " ".join(s["title"] + " " + s["text"] for s in steps)
     assert reason not in text and "internal note" not in text  # templates only
     assert _stages(api, opened["id"], f["hq"]) == [s["stage"] for s in steps]
+
+
+def test_timeline_and_status_agree_after_a_verification_mismatch(api, app_engine, flow):
+    """S12.5: executed fine, then the verifier found the provider has no record. The customer
+    must not see "Refund confirmed" next to a status that says it needs a check."""
+    f = flow
+    opened = _open(api, f)
+    api.post(
+        f"/approvals/{opened['proposal_id']}/decision",
+        headers=f["hq"],
+        json={"decision": "approved", "note": "ok"},
+    )
+    with tenant_session(f["tid"], app_engine) as s:
+        s.execute(
+            update(Verification)
+            .where(
+                Verification.execution_id.in_(
+                    select(Execution.id).where(
+                        Execution.proposal_id == uuid.UUID(opened["proposal_id"])
+                    )
+                )
+            )
+            .values(
+                status="mismatch",
+                detail={"reason": "provider has no record of this refund"},
+            )
+        )
+        s.execute(update(Case).where(Case.id == uuid.UUID(opened["id"])).values(status="escalated"))
+    steps = api.get(f"/cases/{opened['id']}/timeline", headers=f["customer"]).json()
+    case = api.get(f"/cases/{opened['id']}", headers=f["customer"]).json()
+    assert steps[-1]["stage"] == "escalated"
+    assert all(st["stage"] != "confirmed" for st in steps)
+    assert "confirmed" not in " ".join(st["title"] + st["text"] for st in steps).lower()
+    assert case["status"] == steps[-1]["stage"] == "escalated"
 
 
 def test_declined_case_timeline_ends_declined(api, flow):

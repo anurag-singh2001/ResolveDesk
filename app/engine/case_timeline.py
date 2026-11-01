@@ -22,6 +22,7 @@ from app.core.models import (
     RefundOperation,
     Ticket,
     TicketMessage,
+    Verification,
 )
 from app.core.money import format_inr
 from app.core.settings_resolver import effective_settings
@@ -176,43 +177,71 @@ def _proposal_steps(
     ledger = session.scalar(
         select(RefundOperation).where(RefundOperation.proposal_id == proposal.id)
     )
+    verification = (
+        session.scalars(
+            select(Verification.status)
+            .where(Verification.execution_id == execution.id)
+            .order_by(Verification.created_at.desc(), Verification.id)
+        ).first()
+        if execution is not None
+        else None
+    )
+    return steps + _refund_steps(proposal, approval, execution, ledger, verification, now, lang)
+
+
+def _refund_steps(
+    proposal, approval, execution, ledger, verification: str | None, now: datetime, lang: str
+) -> list[TimelineStep]:
+    """Same rules as case_status (S12.5): "confirmed" needs the provider's success AND a
+    verifier match. A mismatch is "needs a check" (the money's state is unknown, so neither
+    "arrived" nor "failed" is said); a success not yet verified adds no step (still processing)."""
+    if execution is not None and verification == "mismatch":
+        return [
+            TimelineStep(
+                execution.updated_at,
+                "escalated",
+                t("tl.passed.title", lang),
+                t("tl.refund_check.text", lang),
+            )
+        ]
     if execution is not None and execution.status == "succeeded":
-        steps.append(
+        if verification != "verified":
+            return []
+        return [
             TimelineStep(
                 execution.updated_at,
                 "confirmed",
                 t("tl.refund_confirmed.title", lang),
                 t("status.refund_confirmed", lang, amount=format_inr(proposal.amount_paise)),
             )
-        )
-    elif execution is not None and execution.status == "failed":
-        steps.append(
+        ]
+    if execution is not None and execution.status == "failed":
+        # A failure the verifier did not confirm is unknown, not "failed" (rule 7).
+        key = "status.refund_failed" if verification == "verified" else "tl.refund_check.text"
+        return [
             TimelineStep(
-                execution.updated_at,
-                "escalated",
-                t("tl.passed.title", lang),
-                t("status.refund_failed", lang),
+                execution.updated_at, "escalated", t("tl.passed.title", lang), t(key, lang)
             )
-        )
-    elif execution is None and now >= approval.expires_at:  # same rule as case_status
-        steps.append(
+        ]
+    if execution is None and now >= approval.expires_at:  # same rule as case_status
+        return [
             TimelineStep(
                 approval.expires_at,
                 "escalated",
                 t("tl.passed.title", lang),
                 t("tl.refund_check.text", lang),
             )
-        )
-    elif ledger is not None and ledger.status == "pending_reconciliation":
-        steps.append(
+        ]
+    if ledger is not None and ledger.status == "pending_reconciliation":
+        return [
             TimelineStep(
                 ledger.updated_at,
                 "escalated",
                 t("tl.passed.title", lang),
                 t("tl.refund_check.text", lang),
             )
-        )
-    return steps
+        ]
+    return []
 
 
 def _voucher_steps(
