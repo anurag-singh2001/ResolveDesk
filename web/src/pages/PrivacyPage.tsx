@@ -319,6 +319,14 @@ function HeldCard({ data }: { data: DataHeld }) {
   );
 }
 
+// Getting your own data must not depend on the "what we hold" read succeeding.
+const FALLBACK = {
+  page_title: "Privacy & data",
+  download_title: "Download my data",
+  download_body: "A copy of your details, orders, cases and choices.",
+  readable_link: "Open readable version",
+};
+
 export function PrivacyPage() {
   const held = useApi(() => api.dataHeld(), []);
   const consents = useApi(() => api.myConsents(), []);
@@ -346,9 +354,10 @@ export function PrivacyPage() {
   }
 
   const current = latest ?? consents.data;
+  const downloadText = held.data?.headings ?? FALLBACK;
   return (
     <>
-      <PageHeader title={held.data?.headings.page_title ?? ""} subtitle={held.data?.headings.page_subtitle} />
+      <PageHeader title={held.data?.headings.page_title ?? FALLBACK.page_title} subtitle={held.data?.headings.page_subtitle} />
       <div className="space-y-4">
         {held.data && (
           <Card className="p-4">
@@ -369,20 +378,20 @@ export function PrivacyPage() {
         ) : (
           <ConsentCard data={current} onChange={setLatest} />
         )}
-        {held.data && (
+        {!held.loading && (
         <Card className="p-5">
-          <h2 className="font-montserrat text-base font-semibold text-foreground">{held.data.headings.download_title}</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{held.data.headings.download_body}</p>
+          <h2 className="font-montserrat text-base font-semibold text-foreground">{downloadText.download_title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{downloadText.download_body}</p>
           {dlError && <Alert>{dlError}</Alert>}
           <div className="mt-3">
             <Button variant="outline" loading={downloading} onClick={() => void download()}>
-              {held.data.headings.download_title}
+              {downloadText.download_title}
             </Button>
             <Link
               to="/privacy/export"
               className="ml-4 text-sm font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand"
             >
-              {held.data.headings.readable_link}
+              {downloadText.readable_link}
             </Link>
           </div>
         </Card>
