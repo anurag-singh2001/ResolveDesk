@@ -33,7 +33,8 @@ LOGS = RUNS / "logs"
 
 DB_FOLDERS = ("tests/chaos", "tests/integration", "tests/isolation")
 BATCH_WEIGHT = 60  # test functions, about 15 minutes on the remote database
-HANG_SECONDS = 900  # no new log output for this long means the batch is stuck
+HANG_SECONDS = 2700  # chaos tests run for many minutes silently, and Windows reports log size late
+HEARTBEAT_SECONDS = 60  # status.md shows the run is alive even while a long batch prints nothing
 NETWORK_RETRIES = 3
 NETWORK_WAIT_SECONDS = 60
 NETWORK_ERRORS = (
@@ -142,9 +143,12 @@ LOCK = threading.Lock()
 def save(state: dict, batches: dict[str, list[str]]) -> None:
     RUNS.mkdir(exist_ok=True)
     temp = STATE.with_suffix(".tmp")
-    temp.write_text(json.dumps(state, indent=1), "utf-8")
-    temp.replace(STATE)
-    STATUS.write_text(render(state, batches), "utf-8")
+    try:
+        temp.write_text(json.dumps(state, indent=1), "utf-8")
+        temp.replace(STATE)
+        STATUS.write_text(render(state, batches), "utf-8")
+    except OSError:  # someone has the file open on Windows: the next save gets it
+        pass
 
 
 def render(state: dict, batches: dict[str, list[str]]) -> str:
@@ -178,7 +182,9 @@ def render(state: dict, batches: dict[str, list[str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def run_pytest(name: str, targets: list[str], env: dict, attempt: int) -> tuple[dict, bool]:
+def run_pytest(
+    name: str, targets: list[str], env: dict, attempt: int, beat=lambda: None
+) -> tuple[dict, bool]:
     """One pytest process. Returns the junit result and whether it hung."""
     LOGS.mkdir(parents=True, exist_ok=True)
     log = LOGS / f"{name}.{attempt}.log"
@@ -190,8 +196,12 @@ def run_pytest(name: str, targets: list[str], env: dict, attempt: int) -> tuple[
     with log.open("wb") as out:
         proc = subprocess.Popen(cmd, cwd=ROOT, env=env, stdout=out, stderr=subprocess.STDOUT)
         size, last = 0, time.monotonic()
+        beaten = time.monotonic()
         while proc.poll() is None:
             time.sleep(5)
+            if time.monotonic() - beaten > HEARTBEAT_SECONDS:
+                beaten = time.monotonic()
+                beat()
             now = log.stat().st_size
             if now != size:
                 size, last = now, time.monotonic()
@@ -210,7 +220,12 @@ def run_batch(name: str, targets: list[str], env: dict, state: dict, batches: di
         with LOCK:
             row.update(status="running", tries=attempt)
             save(state, batches)
-        result, hung = run_pytest(name, targets, env, attempt)
+
+        def beat() -> None:
+            with LOCK:
+                save(state, batches)
+
+        result, hung = run_pytest(name, targets, env, attempt, beat)
         ran = result["passed"] + result["failed"] + result["skipped"]
         lost = ran == 0 or hung or result["network_only"]
         if not lost or attempt > NETWORK_RETRIES:
