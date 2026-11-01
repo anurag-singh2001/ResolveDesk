@@ -341,3 +341,6 @@ Previous retro actions: no Sprint 6 retro action is tracked in the sprint files;
 | test-runner (Haiku) | targeted runs, one full suite | see main row | n/a | n/a | n/a | one run killed by low memory |
 | eval-runner (Haiku) | eval-20261031-202218 | n/a | one crash (shared DB), one killed (hang limit) | n/a | agents 92%/93%, 0 over rule | no earlier baseline cited, so no delta |
 | business-analyst (Sonnet) | S8.4, S11.1 research | n/a | S11.1 redone needlessly | n/a | n/a | |
+
+### Safety report filed 2026-11-01: S7.5
+Static read by safety-reviewer, no tests run. Verdict: clean. Limits, scope, four eyes and idempotency are enforced server-side. The reviewer could not find the refundable-balance lock; the coordinator confirmed it: `order_facts(lock=True)` takes `with_for_update()` (app/engine/eligibility.py:121) and both reservation paths in app/engine/executor.py use it. Non-blocker: four eyes is skipped when `self_approved` is set, which is the S7.10 switch path and an open owner decision.

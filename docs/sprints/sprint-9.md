@@ -179,3 +179,18 @@ Previous retro actions (Sprint 8: separate eval DB, time-based hang limit): the 
 
 ### Known gaps
 - 2026-11-01: the portal Jobs page omits `platform_job_runs`, so platform-level job runs are not shown there. Logged by the owner; not yet scheduled.
+
+### Safety reports filed 2026-11-01
+Static read of the code and migration text by safety-reviewer; no tests run, grants not checked on a live database.
+
+| Story | Verdict | Non-blockers |
+|---|---|---|
+| S9.1 platform admin | Clean | Failed logins are logged, not audited; lockout is per process and five bad guesses lock the admin out for 15 minutes; REVOKE ALL covers tables existing at migration time only, and whether a test guards later tables was not checked; audit and read share a transaction, so a failed view query loses the audit row |
+| S9.2 LLM usage | Clean | `error_class` and `model` are length-capped but not pattern-checked |
+| S9.4 logs and alerts | Clean | Tables are not revoked from `resolvedesk_maint` (views are); `log_error_count` and `alerts_apply` are executable by the app role; failed log writes drop that interval's counts |
+| S8.5e privacy queue | Clean | A refused approval is logged, not audited; the token can be replayed for 30 minutes by the same approver (erasure is idempotent and re-checks the hash); the GET dry run writes an audit row and mints a token |
+
+These are non-blockers, logged here and not scheduled.
+
+### Growth flag on for spice_route (2026-11-01)
+Owner decision: `growth: true` in the tenant file. Tests with the flag on: test_growth 30 passed, brand signals 19 passed, tenant loader 10 passed. Known gap: that tenant's simulation plants no repeat-rate drop and has no third staff user at its location, so its end-to-end campaign flow and 7 campaign tests skip. Its campaign flow is therefore not exercised by a test.

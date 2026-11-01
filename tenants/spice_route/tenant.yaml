@@ -11,7 +11,7 @@ locations:
   - {slug: kharadi, name: Kharadi kitchen, brands: [biryani_box, midnight_pizza, bowl_theory]}
 
 feature_flags:
-  growth: false
+  growth: true
 
 # Overrides of vertical-pack settings. Limits may only be lowered at brand/location level.
 settings:

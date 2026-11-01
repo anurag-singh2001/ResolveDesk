@@ -461,6 +461,9 @@ def test_growth_api_end_to_end(api, app_engine, gt):
     try:
         hq = next(e for e, c in ctxs.items() if c.role == "hq_owner")
         signals = api.post("/growth/signals/refresh", headers=headers[hq]).json()
+        if not any(p.kind == "repeat_drop" for p in cfg.simulation.problems):
+            assert signals == []  # nothing planted, so nothing to report
+            pytest.skip("this tenant's simulation plants no repeat-rate drop")
         assert signals
         sid, loc = signals[0]["id"], uuid.UUID(signals[0]["location_id"])
         other = next(
