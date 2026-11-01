@@ -129,6 +129,16 @@ class JobRunRow(BaseModel):
     last_started_at: datetime | None
 
 
+class SchedulerRunRow(BaseModel):
+    day: date
+    job: str
+    status: str
+    run_count: int
+    finished_count: int
+    duration_ms_total: int
+    last_started_at: datetime | None
+
+
 def get_platform_engine() -> Engine:
     """The aggregate-only connection. Tests override this dependency."""
     return get_engine(get_settings().platform_database_url)
@@ -294,6 +304,21 @@ def job_runs(
         "FROM platform_job_runs_v ORDER BY tenant_slug, day, job, status",
     )
     return [JobRunRow(**r) for r in rows]
+
+
+@router.get("/scheduler-runs")
+def scheduler_runs(
+    actor: str = Depends(require_platform), engine: Engine = Depends(get_platform_engine)
+) -> list[SchedulerRunRow]:
+    """Platform-level job runs (no tenant): skipped ticks and failures outside any tenant."""
+    rows = _read(
+        engine,
+        actor,
+        "GET /platform/scheduler-runs",
+        "SELECT day, job, status, run_count, finished_count, duration_ms_total, last_started_at "
+        "FROM platform_scheduler_runs_v ORDER BY day, job, status",
+    )
+    return [SchedulerRunRow(**r) for r in rows]
 
 
 # --- Scenario lab (S10.1) -----------------------------------------------------------------

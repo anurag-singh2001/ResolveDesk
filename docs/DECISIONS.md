@@ -600,3 +600,9 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: S11.3a and S11.4 need both tenants, and brand signals matter most for the 3-brand tenant.
 - Alternative rejected: leaving growth off and ungating the read-only pages (keeps two meanings of the flag).
 - Open: the tenant's simulation plants no repeat-rate drop and has no third staff user, so its campaign flow is not covered end to end. Adding them changes seeded data and needs a golden refresh.
+
+## 2026-11-01 - Portal Jobs page shows platform-level runs (migration 0035)
+- Decision: new view `platform_scheduler_runs_v` (day, job, status, run and finished counts, summed duration, last start; no id, counts payload or error class), granted to the platform role exactly as 0034, served by `GET /platform/scheduler-runs`. The Jobs page fetches it next to `/platform/jobs` and shows those rows under the business label "Platform". The scheduler does write this table (skipped ticks and failures outside any tenant).
+- Why: the table has no tenant, so it cannot join the tenant view; a separate route leaves the `/platform/jobs` response shape (tenant_slug always set) unchanged.
+- Alternative rejected: a nullable tenant_slug on the existing view (changes an existing contract and its tests); letting the platform role read the raw table (rule: named views only).
+- Open: migration and DB tests written, not run (suite running on another DB).
