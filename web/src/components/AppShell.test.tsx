@@ -89,3 +89,11 @@ describe("privacy contact", () => {
     );
   });
 });
+
+describe("route-level code splitting", () => {
+  it("opens a lazily loaded page inside the shell, which stays on screen", async () => {
+    await navLabels("customer", "/help");
+    expect(screen.getByTestId("side-nav")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /help/i })).toBeInTheDocument();
+  });
+});

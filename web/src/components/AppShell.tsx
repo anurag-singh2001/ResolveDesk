@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
 import { CHANGED_EVENT } from "../api/client";
 import { useAuth } from "../auth/session";
@@ -7,7 +7,7 @@ import type { NavItem } from "../lib/roles";
 import { api } from "../api/endpoints";
 import { useApi } from "../lib/useApi";
 import { ThemeSwitcher } from "./theme";
-import { Badge, Button, cx } from "./ui";
+import { Badge, Button, Loading, cx } from "./ui";
 
 const ICON: Record<NavItem["icon"], string> = {
   orders: "M3 4h2l2.4 10.2a2 2 0 0 0 2 1.8h7.7a2 2 0 0 0 2-1.6L21 8H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm9 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
@@ -166,7 +166,9 @@ export function AppShell() {
           </div>
         </aside>
         <main id="main" className="min-w-0 flex-1 py-6 sm:py-8">
-          <Outlet />
+          <Suspense fallback={<Loading />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
       <footer className="mx-auto max-w-6xl border-t border-border px-6 py-4 text-xs text-muted-foreground sm:px-12">

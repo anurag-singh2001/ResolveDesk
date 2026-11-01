@@ -1,31 +1,34 @@
-import type { ReactNode } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { useAuth } from "./auth/session";
 import { AppShell } from "./components/AppShell";
 import { EmptyState, Loading } from "./components/ui";
 import { canSeeGrowth, canSeeInsights, homePath, isStaff } from "./lib/roles";
-import { BrandSignalsPage } from "./pages/BrandSignalsPage";
-import { GrowthPage } from "./pages/GrowthPage";
-import { GrowthCalendarPage } from "./pages/GrowthCalendarPage";
-import { DashboardPage } from "./pages/DashboardPage";
-import { SegmentsPage } from "./pages/SegmentsPage";
-import { InsightsPage } from "./pages/InsightsPage";
-import { ApprovalDetailPage } from "./pages/ApprovalDetailPage";
-import { ApprovalsPage } from "./pages/ApprovalsPage";
-import { CasePage } from "./pages/CasePage";
-import { CasesPage } from "./pages/CasesPage";
-import { DevPage } from "./pages/DevPage";
-import { HelpPage } from "./pages/HelpPage";
-import { QueuePage } from "./pages/QueuePage";
 import { LoginPage } from "./pages/LoginPage";
-import { OrderDetailPage } from "./pages/OrderDetailPage";
-import { OrdersPage } from "./pages/OrdersPage";
-import { PoliciesPage } from "./pages/PoliciesPage";
-import { PrivacyPage } from "./pages/PrivacyPage";
-import { PrivacyRequestsPage } from "./pages/PrivacyRequestsPage";
-import { ReadableExportPage } from "./pages/ReadableExportPage";
-import { ReportProblemPage } from "./pages/ReportProblemPage";
-import { PlatformApp } from "./platform/PlatformApp";
+
+/** Route-level code splitting (S12.4): a page's code (and heavy libraries like the charts)
+ * loads when its route opens. The pages export named components, hence the `default` mapping. */
+const BrandSignalsPage = lazy(() => import("./pages/BrandSignalsPage").then((m) => ({ default: m.BrandSignalsPage })));
+const GrowthPage = lazy(() => import("./pages/GrowthPage").then((m) => ({ default: m.GrowthPage })));
+const GrowthCalendarPage = lazy(() => import("./pages/GrowthCalendarPage").then((m) => ({ default: m.GrowthCalendarPage })));
+const DashboardPage = lazy(() => import("./pages/DashboardPage").then((m) => ({ default: m.DashboardPage })));
+const SegmentsPage = lazy(() => import("./pages/SegmentsPage").then((m) => ({ default: m.SegmentsPage })));
+const InsightsPage = lazy(() => import("./pages/InsightsPage").then((m) => ({ default: m.InsightsPage })));
+const ApprovalDetailPage = lazy(() => import("./pages/ApprovalDetailPage").then((m) => ({ default: m.ApprovalDetailPage })));
+const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })));
+const CasePage = lazy(() => import("./pages/CasePage").then((m) => ({ default: m.CasePage })));
+const CasesPage = lazy(() => import("./pages/CasesPage").then((m) => ({ default: m.CasesPage })));
+const DevPage = lazy(() => import("./pages/DevPage").then((m) => ({ default: m.DevPage })));
+const HelpPage = lazy(() => import("./pages/HelpPage").then((m) => ({ default: m.HelpPage })));
+const QueuePage = lazy(() => import("./pages/QueuePage").then((m) => ({ default: m.QueuePage })));
+const OrderDetailPage = lazy(() => import("./pages/OrderDetailPage").then((m) => ({ default: m.OrderDetailPage })));
+const OrdersPage = lazy(() => import("./pages/OrdersPage").then((m) => ({ default: m.OrdersPage })));
+const PoliciesPage = lazy(() => import("./pages/PoliciesPage").then((m) => ({ default: m.PoliciesPage })));
+const PrivacyPage = lazy(() => import("./pages/PrivacyPage").then((m) => ({ default: m.PrivacyPage })));
+const PrivacyRequestsPage = lazy(() => import("./pages/PrivacyRequestsPage").then((m) => ({ default: m.PrivacyRequestsPage })));
+const ReadableExportPage = lazy(() => import("./pages/ReadableExportPage").then((m) => ({ default: m.ReadableExportPage })));
+const ReportProblemPage = lazy(() => import("./pages/ReportProblemPage").then((m) => ({ default: m.ReportProblemPage })));
+const PlatformApp = lazy(() => import("./platform/PlatformApp").then((m) => ({ default: m.PlatformApp })));
 
 /** Hides screens a role has no use for. Access itself is enforced by the API on every call. */
 function Only({ when, children }: { when: boolean; children: ReactNode }) {
@@ -40,7 +43,13 @@ function NotFound() {
  * business session. */
 export function App() {
   const { pathname } = useLocation();
-  if (pathname === "/platform" || pathname.startsWith("/platform/")) return <PlatformApp />;
+  if (pathname === "/platform" || pathname.startsWith("/platform/")) {
+    return (
+      <Suspense fallback={<Loading />}>
+        <PlatformApp />
+      </Suspense>
+    );
+  }
   return <TenantApp />;
 }
 

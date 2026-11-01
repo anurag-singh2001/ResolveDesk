@@ -672,3 +672,8 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Not fixed: the per-row `case_status` queries. Batching them means rewriting `case_status` (money-facing customer text, rule 7) and needs its own story with the safety reviewer. Likewise `/policies` could fetch all chunks in one query.
 - Not measured: before/after seconds (no servers allowed in this session). Statement-count tests are in tests/integration/test_query_counts.py (written, unrun).
 - Rejected: caching the pack in process memory (stale after `make refresh`, and tenant-keyed caches are a leak risk).
+
+## 2026-11-01 S12.4 Route-level code splitting
+- Decision: every page except Login, plus the platform portal, is `React.lazy` in `web/src/App.tsx` (pages export named components, so each import maps `default`). `Suspense` with the existing `Loading` sits around the shell's `Outlet` (the nav stays on screen while a page loads) and around `PlatformApp`. Login and the shell stay eager.
+- Result: entry chunk 850 kB -> 204 kB (66 kB gzip). Recharts lands in its own `dashboard` chunk (385 kB), the portal is 25 kB, Help (manual text) 118 kB.
+- Why: one bundle made every first load pay for charts and the portal. Rejected: manualChunks vendor splitting only (does not stop pages loading up front).
