@@ -26,7 +26,7 @@ def test_scenarios_load_and_cover_every_category(tenant):
 def test_about_a_fifth_is_held_out_and_three_are_live(tenant):
     scenarios, _ = _load(tenant)
     held = [s for s in scenarios if s.held_out]
-    assert len(held) == 3
+    assert len(held) == 4  # 3 original + 1 Hindi-script (S7.12)
     live = [s for s in scenarios if "live" in s.tags]
     assert len(live) == 3 and not any(s.held_out for s in live)  # live checks use tuning data
     assert any(s.kind == "injection" for s in live)

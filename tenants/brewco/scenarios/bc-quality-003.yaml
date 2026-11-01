@@ -1,0 +1,14 @@
+id: bc-quality-003
+tenant: brewco
+kind: plain
+language: hi
+message: मेरी कॉफ़ी बिल्कुल ठंडी थी और स्वाद भी जला हुआ था।
+order:
+  select: latest
+expect:
+  category: quality
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
+held_out: true
+note: 'S7.12: Devanagari variant of bc-quality-001'
