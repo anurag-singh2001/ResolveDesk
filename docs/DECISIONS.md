@@ -606,3 +606,9 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: the table has no tenant, so it cannot join the tenant view; a separate route leaves the `/platform/jobs` response shape (tenant_slug always set) unchanged.
 - Alternative rejected: a nullable tenant_slug on the existing view (changes an existing contract and its tests); letting the platform role read the raw table (rule: named views only).
 - Open: migration and DB tests written, not run (suite running on another DB).
+
+## 2026-11-01 - Portal demo rows script (scripts/seed_portal_demo.py)
+- Decision: a hand-run, dev-only script (refuses unless APP_ENV=dev) writes demo-labelled job runs, LLM usage, one error count and one open alert for every tenant found in `organizations`. Tenant rows get fixed uuid5 ids and `ON CONFLICT DO NOTHING`; the error count is set, not added; the alert is refreshed on its one-open-per-(rule, scope) index.
+- Why: the app role has no grant on `error_logs` and `alerts` (0033), and the counter function adds on every call, which is not repeatable. The owner connection (as `make refresh`) gives exact idempotency. Pure row builders keep the guard and shapes unit-testable without a database.
+- Alternative rejected: going through `log_error_count` and `alerts_apply` as the app role (every rerun would inflate the count); a Make target (too easy to run by accident).
+- Open: the failed demo job can trigger the real `job_failed` alert on the next pass (useful for S9.4 but it is a real-looking alert). Integration test written, not run.
