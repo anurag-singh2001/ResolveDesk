@@ -109,6 +109,10 @@ timeline shows "You replied".
   *Processing*, the refund is on its way but not yet confirmed.
 - It only ever looks at **your** orders.
 
+## Screens for staff
+
+Dashboard, Segments, Brand signals, Campaign calendar, offer results and the Scenario lab are for our staff. You will not see them, and they do not open for a customer account. Everything you can do is in the menu: **My orders**, **My cases**, **Our policies**, **Privacy & data** and **Help**.
+
 ## Our policies
 
 Open **Our policies** in the menu to read the rules we follow. Each policy shows the date it came into force, and each section has its own link, so you can share or bookmark the exact part you mean. The text is shown exactly as written. You only see your own business's policies.

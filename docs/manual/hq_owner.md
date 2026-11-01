@@ -13,7 +13,7 @@ Five wrong passwords lock the account for a few minutes ("Too many attempts"). "
 ended" means sign in again. Use **Sign out** (top right) on shared devices.
 
 The top bar shows the business, your name, your role badge (**HQ owner**), **Help** and **Sign
-out**. The menu has **Approvals**, **Cases**, **Insights**, **Growth** (if switched on for your business) and **Help**.
+out**. The menu has **Approvals**, **Cases to handle**, **Cases**, **Dashboard**, **Segments**, **Insights**, **Privacy requests**, **Policies** and **Help**; where Growth is switched on for your business it also has **Growth**, **Brand signals** and **Campaign calendar**.
 
 ## Approvals
 
@@ -118,6 +118,44 @@ Nothing is sent until **two different people** approve and **at least one is an 
 can't approve twice. If the system refuses, its reason is shown. After the campaign has run,
 **Measure result** shows the verdict (worked, did not work, or inconclusive) and the lesson
 saved to the playbook. "Possible causes" are hints, not confirmed facts.
+
+## Dashboard
+
+**Dashboard** (menu) is a read-only page of charts for every outlet and brand in the business. It never changes anything.
+
+- At the top, **Day** or **Week** sets the size of each bar or point, and **Period** sets how far back to look (last 7, 14, 30, 90, 180 or 366 days; 30 is the default, and periods over 90 days start weekly). Your choices stay in the page address.
+- Charts: **Cases opened**, **Remedy spend** (refunds and vouchers, by when they succeeded), **Median decision time** (minutes from proposal to a person's decision, with a dashed line at the decision target of 240 minutes), **Decisions within SLA**, **Repeat rate**, **AI accuracy** (share of AI proposals staff did not override), **Orders** and **Average order value**. Under each chart, **Table view** shows the same numbers as a table. A gap in a line means there was no data for that period, not zero.
+- **By brand** and **By location** tables list cases, remedy spend, orders and revenue for the period. Click a brand or location name to drill in; **All in scope** at the top takes you back.
+- If the period has no activity the page says so; try a longer period.
+- Times are in the business's own time zone, shown under the title.
+
+## Segments
+
+**Segments** (menu) shows who your customers are by how they order. It shows counts only, never names or phone numbers, and it is read-only.
+
+- Hover a segment's name for its one-line meaning: **New**, **Active**, **Loyal**, **At risk**, **Lapsed**, **Lapsed regulars** and **One-and-done**. A customer can be in more than one, so the bars do not add up to the customer total.
+- For each segment the table shows customers, share of the base, average order, total spend, and how many **can be messaged on WhatsApp** (the customer agreed to marketing and has one phone number). It also splits customers by **Own channel** and **Delivery app only**; delivery-app customers who are not contactable cannot be reached by us at all.
+- Counts include customers who have not agreed to marketing; only the WhatsApp column reflects consent. That column can be higher than a real campaign audience, because the 30-day frequency cap is not applied here.
+- **First-order cohorts** show the share of each month's new customers who ordered again 1, 2 and 3 months later. "Not yet" means that month is not over.
+- Small groups are hidden to protect privacy: a group below the minimum shown on the page says "Hidden: fewer than ...". Some larger figures are hidden as well, so a hidden one cannot be worked out from the rest.
+- With more than one brand, a **Brand** menu switches between all brands and one.
+
+## Brand signals
+
+**Brand signals** (menu, only where Growth is switched on for your business) compares each brand's repeat-customer rate across all its locations: a **Before** window against a **Recent** one, and the drop between them. Each brand shows *Repeat rate dropped*, *Steady* or *Low volume*. Low volume means too few orders in a window to show a trend, so no percentages are shown and the brand is left out of the chart. When a brand has dropped, the card lists **What the data shows** and **Possible reasons (not confirmed)**; the reasons are hints, not facts. The page is read-only: campaigns are still proposed per location on **Growth**, and a link leads to **Segments** to see the customers behind a brand.
+
+## Campaign calendar
+
+**Campaign calendar** (menu, only where Growth is switched on) lists the win-back campaigns in your scope with their measurement windows. It is read-only: approve or reject on **Growth**. Each row shows the outlet and brand, the status (*Pending approval*, *Approved*, *Sent*, *Measured*, *Rejected*, *Expired*), a bar for the window with its dates, the audience (treated and held out), the budget, the sends and the warnings. The **Sends** column keeps each state apart (pending, submitted, processing, succeeded, failed, unknown, skipped); a campaign is never described there as simply "sent". A yellow note counts customers who are in overlapping campaigns or inside the 30-day frequency cap. Nothing is blocked by the note; the cap itself is enforced when the audience is built and again at send time. The same warning shows on a campaign on **Growth** before you decide.
+
+## Offer ROI and manual spend
+
+- **Return on the offer** appears under a campaign on **Growth**. It compares the offered group with the held-out group (customers deliberately not contacted). When the window has closed and there are enough people, it shows a headline: revenue ROI (incremental revenue minus cost) or margin ROI (using an estimated gross margin, labelled as an estimate), as a rupee amount and a percentage of cost. With too few people it says so and how many would be needed; while the window is open it says there is no result yet. Cost is an upper bound and message cost is an estimate. Failed and unknown sends stay in the offered group. The panel also says what lift this holdout size can reliably see.
+- **Add spend by hand** (HQ owners only, at the bottom of **Growth**) is for spend outside the app, such as aggregator ads. Enter a short channel name, the amount in rupees (for example 1500 or 1500.50) and the first and last day it covers, then **Save spend**. It is kept as you typed it and is **not verified**. It counts in the channel totals and is not spread into any campaign's ROI. Recent entries are listed under the form.
+
+## Scenario lab
+
+**Scenario lab** is not in this app and your sign-in cannot open it. It lives in the separate platform portal (its own sign-in, for the platform operator), where scenario files are edited and run against a scratch database, never your business's data. The same portal has **Scheduled jobs**, a read-only record of background job runs. On a demo setup some rows there are labelled demo data.
 
 ## Demo controls (demo only)
 

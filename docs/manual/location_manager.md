@@ -15,7 +15,7 @@ for a few minutes. If you see **"Your session has ended"**, sign in again. Click
 right) when you leave a shared device.
 
 The top bar shows your business, your name, your role badge (**Location manager**), **Help** and
-**Sign out**. The left menu (a row of tabs on a phone) has **Approvals**, **Cases to handle**, **Cases** and **Help**.
+**Sign out**. The left menu (a row of tabs on a phone) has **Approvals**, **Cases to handle**, **Cases**, **Dashboard**, **Segments**, **Policies** and **Help**; where Growth is switched on for your business it also has **Growth** and **Campaign calendar**.
 
 ## Approvals
 
@@ -139,6 +139,44 @@ To finish a case, choose a **Reason** (Resolved, No remedy due, Duplicate of ano
 If **Growth** is in your menu, you can see outlets with falling repeat customers and propose or
 approve a win-back campaign for your outlet. Sending needs two different approvers, one of them
 an HQ owner; the screen shows who has approved so far and any reason the system refuses.
+
+## Dashboard
+
+**Dashboard** (menu) is a read-only page of charts for your outlets. It never changes anything.
+
+- At the top, **Day** or **Week** sets the size of each bar or point, and **Period** sets how far back to look (last 7, 14, 30, 90, 180 or 366 days; 30 is the default, and periods over 90 days start weekly). Your choices stay in the page address.
+- Charts: **Cases opened**, **Remedy spend** (refunds and vouchers, by when they succeeded), **Median decision time** (minutes from proposal to a person's decision, with a dashed line at the decision target of 240 minutes), **Decisions within SLA**, **Repeat rate**, **AI accuracy** (share of AI proposals staff did not override), **Orders** and **Average order value**. Under each chart, **Table view** shows the same numbers as a table. A gap in a line means there was no data for that period, not zero.
+- If you look after more than one outlet, a **By location** table lists cases, remedy spend, orders and revenue for each. Click a name to drill in; **All in scope** takes you back.
+- If the period has no activity the page says so; try a longer period.
+- Times are in the business's own time zone, shown under the title.
+
+## Segments
+
+**Segments** (menu) shows who your customers are by how they order. It shows counts only, never names or phone numbers, and it is read-only.
+
+- Hover a segment's name for its one-line meaning: **New**, **Active**, **Loyal**, **At risk**, **Lapsed**, **Lapsed regulars** and **One-and-done**. A customer can be in more than one, so the bars do not add up to the customer total.
+- For each segment the table shows customers, share of the base, average order, total spend, and how many **can be messaged on WhatsApp** (the customer agreed to marketing and has one phone number). It also splits customers by **Own channel** and **Delivery app only**; delivery-app customers who are not contactable cannot be reached by us at all.
+- Counts include customers who have not agreed to marketing; only the WhatsApp column reflects consent. That column can be higher than a real campaign audience, because the 30-day frequency cap is not applied here.
+- **First-order cohorts** show the share of each month's new customers who ordered again 1, 2 and 3 months later. "Not yet" means that month is not over.
+- Small groups are hidden to protect privacy: a group below the minimum shown on the page says "Hidden: fewer than ...". Some larger figures are hidden as well, so a hidden one cannot be worked out from the rest.
+- Where your outlets serve more than one brand, a **Brand** menu switches between them.
+
+## Brand signals
+
+**Brand signals** is an HQ owner page. It is not in your menu and its address does not open for your role. Your outlets' repeat-customer rates are on **Growth** (where it is switched on) and, if you have it, **Insights**. Ask an HQ owner if you need the brand view.
+
+## Campaign calendar
+
+**Campaign calendar** (menu, only where Growth is switched on) lists the win-back campaigns in your scope with their measurement windows. It is read-only: approve or reject on **Growth**. Each row shows the outlet and brand, the status (*Pending approval*, *Approved*, *Sent*, *Measured*, *Rejected*, *Expired*), a bar for the window with its dates, the audience (treated and held out), the budget, the sends and the warnings. The **Sends** column keeps each state apart (pending, submitted, processing, succeeded, failed, unknown, skipped); a campaign is never described there as simply "sent". A yellow note counts customers who are in overlapping campaigns or inside the 30-day frequency cap. Nothing is blocked by the note; the cap itself is enforced when the audience is built and again at send time. The same warning shows on a campaign on **Growth** before you decide.
+
+## Offer ROI and manual spend
+
+- **Return on the offer** appears under a campaign on **Growth**. It compares the offered group with the held-out group (customers deliberately not contacted). When the window has closed and there are enough people, it shows a headline: revenue ROI (incremental revenue minus cost) or margin ROI (using an estimated gross margin, labelled as an estimate), as a rupee amount and a percentage of cost. With too few people it says so and how many would be needed; while the window is open it says there is no result yet. Cost is an upper bound and message cost is an estimate. Failed and unknown sends stay in the offered group. The panel also says what lift this holdout size can reliably see.
+- **Add spend by hand** is for HQ owners only, so you will not see that form. Spend entered there is not part of a campaign's ROI.
+
+## Scenario lab
+
+**Scenario lab** is not part of this app. It is a tool for the platform operator, in a separate platform portal with its own sign-in, and no business role can open it. If you want a type of case checked against the AI, ask the person who runs the platform.
 
 ## Policies
 
