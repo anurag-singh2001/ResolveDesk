@@ -651,3 +651,8 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: no second implementation of the clash maths to drift; the cap is still enforced at audience build and send time.
 - Alternative rejected: computing the counts again inside the campaign module (duplicate rules); blocking approval on a clash (the calendar says warn only).
 - Cost: each campaign read runs the calendar query; fine at demo size, revisit if campaigns run into the hundreds.
+## 2026-11-01 - Manual spend form lives on the Growth page, HQ only (S12.7)
+- Decision: `ManualSpendPanel` sits under the signal list on Growth for hq_owner only, and lists the entries from `GET /growth/channel-mix` (`manual_spend`). The rupee text is turned into integer paise with the existing digit parser (`parseRupeesToPaise`, no float); zero, negative, more than two decimals and non-numbers are refused in the browser with a message, and the server's own bounds (`POST /growth/spend`, 422) still apply and are shown as returned. No new endpoint. The list is labelled "entered by hand, not verified".
+- Why: the spend is not tied to a campaign (it belongs to no location), so it does not fit the per-campaign ROI view; Growth is where HQ already works.
+- Alternative rejected: a field inside each campaign's ROI panel (implies the spend belongs to that campaign).
+- Open: manual spend is shown as its own list; it is not yet subtracted inside a campaign's ROI figure (that needs an owner decision on how to apportion it).

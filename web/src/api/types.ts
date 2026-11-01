@@ -849,3 +849,19 @@ export interface RoiReport {
   revenue_note: string;
   holdout_advice: { holdout_percent: number; audience_n: number; detectable_lift_bp: number | null; recommended_holdout_percent: number | null; note: string };
 }
+
+// GET /growth/channel-mix and POST /growth/spend (S11.3b, S12.7). Money is integer paise.
+export interface ManualSpend {
+  id: string;
+  channel: string;
+  amount_paise: number;
+  period_start: string;
+  period_end: string;
+  verification: string;
+}
+
+export interface ChannelMix {
+  whatsapp: { campaigns: number; budget_cap_paise: number; treatment_sends: number; succeeded_sends: number; note: string };
+  manual_spend: ManualSpend[];
+  manual_spend_note: string;
+}

@@ -9,6 +9,8 @@ import type {
   Campaign,
   CalendarResponse,
   RoiReport,
+  ChannelMix,
+  ManualSpend,
   Case,
   GrowthSignal,
   BrandSignalsResponse,
@@ -179,6 +181,9 @@ export const api = {
   campaign: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}`),
   decideCampaign: (id: string, decision: "approved" | "rejected") =>
     request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
+  channelMix: () => request<ChannelMix>("/growth/channel-mix"),
+  enterSpend: (body: { channel: string; amount_paise: number; period_start: string; period_end: string }) =>
+    request<ManualSpend>("/growth/spend", { method: "POST", body }),
   campaignRoi: (id: string) => request<RoiReport>(`/growth/campaigns/${enc(id)}/roi`),
   campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),

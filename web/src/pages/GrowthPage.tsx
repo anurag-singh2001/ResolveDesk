@@ -8,6 +8,7 @@ import { formatDateTime, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../auth/session";
+import { ManualSpendPanel } from "./ManualSpendPanel";
 import { RoiPanel } from "./RoiPanel";
 
 /** Basis points → "12.3%", rounded half up with integer maths (same rule as the server's
@@ -225,6 +226,7 @@ export function GrowthPage() {
           ))}
         </ul>
       )}
+      {me?.role === "hq_owner" && <ManualSpendPanel />}
     </>
   );
 }
