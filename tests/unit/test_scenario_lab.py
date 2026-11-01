@@ -368,3 +368,21 @@ def test_held_out_scenarios_are_read_only(lab_tenants):
     assert (folder / "scenarios" / "lab-held-001.yaml").read_text(encoding="utf-8") == before
     # Reading it is still allowed.
     assert "lab-held-001" in lab.read_text(slug, "lab-held-001")
+
+
+def test_a_corrupted_held_out_file_is_not_overwritten(lab_tenants):
+    slug, folder = lab_tenants
+    data = yaml.safe_load(_first_text(folder))
+    data["id"] = "lab-broken-001"
+    data["held_out"] = False
+    path = folder / "scenarios" / "lab-broken-001.yaml"
+    junk_files = (
+        "held_out: true\nexpect: [unclosed\n",
+        "held_out: true\nkind: not-a-kind\n",
+        "- a list\n",
+    )
+    for junk in junk_files:
+        path.write_text(junk, encoding="utf-8")
+        with pytest.raises(ScenarioError):
+            lab.save_text(slug, "lab-broken-001", yaml.safe_dump(data))
+        assert path.read_text(encoding="utf-8") == junk

@@ -91,16 +91,16 @@ def save_text(slug: str, scenario_id: str, text: str) -> Scenario:
     if sc.held_out:
         raise ScenarioError(["held_out: held-out scenarios are read-only and cannot be saved here"])
     if path.is_file():
+        # Raw YAML, not the validated model: a file that no longer validates is still protected.
+        msg = "held_out: held-out scenarios are read-only and cannot be saved here"
         try:
-            on_disk = parse_scenario_text(
-                path.read_text(encoding="utf-8"), slug, _tenant_pack(slug)[2]
-            )
-        except (OSError, ScenarioError):
-            on_disk = None
-        if on_disk is not None and on_disk.held_out:
+            raw = yaml.safe_load(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
             raise ScenarioError(
-                ["held_out: held-out scenarios are read-only and cannot be saved here"]
-            )
+                ["the file on disk cannot be read, so it is not overwritten"]
+            ) from None
+        if not isinstance(raw, dict) or raw.get("held_out"):
+            raise ScenarioError([msg])
     for other in sorted((folder / "scenarios").glob("*.yaml")):
         if other.resolve() == path:
             continue

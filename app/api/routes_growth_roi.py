@@ -6,7 +6,7 @@ names or phones leave this route.
 
 import re
 import uuid
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, field_validator
@@ -25,6 +25,8 @@ from app.modules.growth.roi import roi_report
 router = APIRouter(prefix="/growth", tags=["growth"])
 
 UNVERIFIED = "entered by hand, not verified"
+MAX_SPEND_PAISE = 10**12  # Rs 10,000 crore: far above any real spend, far below bigint
+SPEND_YEARS = 5  # dates must be within this many years of today
 _CHANNEL = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 
 
@@ -46,9 +48,17 @@ def campaign_roi(
 
 class SpendIn(BaseModel):
     channel: str
-    amount_paise: int = Field(gt=0, strict=True)
+    amount_paise: int = Field(gt=0, le=MAX_SPEND_PAISE, strict=True)
     period_start: date
     period_end: date
+
+    @field_validator("period_start", "period_end")
+    @classmethod
+    def _period_near_now(cls, v: date) -> date:
+        today = datetime.now(UTC).date()
+        if abs((v - today).days) > SPEND_YEARS * 366:
+            raise ValueError(f"date must be within {SPEND_YEARS} years of today")
+        return v
 
     @field_validator("channel")
     @classmethod
