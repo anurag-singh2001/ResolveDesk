@@ -1062,7 +1062,7 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "निपटाने का प्रयास करेंगे। आप राष्ट्रीय उपभोक्ता हेल्पलाइन 1915 (consumerhelpline.gov.in) "
         "पर भी संपर्क कर सकते हैं।",
     },
-    # Same sentence without the contact clause, used only while no contact is set.
+    # Same decision without the contact clause, used only while no support contact is set.
     "close.no_remedy_nocontact": {
         "en": "We have looked at your case again and, based on the records for this order, we "
         "are not able to offer a refund or voucher this time. If you think we have missed "

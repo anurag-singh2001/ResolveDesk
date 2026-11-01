@@ -151,3 +151,50 @@ def test_campaign_detail_carries_the_same_warning_counts_as_the_calendar(cal):
         assert body["overlap_customers"] == r["overlap_customers"]
         assert body["frequency_cap_customers"] == r["frequency_cap_customers"]
         assert not ({"customer_ids", "customers", "phones"} & set(body))  # counts only
+
+
+def test_scoped_callers_get_their_own_calendar_counts_or_a_404_never_a_false_zero(cal):
+    """S12.8: for every staff role, the detail counts equal that caller's own calendar row. A
+    campaign outside their listing is a 404 or unknown (null), never 0."""
+    api, cfg, tid, headers, staff, hq = cal
+    everything = {r["id"] for r in api.get(URL, headers=headers[hq]).json()["campaigns"]}
+    for u in staff:
+        mine = {r["id"]: r for r in api.get(URL, headers=headers[u.email]).json()["campaigns"]}
+        for cid in everything:
+            resp = api.get(f"/growth/campaigns/{cid}", headers=headers[u.email])
+            if cid in mine:
+                assert resp.status_code == 200, resp.text
+                body = resp.json()
+                assert body["status"] == "pending_approval"  # a campaign right after propose
+                assert body["overlap_customers"] == mine[cid]["overlap_customers"]
+                assert body["frequency_cap_customers"] == mine[cid]["frequency_cap_customers"]
+            elif resp.status_code == 200:
+                body = resp.json()
+                assert body["overlap_customers"] is None
+                assert body["frequency_cap_customers"] is None
+            else:
+                assert resp.status_code == 404
+
+
+def test_campaign_detail_refuses_customers_and_other_tenants(cal, seeded_history):  # noqa: F811
+    api, cfg, tid, headers, staff, hq = cal
+    cid = api.get(URL, headers=headers[hq]).json()["campaigns"][0]["id"]
+    assert api.get(f"/growth/campaigns/{cid}").status_code == 401
+    held = api.app.dependency_overrides.pop(get_clock)
+    try:
+        customer = next(u for u in cfg.users if u.role == "customer")
+        assert (
+            api.get(
+                f"/growth/campaigns/{cid}", headers=login(api, cfg.slug, customer.email)
+            ).status_code
+            == 403
+        )
+        others = [c for c in seeded_history.values() if c.slug != cfg.slug]
+        other = next((c for c in others if c.feature_flags.get("growth")), None)
+        if other is None:
+            pytest.skip("no other tenant with growth on")
+        other_hq = next(u.email for u in other.users if u.role == "hq_owner")
+        other_headers = login(api, other.slug, other_hq)
+    finally:
+        api.app.dependency_overrides[get_clock] = held
+    assert api.get(f"/growth/campaigns/{cid}", headers=other_headers).status_code == 404

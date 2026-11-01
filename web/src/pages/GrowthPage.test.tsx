@@ -110,6 +110,16 @@ describe("growth page", () => {
     expect(within(warning).getByRole("link", { name: "campaign calendar" })).toHaveAttribute("href", "/growth/calendar");
   });
 
+  it("says warnings are unavailable, not zero, when the server does not know", async () => {
+    setup("hq_owner", true, {
+      "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },
+      "GET /growth/campaigns/c-1": { body: { ...campaign, overlap_customers: null, frequency_cap_customers: null } },
+    });
+    renderApp("/growth");
+    expect(await screen.findByTestId("calendar-warning-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-warning")).not.toBeInTheDocument();
+  });
+
   it("shows no warning when the campaign has no clashes", async () => {
     setup("hq_owner", true, {
       "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },

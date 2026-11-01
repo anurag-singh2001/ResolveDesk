@@ -31,17 +31,20 @@ def target_date(opened_at: datetime, settings: dict[str, Any]) -> date:
     return business_date(opened_at, settings) + timedelta(days=settings["grievance_target_days"])
 
 
+def _line(settings: dict[str, Any], prefix: str) -> str | None:
+    name, email = settings.get(f"{prefix}_contact_name"), settings.get(f"{prefix}_contact_email")
+    return (f"{name} ({email})" if name and email else (email or name)) or None
+
+
 def contact_line(settings: dict[str, Any]) -> str | None:
     """The privacy and grievance contact as one line, or None while the owner has set none."""
-    name, email = settings.get("privacy_contact_name"), settings.get("privacy_contact_email")
-    return (f"{name} ({email})" if name and email else (email or name)) or None
+    return _line(settings, "privacy")
 
 
 def support_line(settings: dict[str, Any]) -> str | None:
     """Where a customer disputes a decision, or None while none is set. Never falls back to the
     privacy contact: that desk handles data requests, not complaints."""
-    name, email = settings.get("support_contact_name"), settings.get("support_contact_email")
-    return (f"{name} ({email})" if name and email else (email or name)) or None
+    return _line(settings, "support")
 
 
 def close_text(reason: str, settings: dict[str, Any], language: object = None) -> str:

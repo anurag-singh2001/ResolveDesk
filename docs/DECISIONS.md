@@ -656,3 +656,7 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: the spend is not tied to a campaign (it belongs to no location), so it does not fit the per-campaign ROI view; Growth is where HQ already works.
 - Alternative rejected: a field inside each campaign's ROI panel (implies the spend belongs to that campaign).
 - Open: manual spend is shown as its own list; it is not yet subtracted inside a campaign's ROI figure (that needs an owner decision on how to apportion it).
+## 2026-11-01 - Manual spend stays in the channel mix; warning counts are null when unknown (S12.7, S12.8 fix round)
+- Decision: manual spend is shown in the channel mix only and is not apportioned into any campaign's ROI (owner decision; story wording in sprint-12.md amended). The calendar query is now a plain helper `calendar_rows(ctx, db, now, ...)` used by both the route and the campaign detail, so no route function is called directly. If the calendar does not list a campaign for the caller (for example a brand-limited approver), the detail returns `null` counts and the screen says warnings are unavailable; it never shows 0 for unknown.
+- Why: "0 clashes" for an approver who simply cannot see the other campaigns would be a false all-clear.
+- Alternative rejected: widening the calendar scope to match campaign access (changes what a brand-limited caller can see).

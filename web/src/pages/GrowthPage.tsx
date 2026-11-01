@@ -60,10 +60,15 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
           ["Sent", current.sent_at ? formatDateTime(current.sent_at) : "Not sent"],
         ]}
       />
-      {pending && (current.overlap_customers > 0 || current.frequency_cap_customers > 0) && (
+      {pending && (current.overlap_customers === null || current.frequency_cap_customers === null) && (
+        <Alert tone="info">
+          <span data-testid="calendar-warning-unavailable">Clash warnings are not available for your view of this campaign. Check the campaign calendar before approving.</span>
+        </Alert>
+      )}
+      {pending && ((current.overlap_customers ?? 0) > 0 || (current.frequency_cap_customers ?? 0) > 0) && (
         <Alert tone="warning">
           <span data-testid="calendar-warning">
-            Heads up, nothing is blocked: {current.overlap_customers} customer{current.overlap_customers === 1 ? "" : "s"} also in an overlapping campaign and {current.frequency_cap_customers} inside the 30-day frequency cap. See the{" "}
+            Heads up, nothing is blocked: {current.overlap_customers ?? 0} customer{current.overlap_customers === 1 ? "" : "s"} also in an overlapping campaign and {current.frequency_cap_customers ?? 0} inside the 30-day frequency cap. See the{" "}
             <Link to="/growth/calendar" className="underline underline-offset-2">campaign calendar</Link>.
           </span>
         </Alert>

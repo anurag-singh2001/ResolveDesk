@@ -45,7 +45,7 @@ Common Definition of Done for every story: tests for both tenants (never naming 
 
 **S12.7 Manual spend form (2 SP, Sonnet builder) -- STRETCH**
 - As an HQ marketer I want a form to enter manual spend so that ROI reflects offline spend.
-- AC: Given the Growth/ROI screen, When I enter an amount in rupees, Then it is stored as integer paise through the existing API, bounded, and appears in ROI. Invalid or negative amounts are rejected with a message.
+- AC: Given the Growth/ROI screen, When I enter an amount in rupees, Then it is stored as integer paise through the existing API, bounded, and appears in the channel mix (owner decision 2026-11-01: it is not apportioned into any campaign's ROI). Invalid or negative amounts are rejected with a message.
 - Done when: web test and API test on both tenants; browser check. Deps: none.
 
 **S12.8 Calendar warnings on approval screen and correct nav highlight (3 SP, Sonnet builder)**

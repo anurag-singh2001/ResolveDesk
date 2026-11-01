@@ -65,8 +65,8 @@ class CampaignOut(BaseModel):
     fully_approved: bool
     playbook: dict | None
     # S12.8: the calendar's warnings, as counts, so the approver sees clashes where they approve.
-    overlap_customers: int = 0
-    frequency_cap_customers: int = 0
+    overlap_customers: int | None = None  # None: unknown for this caller, not zero
+    frequency_cap_customers: int | None = None
 
 
 def _signal_out(db: Session, s: Signal) -> SignalOut:
@@ -79,10 +79,11 @@ def _signal_out(db: Session, s: Signal) -> SignalOut:
 def _campaign_out(ctx: TenantContext, db: Session, c: Campaign, now: datetime) -> CampaignOut:
     approvals = camp.approvals_of(db, c)
     entry = db.scalar(select(PlaybookEntry).where(PlaybookEntry.campaign_id == c.id))
-    # Same numbers and the same scope as GET /growth/calendar (one source, called directly).
-    from app.api.routes_growth_calendar import calendar  # local: that module imports this one
+    # Same numbers and scope as GET /growth/calendar. A campaign the calendar does not list for
+    # this caller (e.g. a brand-limited approver) has unknown warnings: None, never 0.
+    from app.api.routes_growth_calendar import calendar_rows  # local: that module imports this
 
-    listed = {x.id: x for x in calendar(None, None, ctx, db, now).campaigns}.get(c.id)
+    listed = next((x for x in calendar_rows(ctx, db, now) if x.id == c.id), None)
     return CampaignOut(
         id=c.id,
         signal_id=c.signal_id,
@@ -104,8 +105,8 @@ def _campaign_out(ctx: TenantContext, db: Session, c: Campaign, now: datetime) -
             }
             for a in approvals
         ],  # fmt: skip
-        overlap_customers=listed.overlap_customers if listed else 0,
-        frequency_cap_customers=listed.frequency_cap_customers if listed else 0,
+        overlap_customers=listed.overlap_customers if listed else None,
+        frequency_cap_customers=listed.frequency_cap_customers if listed else None,
         fully_approved=camp.dual_approved(
             camp.valid_approvals(c, approvals, now), camp.approvers_needed(db, c)
         ),

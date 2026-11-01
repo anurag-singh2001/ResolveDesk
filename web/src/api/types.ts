@@ -404,8 +404,8 @@ export interface Campaign {
   fully_approved: boolean;
   playbook: PlaybookEntry | null;
   // Same counts as the calendar (S12.8); counts only, never customer ids.
-  overlap_customers: number;
-  frequency_cap_customers: number;
+  overlap_customers: number | null; // null: not known for this caller (never shown as 0)
+  frequency_cap_customers: number | null;
 }
 
 export interface DecisionResponse {

@@ -211,3 +211,29 @@ def test_privacy_page_copy_comes_from_one_locale(lang):
         assert variants.get(lang, "").strip(), (key, lang)
         if lang == "hi" and len(variants["en"]) > 4:
             assert variants[lang] != variants["en"], (key, lang)
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_privacy_and_erasure_messages_keep_the_privacy_contact(lang):
+    """S12.1: a distinct support contact must never leak into privacy-request wording."""
+    opened = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
+    s = {
+        "privacy_contact_name": "Priv",
+        "privacy_contact_email": "priv@example.com",
+        "support_contact_name": "Help",
+        "support_contact_email": "help@example.com",
+        "grievance_target_days": 30,
+        "business_timezone": "Asia/Kolkata",
+    }
+    msg = customer_message(opened, s, lang)
+    assert "Priv (priv@example.com)" in msg and "help@" not in msg
+    from app.engine import privacy
+
+    assert privacy.contact_line(s) == "Priv (priv@example.com)"
+    assert privacy.support_line(s) == "Help (help@example.com)"
+    import uuid
+
+    from app.engine.erasure_notice import completion_text
+
+    done = completion_text(s, lang, uuid.uuid4())
+    assert "Priv (priv@example.com)" in done and "help@" not in done

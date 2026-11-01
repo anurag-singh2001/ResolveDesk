@@ -66,6 +66,20 @@ def calendar(
     db: Session = Depends(tenant_db),
     now: datetime = Depends(get_clock),
 ) -> CalendarResponse:
+    return CalendarResponse(
+        as_of=now, campaigns=calendar_rows(ctx, db, now, location_id=location_id, brand_id=brand_id)
+    )
+
+
+def calendar_rows(
+    ctx: TenantContext,
+    db: Session,
+    now: datetime,
+    location_id: uuid.UUID | None = None,
+    brand_id: uuid.UUID | None = None,
+) -> list[CalendarCampaign]:
+    """The calendar listing for this caller. Shared by the route and the campaign detail, so a
+    warning count means the same thing on both screens."""
     locations = {
         loc.id: loc
         for loc in db.scalars(select(Location).order_by(Location.slug))
@@ -141,4 +155,4 @@ def calendar(
             )
         )
     out.sort(key=lambda x: (x.start, str(x.id)))
-    return CalendarResponse(as_of=now, campaigns=out)
+    return out
