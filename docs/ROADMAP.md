@@ -47,11 +47,11 @@ v1 is complete (Sprints 0-6 closed, merged to main at cf6a861, CI green). The ow
 | 4 | not estimated in SP | not estimated in SP | S/M/L estimates only |
 | 5 | not estimated in SP | not estimated in SP | S/M/L estimates only |
 | 6 | not estimated in SP | not estimated in SP | S/M/L estimates only |
-| 7 | 60 | 36 | Ticked 2026-11-01: S7.1, S7.2, S7.3, S7.8, then after the click-through S7.4, S7.5, S7.6, S7.7, S7.10; 24 SP open (S7.9, S7.11, S7.12, D1, D2) |
-| 8 | 42 (39 core + 3 stretch S8.5c; incl. 5 carry-over S7.9) | 18 | Ticked: S8.1, S8.2, S8.5a, S8.5b (S8.4 2 SP also ticked); open 19 SP: S8.3, S8.5c, S8.5d, S8.6, S8.7 | Re-estimated at planning: S8.5 split 5 -> 16, S8.7 8 -> 5; S8.5e (8) moved to Sprint 9 |
-| 9 | 39 (31 core S9.1-S9.5 + 8 S8.5e if capacity allows) | 13 | S9.1, S9.2 ticked; safety reports now filed for S9.1, S9.2, S9.4, S8.5e; S9.3-S9.5 and S8.5e open (26 SP): populated views not seen, approve not clicked | Planned 2026-10-31, see sprint-9.md; starts only after Sprint 8 stories are merged; migrations from 0028 |
-| 10 | 24 | 8 | S10.3 ticked (2f84f23); S10.1 needs a real scratch run, S10.2 needs a safety report; 16 SP open |
-| 11 | 24 | 3 | S11.1 ticked; S11.2, S11.3a, S11.4 built and seen on BrewCo only; S11.3b ROI not built; 21 SP open |
+| 7 | 60 | 42 | Ticked 2026-11-01: S7.1, S7.2, S7.3, S7.8, then after the click-through S7.4, S7.5, S7.6, S7.7, S7.10; 24 SP open (S7.9, S7.11, S7.12, D1, D2) |
+| 8 | 42 (39 core + 3 stretch S8.5c; incl. 5 carry-over S7.9) | 34 | Ticked: S8.1, S8.2, S8.5a, S8.5b (S8.4 2 SP also ticked); open 19 SP: S8.3, S8.5c, S8.5d, S8.6, S8.7 | Re-estimated at planning: S8.5 split 5 -> 16, S8.7 8 -> 5; S8.5e (8) moved to Sprint 9 |
+| 9 | 39 (31 core S9.1-S9.5 + 8 S8.5e if capacity allows) | 26 | S9.1, S9.2 ticked; safety reports now filed for S9.1, S9.2, S9.4, S8.5e; S9.3-S9.5 and S8.5e open (26 SP): populated views not seen, approve not clicked | Planned 2026-10-31, see sprint-9.md; starts only after Sprint 8 stories are merged; migrations from 0028 |
+| 10 | 24 | 16 | S10.3 ticked (2f84f23); S10.1 needs a real scratch run, S10.2 needs a safety report; 16 SP open |
+| 11 | 24 | 8 | S11.1 ticked; S11.2, S11.3a, S11.4 built and seen on BrewCo only; S11.3b ROI not built; 21 SP open |
 | 12 | ~30 | | |
 
 Capacity assumption: about 40 SP per 2-day sprint with 2-3 parallel builders. Revise from actual velocity after Sprint 7.

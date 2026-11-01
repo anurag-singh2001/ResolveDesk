@@ -203,3 +203,6 @@ Velocity: ticked now 13 of 39 SP (S9.1 8, S9.2 5). Open 26: S9.3 5, S9.4 5, S9.5
 
 ### Safety report filed 2026-11-01: S10.2
 Static read by safety-reviewer before commit. Verdict: clean. Scope comes from membership, ids only narrow, out of scope and other tenants are 404, all roles outside the three metric roles get 403, SQL substitution uses validated literals, joins are one to one, money stays integer paise. Fixed from its findings: decision time and SLA count human approvals only; repeat orders look back only through brands in scope. Left open: bucketing by `updated_at`, and no value-level test of AI accuracy.
+
+### Portal walkthrough with data, 2026-11-01
+Migration 0035 applied to the demo DB; `scripts.seed_portal_demo` wrote labelled demo rows. Jobs, Logs and alerts, and AI performance all showed data with no console errors. These rows are seeded, so they show the pages work, not that a real rule fired. Safety review of 0035 and the script: clean. Non-blockers logged, not scheduled: 0034 and 0035 group days by session time zone; the script's guard rests on APP_ENV alone. Note: DB s7a is stamped 0034 but has no `platform_job_runs`, drift from the earlier renumbering, so use s7b for platform tests.
