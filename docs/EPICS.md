@@ -174,17 +174,17 @@ Format: `[ ]` id Title (SP, owner agent) -- done when. Full user stories and Giv
 
 ## E19 · Sprint 12 -- polish, full walkthrough, merge to main (planned 2026-11-01; full text in docs/sprints/sprint-12.md)
 No page restyle needed: all 22 pages already use ChaiUI components (S7.D1/D2 waived).
-- [ ] S12.1 Support contact in the no-remedy closing message (2 SP, Sonnet builder, Safety: customer text) -- done when: closing message names the tenant support contact, not Privacy desk, in en/hi/hi-Latn; both tenants
-- [ ] S12.2 One language per customer Privacy page (2 SP, Sonnet builder, Safety: customer text) -- done when: key-coverage test for 3 locales, no mixed Hinglish/English; both tenants
-- [ ] S12.3 Find and fix slow pages (3 SP, Sonnet builder) -- done when: cause recorded, Policies rules panel under 2 s warm, query-count regression test; both tenants
-- [ ] S12.4 Route-level code splitting (2 SP, Sonnet builder, stretch) -- done when: entry chunk under 500 kB from 850 kB, web tests pass
-- [ ] S12.5 Timeline and status agree after verification mismatch, O0003646 (3 SP, Sonnet builder, Safety: money, customer text) -- done when: regression test for the sequence; no "confirmed" while "needs a check"; both tenants
-- [ ] S12.6 Spice Route campaign flow end to end (5 SP, Sonnet builder, Safety: consent, messaging) -- done when: repeat-rate drop planted, third staff user, goldens refreshed, S11.3 skips gone, both tenants
-- [ ] S12.7 Manual spend form (2 SP, Sonnet builder, stretch) -- done when: form posts integer paise through the existing API, shows in ROI; both tenants
-- [ ] S12.8 Calendar warnings on Growth approval screen and nav highlight (3 SP, Sonnet builder) -- done when: warnings shown on approval, Calendar highlighted on /growth/calendar; both tenants
+- [x] S12.1 Support contact in the no-remedy closing message (2 SP, Sonnet builder, Safety: customer text) -- done when: closing message names the tenant support contact, not Privacy desk, in en/hi/hi-Latn; both tenants -- DONE 2026-11-01: support contact used, privacy messages keep the privacy contact; safety review clean; 84 staff-reply tests passed
+- [~] S12.2 One language per customer Privacy page (2 SP, Sonnet builder, Safety: customer text) -- done when: key-coverage test for 3 locales, no mixed Hinglish/English; both tenants -- 2026-11-01: built and reviewed; browser check in S12.12
+- [~] S12.3 Find and fix slow pages (3 SP, Sonnet builder) -- done when: cause recorded, Policies rules panel under 2 s warm, query-count regression test; both tenants -- 2026-11-01: rules summary went from about 11 to 5 statements; under 2 s not yet measured; case_status per row remains
+- [x] S12.4 Route-level code splitting (2 SP, Sonnet builder, stretch) -- done when: entry chunk under 500 kB from 850 kB, web tests pass -- DONE 2026-11-01: entry chunk 204 kB, 249 web tests pass, build ok
+- [x] S12.5 Timeline and status agree after verification mismatch, O0003646 (3 SP, Sonnet builder, Safety: money, customer text) -- done when: regression test for the sequence; no "confirmed" while "needs a check"; both tenants -- DONE 2026-11-01: timeline follows the same rule as status; unit and DB regression tests pass; safety review clean
+- [x] S12.6 Spice Route campaign flow end to end (5 SP, Sonnet builder, Safety: consent, messaging) -- done when: repeat-rate drop planted, third staff user, goldens refreshed, S11.3 skips gone, both tenants -- DONE 2026-11-01: spice_route drop and third staff user; growth tests have no skips; safety review clean; the demo DB is not reseeded
+- [~] S12.7 Manual spend form (2 SP, Sonnet builder, stretch) -- done when: form posts integer paise through the existing API, shows in ROI; both tenants -- 2026-11-01: built, amended: spend stays in the channel mix, not in campaign ROI; browser check in S12.12
+- [~] S12.8 Calendar warnings on Growth approval screen and nav highlight (3 SP, Sonnet builder) -- done when: warnings shown on approval, Calendar highlighted on /growth/calendar; both tenants -- 2026-11-01: built and reviewed, null when warnings are unknown; browser check in S12.12
 - [ ] S12.9 Apply owner Hindi review corrections (2 SP, Sonnet builder, Safety: customer text) -- done when: every item in docs/HINDI-REVIEW.md applied or declined with reason; both tenants
-- [ ] S12.10 In-app Help and manuals updated (3 SP, Sonnet builder) -- done when: Help covers Dashboard, Segments, Brand signals, Calendar, Scenario lab, ROI per role (test)
-- [ ] S12.11 README, RUNBOOK, SCENARIOS, demo script (2 SP, main session) -- done when: docs match code, owner follows the demo script once
+- [x] S12.10 In-app Help and manuals updated (3 SP, Sonnet builder) -- done when: Help covers Dashboard, Segments, Brand signals, Calendar, Scenario lab, ROI per role (test) -- DONE 2026-11-01: six sections for each staff role, test passes; browser check belongs to S12.12
+- [~] S12.11 README, RUNBOOK, SCENARIOS, demo script (2 SP, main session) -- done when: docs match code, owner follows the demo script once -- 2026-11-01: docs written; owner still to follow the demo script once
 - [ ] S12.12 Final walkthrough on both tenants (3 SP, main session + test-runner) -- done when: all pages, roles, light/dark, 375px, 3 languages, full test/lint/web/eval results recorded
 - [ ] S12.13 Merge test into main with evidence (2 SP, main session, process) -- done when: merge hash, CI green on main, known gaps listed; owner approves
 
