@@ -155,14 +155,20 @@ def test_scheduler_runs_are_counts_only_and_match_the_table(papi, owner_engine):
         assert all(
             set(r)
             == {
-                "day", "job", "status", "run_count", "finished_count",
-                "duration_ms_total", "last_started_at",
+                "day",
+                "job",
+                "status",
+                "run_count",
+                "finished_count",
+                "duration_ms_total",
+                "last_started_at",
             }  # fmt: skip
             for r in rows
         )
-        assert "ProbeError" not in papi.get(
-            "/platform/scheduler-runs", headers=_platform_headers(papi)
-        ).text
+        assert (
+            "ProbeError"
+            not in papi.get("/platform/scheduler-runs", headers=_platform_headers(papi)).text
+        )
     finally:
         with owner_engine.begin() as c:
             c.execute(text("DELETE FROM platform_job_runs WHERE job = 'view_probe'"))

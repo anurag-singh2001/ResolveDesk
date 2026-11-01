@@ -11,7 +11,7 @@ from scripts import seed_portal_demo as demo
 def _counts(conn):
     return {
         t: conn.execute(text(f"SELECT count(*) FROM {t}")).scalar()
-        for t in ("job_runs", "llm_usage", "error_logs", "alerts", "orders", "cases", "customers")
+        for t in ("job_runs", "llm_usage", "error_logs", "alerts", "transactions", "cases", "customers")
     }
 
 
@@ -37,7 +37,7 @@ def test_seed_is_idempotent_and_touches_only_demo_tables(owner_engine):
     assert mid == after
     assert first["tenants"] == orgs and demo_jobs == orgs
     assert open_alerts == 1
-    for t in ("orders", "cases", "customers"):
+    for t in ("transactions", "cases", "customers"):
         assert before[t] == after[t]
     with owner_engine.begin() as c:  # leave the test database as found
         c.execute(text("DELETE FROM job_runs WHERE job = :j"), {"j": demo.DEMO_JOB})
