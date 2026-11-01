@@ -68,6 +68,11 @@ settings:
   # share of the audience held out unmessaged so lift can be measured.
   growth_campaign_budget_paise: {kind: limit, default: 1000000}
   growth_holdout_percent: {kind: value, default: 10}
+  # ROI estimates (S11.3b): what one WhatsApp message costs, and the gross margin used when
+  # growth_roi_basis is margin. Both are estimates and are labelled so on the page.
+  growth_message_cost_paise: {kind: value, default: 86}
+  growth_gross_margin_bp: {kind: value, default: 6000}
+  growth_roi_basis: {kind: value, default: revenue, allowed: [revenue, margin]}
   # Customer segments (S11.2). A customer is "lapsed" at a scope when their last order there is
   # older than lapsed_days; win-back audiences and the segment counts share that one rule.
   lapsed_days: {kind: value, default: 28}
