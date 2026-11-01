@@ -98,7 +98,8 @@ _ERROR_SQL = text(
 _ALERT_SQL = text(
     "INSERT INTO alerts (rule, scope, status, value, threshold, opened_at, last_seen_at) "
     "VALUES (:rule, 'demo', 'open', 3, 1, :now, :now) "
-    "ON CONFLICT (rule, scope) WHERE status = 'open' DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at"
+    "ON CONFLICT (rule, scope) WHERE status = 'open' "
+    "DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at"
 )
 
 
