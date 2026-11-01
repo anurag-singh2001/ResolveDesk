@@ -42,22 +42,38 @@ def resolve(specs: Mapping[str, SettingSpec], *layers: Mapping[str, Any]) -> dic
     return effective
 
 
+def tenant_pack_row(session: Session) -> VerticalPackRow:
+    """The pack row of the tenant set on this session, in ONE round trip (RLS shows exactly one
+    organization). Two separate selects cost two trips to the remote database."""
+    return session.scalars(
+        select(VerticalPackRow).join(
+            Organization, Organization.vertical_pack == VerticalPackRow.slug
+        )
+    ).one()
+
+
 def tenant_pack(session: Session) -> VerticalPack:
-    """The pack of the tenant set on this session (RLS shows exactly one organization)."""
-    pack_slug = session.scalars(select(Organization.vertical_pack)).one()
-    row = session.scalars(select(VerticalPackRow).where(VerticalPackRow.slug == pack_slug)).one()
-    return VerticalPack.model_validate(row.definition)
+    """The pack of the tenant set on this session."""
+    return VerticalPack.model_validate(tenant_pack_row(session).definition)
 
 
 def effective_settings(
-    session: Session, brand_id: uuid.UUID | None = None, location_id: uuid.UUID | None = None
+    session: Session,
+    brand_id: uuid.UUID | None = None,
+    location_id: uuid.UUID | None = None,
+    *,
+    pack: VerticalPack | None = None,
+    rows: list[TenantSetting] | None = None,
 ) -> dict[str, Any]:
-    """Settings for the session's tenant, optionally narrowed to a brand and/or location."""
-    pack = tenant_pack(session)
+    """Settings for the session's tenant, optionally narrowed to a brand and/or location.
+    A caller that already loaded the pack or the setting rows may pass them to save a query."""
+    pack = pack or tenant_pack(session)
+    if rows is None:
+        rows = list(session.scalars(select(TenantSetting)))
     org: dict[str, Any] = {}
     brand: dict[str, Any] = {}
     location: dict[str, Any] = {}
-    for row in session.scalars(select(TenantSetting)):
+    for row in rows:
         if row.brand_id is None and row.location_id is None:
             org[row.key] = row.value
         elif row.brand_id is not None and row.brand_id == brand_id:

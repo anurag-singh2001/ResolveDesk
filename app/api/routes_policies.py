@@ -13,6 +13,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.api.deps import get_clock, get_tenant_context, not_found, tenant_db
+from app.core.i18n import normalize
 from app.core.models import Brand, Location, PolicyChunk, PolicyDocument
 from app.core.tenancy import TenantContext
 from app.engine.remedy_choice import customer_language
@@ -143,7 +144,8 @@ def rules_summary(
     pack and settings (S8.2). Staff also get each setting key and the level that set it. The
     language is the customer's own choice unless `language` names a supported one; unknown
     values fall back to English."""
-    chosen = language or customer_language(db, ctx)
+    # Staff have no customer row: skip the lookup (one round trip) and use the default.
+    chosen = language or (normalize(None) if ctx.is_staff else customer_language(db, ctx))
     return build_rules_summary(db, chosen, now, staff=ctx.is_staff)
 
 

@@ -19,9 +19,9 @@ from sqlalchemy.orm import Session
 from app.actions.base import Facts, get_action
 from app.core.business_time import business_date
 from app.core.i18n import TEMPLATES, format_date, normalize, t
-from app.core.models import PolicyDocument, TenantSetting, VerticalPackRow
+from app.core.models import PolicyDocument, TenantSetting
 from app.core.money import format_inr
-from app.core.settings_resolver import effective_settings, tenant_pack
+from app.core.settings_resolver import effective_settings, tenant_pack_row
 from app.core.verticals import RefundPercentOption, VerticalPack, option_code, rule_options
 from app.engine.privacy import PRIVACY_CATEGORY
 from app.engine.resolver import voucher_ceiling_paise
@@ -217,8 +217,12 @@ def build_rules_summary(
     """The summary for the session's tenant at organisation level (brand and outlet overrides
     can only lower a limit further). `staff` adds the setting keys with the level that set them."""
     lang = normalize(language)
-    pack = tenant_pack(session)
-    settings = effective_settings(session)
+    # Each query is a round trip to the remote database (S12.3): load the pack row and the
+    # setting rows once and share them, instead of re-reading them for every helper.
+    pack_row = tenant_pack_row(session)
+    pack = VerticalPack.model_validate(pack_row.definition)
+    setting_rows = list(session.scalars(select(TenantSetting)))
+    settings = effective_settings(session, pack=pack, rows=setting_rows)
     today = business_date(now, settings)
     cats = [
         _category(c, pack, settings, lang, today)
@@ -226,17 +230,9 @@ def build_rules_summary(
         if c not in _NO_RULE_CATEGORIES
     ]
     overrides = {
-        row.key: row
-        for row in session.scalars(
-            select(TenantSetting).where(
-                TenantSetting.brand_id.is_(None), TenantSetting.location_id.is_(None)
-            )
-        )
+        row.key: row for row in setting_rows if row.brand_id is None and row.location_id is None
     }
     used = list(dict.fromkeys(k for c in cats for k in c.setting_keys))
-    pack_row = session.scalars(
-        select(VerticalPackRow).where(VerticalPackRow.slug == pack.slug)
-    ).one()
     pack_updated = business_date(pack_row.updated_at, settings)
     stamps = [business_date(overrides[k].updated_at, settings) for k in used if k in overrides]
     # "In force since" must be a real date. pack_row.updated_at is only when the pack was last
