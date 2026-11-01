@@ -86,6 +86,21 @@ def save_text(slug: str, scenario_id: str, text: str) -> Scenario:
         raise ScenarioError([f"id: the text says {sc.id!r} but the name is {scenario_id!r}"])
     folder = tenant_folder(slug)
     path = scenario_file(folder, scenario_id)
+    # Held-out scenarios are read-only here: the held-out set is how the evals are kept honest,
+    # so it is never edited from the lab (neither an existing one, nor text that claims it).
+    if sc.held_out:
+        raise ScenarioError(["held_out: held-out scenarios are read-only and cannot be saved here"])
+    if path.is_file():
+        try:
+            on_disk = parse_scenario_text(
+                path.read_text(encoding="utf-8"), slug, _tenant_pack(slug)[2]
+            )
+        except (OSError, ScenarioError):
+            on_disk = None
+        if on_disk is not None and on_disk.held_out:
+            raise ScenarioError(
+                ["held_out: held-out scenarios are read-only and cannot be saved here"]
+            )
     for other in sorted((folder / "scenarios").glob("*.yaml")):
         if other.resolve() == path:
             continue

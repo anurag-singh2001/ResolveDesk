@@ -88,6 +88,7 @@ export function LabPage() {
   const [editId, setEditId] = useState<string | null>(null); // null: nothing open; "" : a new one
   const [text, setText] = useState("");
   const [name, setName] = useState("");
+  const [readOnly, setReadOnly] = useState(false); // a held-out scenario is shown but never saved
   const [problems, setProblems] = useState<string[]>([]);
   const [info, setInfo] = useState<string | null>(null);
   const [run, setRun] = useState<LabRun | null>(null);
@@ -122,11 +123,13 @@ export function LabPage() {
       setEditId(id);
       setName(id);
       setText(out.yaml);
+      setReadOnly(Boolean(data?.scenarios.find((s) => s.id === id)?.held_out));
     } catch (err) {
       setProblems(problemsOf(err));
     }
   };
   const startNew = () => {
+    setReadOnly(false);
     setEditId("");
     setName("");
     setText(NEW_TEXT.replace("TENANT", tenant));
@@ -227,7 +230,7 @@ export function LabPage() {
                 </Field>
               </div>
               <Field label="Scenario YAML" htmlFor="lab-yaml">
-                <textarea id="lab-yaml" className={`${inputClass} h-72 font-mono`} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
+                <textarea id="lab-yaml" className={`${inputClass} h-72 font-mono`} readOnly={readOnly} value={text} onChange={(e) => setText(e.target.value)} spellCheck={false} />
               </Field>
               {problems.length > 0 && (
                 <div className="mt-3">
@@ -236,10 +239,11 @@ export function LabPage() {
                   </Alert>
                 </div>
               )}
+              {readOnly && <div className="mt-3"><Alert tone="info">This scenario is held out, so it is read-only here. You can read it and check it, but not save it.</Alert></div>}
               {info && <div className="mt-3"><Alert tone="success">{info}</Alert></div>}
               <div className="mt-3 flex gap-2">
                 <Button variant="outline" onClick={() => void validate()}>Check</Button>
-                <Button onClick={() => void save()} disabled={!name}>Save</Button>
+                {!readOnly && <Button onClick={() => void save()} disabled={!name}>Save</Button>}
               </div>
             </Section>
           )}

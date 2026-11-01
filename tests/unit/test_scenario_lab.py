@@ -100,6 +100,7 @@ def test_save_writes_only_the_named_file(lab_tenants):
     slug, folder = lab_tenants
     data = yaml.safe_load(_first_text(folder))
     data["id"] = "lab-new-001"
+    data["held_out"] = False
     lab.save_text(slug, "lab-new-001", yaml.safe_dump(data))
     assert (folder / "scenarios" / "lab-new-001.yaml").is_file()
     assert "lab-new-001" in lab.read_text(slug, "lab-new-001")
@@ -346,3 +347,24 @@ def test_audit_detail_is_a_safe_short_token():
     assert _tag("a-1") == "a-1"
     assert _tag("../x y\n;drop") == "..?x?y??drop"
     assert len(_tag("x" * 500, 200)) == 200
+
+
+def test_held_out_scenarios_are_read_only(lab_tenants):
+    slug, folder = lab_tenants
+    data = yaml.safe_load(_first_text(folder))
+    data["id"] = "lab-held-001"
+    data["held_out"] = True
+    # Text that claims held_out cannot be saved, so no new file appears.
+    with pytest.raises(ScenarioError, match="read-only"):
+        lab.save_text(slug, "lab-held-001", yaml.safe_dump(data))
+    assert not (folder / "scenarios" / "lab-held-001.yaml").exists()
+    # An existing held-out file cannot be edited, even with held_out switched off in the text.
+    (folder / "scenarios" / "lab-held-001.yaml").write_text(yaml.safe_dump(data), encoding="utf-8")
+    before = (folder / "scenarios" / "lab-held-001.yaml").read_text(encoding="utf-8")
+    data["held_out"] = False
+    data["message"] = "changed"
+    with pytest.raises(ScenarioError, match="read-only"):
+        lab.save_text(slug, "lab-held-001", yaml.safe_dump(data))
+    assert (folder / "scenarios" / "lab-held-001.yaml").read_text(encoding="utf-8") == before
+    # Reading it is still allowed.
+    assert "lab-held-001" in lab.read_text(slug, "lab-held-001")

@@ -45,6 +45,22 @@ describe("scenario lab", () => {
     expect(calls.some((c) => c.method === "PUT" && c.headers.Authorization === "Bearer plat-tok")).toBe(true);
   });
 
+  it("shows a held-out scenario read-only, with no Save", async () => {
+    mockFetch({
+      "GET /platform/lab/scenarios": { body: listing(true) },
+      "GET /platform/lab/runs/current": { body: idle },
+      "GET /platform/lab/scenarios/alpha/a-2": { body: { yaml: "id: a-2\nheld_out: true\n" } },
+      "GET /platform/lab/scenarios/alpha/a-1": { body: { yaml: "id: a-1\n" } },
+    });
+    renderApp("/platform/lab");
+    await userEvent.click(await screen.findByRole("button", { name: "Edit a-2" }));
+    expect(await screen.findByLabelText("Scenario YAML")).toHaveAttribute("readonly");
+    expect(screen.queryByRole("button", { name: "Save" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Check" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Edit a-1" }));
+    expect(await screen.findByRole("button", { name: "Save" })).toBeInTheDocument();
+  });
+
   it("starts a run and shows the comparison with the last report", async () => {
     let current = idle as Record<string, unknown>;
     const done = {
