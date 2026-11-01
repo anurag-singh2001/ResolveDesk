@@ -821,3 +821,28 @@ export interface CalendarResponse {
   as_of: string;
   campaigns: CalendarCampaign[];
 }
+
+export interface RoiArm {
+  customers: number;
+  ordered: number;
+  orders: number;
+  revenue_paise: number;
+}
+
+export interface RoiReport {
+  campaign_id: string;
+  status: string;
+  verdict: string | null;
+  window_over: boolean;
+  arms: { treatment: RoiArm; holdout: RoiArm };
+  send_states: Record<string, number>;
+  incremental_revenue_paise: number | null;
+  cost: { offer_budget_paise: number; message_cost_each_paise: number; message_cost_paise: number; succeeded_sends: number; gross_cost_paise: number; note: string };
+  gross_margin_bp: number;
+  gate: "ok" | "inconclusive" | "window_open";
+  headline: { basis: "revenue" | "margin"; value_paise: number; net_paise: number; ratio_bp: number | null } | null;
+  message: string | null;
+  people_needed_per_arm: number | null;
+  revenue_note: string;
+  holdout_advice: { holdout_percent: number; audience_n: number; detectable_lift_bp: number | null; recommended_holdout_percent: number | null; note: string };
+}

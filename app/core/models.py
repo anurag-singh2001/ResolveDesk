@@ -1172,6 +1172,24 @@ class PlaybookEntry(TenantOwned, Base):
     lesson: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class ManualSpend(TenantOwned, Base):
+    """S11.3b: ad spend on a channel the platform cannot see (an aggregator), typed in by hand.
+    Append-only (the app role cannot update or delete it) and never verified."""
+
+    __tablename__ = "growth_manual_spend"
+    __table_args__ = (
+        _fk("entered_by", "users"),
+        CheckConstraint("amount_paise > 0", name="ck_growth_manual_spend_amount"),
+        CheckConstraint("period_end >= period_start", name="ck_growth_manual_spend_period"),
+    )
+
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    entered_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+
 # Loaded from tenant folders (the loader syncs these and only these).
 CONFIG_MODELS = [
     Organization,
@@ -1221,7 +1239,14 @@ APPEND_ONLY_MODELS = [AuditEvent]
 # Policy documents + chunks (written by app/rag/ingest.py, not the tenant loader).
 POLICY_MODELS = [PolicyDocument, PolicyChunk]
 # Growth tables reference commerce rows (customers, locations): reseeding clears them first.
-GROWTH_MODELS = [Signal, Campaign, CampaignMember, CampaignApproval, PlaybookEntry]
+GROWTH_MODELS = [
+    Signal,
+    Campaign,
+    CampaignMember,
+    CampaignApproval,
+    PlaybookEntry,
+    ManualSpend,
+]
 # Parents before children: cleanup code deletes in reverse order.
 TENANT_MODELS = (
     CONFIG_MODELS

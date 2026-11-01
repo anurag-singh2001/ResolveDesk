@@ -7,6 +7,7 @@ import { formatDateTime, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../auth/session";
+import { RoiPanel } from "./RoiPanel";
 
 /** Basis points → "12.3%", rounded half up with integer maths (same rule as the server's
  * format_pct in app/modules/growth/signals.py, so headline and diagnosis agree). */
@@ -74,6 +75,7 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
         </>
       )}
       {actionError && <Alert tone="danger">{actionError}</Alert>}
+      <RoiPanel campaignId={current.id} />
       {current.playbook ? (
         <div className="card-chai p-3 text-sm" data-testid="playbook">
           <div className="font-medium text-foreground">Verdict: {humanize(current.playbook.verdict)}</div>

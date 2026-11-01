@@ -8,6 +8,7 @@ import type {
   Business,
   Campaign,
   CalendarResponse,
+  RoiReport,
   Case,
   GrowthSignal,
   BrandSignalsResponse,
@@ -178,6 +179,7 @@ export const api = {
   campaign: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}`),
   decideCampaign: (id: string, decision: "approved" | "rejected") =>
     request<Campaign>(`/growth/campaigns/${enc(id)}/approve`, { method: "POST", body: { decision } }),
+  campaignRoi: (id: string) => request<RoiReport>(`/growth/campaigns/${enc(id)}/roi`),
   campaignVerdict: (id: string) => request<Campaign>(`/growth/campaigns/${enc(id)}/verdict`, { method: "POST" }),
   alternatives: (proposalId: string) => request<Alternatives>(`/approvals/${enc(proposalId)}/alternatives`),
   switchRemedy: (proposalId: string, body: { action: string; amount_paise: number; approve: boolean; note: string; self_approve_reason?: string }) =>
