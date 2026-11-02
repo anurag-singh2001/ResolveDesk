@@ -65,6 +65,33 @@ describe("Cases to handle", () => {
     await waitFor(() => expect(within(nav).queryByText("1")).not.toBeInTheDocument());
   });
 
+  it("the old Approvals link lands here, filtered to what waits for a decision", async () => {
+    const { fn } = setup();
+    renderApp("/approvals");
+    await screen.findByRole("heading", { name: "Cases to handle" });
+    await waitFor(() => {
+      const urls = fn.mock.calls.map((c) => new URL(String(c[0]))).filter((u) => u.pathname === "/cases/queue");
+      expect(urls.some((u) => u.searchParams.get("reason") === "awaiting_approval")).toBe(true);
+    });
+    expect(screen.getByLabelText("Reason")).toHaveValue("awaiting_approval");
+    expect(within(await screen.findByTestId("side-nav")).queryByText("Approvals")).not.toBeInTheDocument();
+  });
+
+  it("narrows to one outlet and offers only the outlets in the list", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("location_manager") },
+      "GET /cases/queue": { body: [item, { ...item, case_id: "c-2", location_name: "Hill Road", reason: "Other outlet" }] },
+      "GET /meta/categories": { body: { categories: ["missing_items"], free_text: false } },
+      "GET /approvals": { body: [] },
+    });
+    renderApp("/queue");
+    expect(await screen.findByText("Other outlet")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Outlet"), "Main Street");
+    expect(screen.queryByText("Other outlet")).not.toBeInTheDocument();
+    expect(screen.getByText("Needs a manager")).toBeInTheDocument();
+  });
+
   it("filters are sent to the server", async () => {
     const { fn } = setup();
     renderApp("/queue");

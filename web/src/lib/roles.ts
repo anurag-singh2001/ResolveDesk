@@ -43,7 +43,6 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
   }
   if (isStaff(role)) {
     return [
-      { to: "/approvals", label: "Approvals", icon: "approvals" },
       { to: "/queue", label: "Cases to handle", icon: "cases" },
       { to: "/cases", label: "Cases", icon: "cases" },
       { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
@@ -61,5 +60,5 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
 }
 
 export function homePath(role: string): string {
-  return role === "customer" ? "/orders" : isStaff(role) ? "/approvals" : "/help";
+  return role === "customer" ? "/orders" : isStaff(role) ? "/queue" : "/help";
 }

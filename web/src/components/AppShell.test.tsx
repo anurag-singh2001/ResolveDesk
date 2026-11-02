@@ -10,6 +10,7 @@ async function navLabels(role: Role, path = "/") {
     "GET /me": { body: makeMe(role) },
     "GET /orders": { body: [] },
     "GET /approvals": { body: [] },
+    "GET /cases/queue": { body: [] },
     "GET /cases": { body: [] },
   });
   renderApp(path);
@@ -26,18 +27,17 @@ describe("role-based navigation", () => {
   });
 
   it("location managers see approvals and cases", async () => {
-    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Segments", "Policies", "Help"]);
-    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+    expect(await navLabels("location_manager")).toEqual(["Cases to handle", "Cases", "Dashboard", "Segments", "Policies", "Help"]);
+    expect(await screen.findByRole("heading", { name: "Cases to handle" })).toBeInTheDocument();
   });
 
   it("franchisee owners also see insights", async () => {
-    expect(await navLabels("franchisee_owner")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Segments", "Insights", "Policies", "Help"]);
-    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+    expect(await navLabels("franchisee_owner")).toEqual(["Cases to handle", "Cases", "Dashboard", "Segments", "Insights", "Policies", "Help"]);
+    expect(await screen.findByRole("heading", { name: "Cases to handle" })).toBeInTheDocument();
   });
 
   it("only the HQ owner sees the privacy requests queue", async () => {
     expect(await navLabels("hq_owner")).toEqual([
-      "Approvals",
       "Cases to handle",
       "Cases",
       "Dashboard",
@@ -47,7 +47,7 @@ describe("role-based navigation", () => {
       "Policies",
       "Help",
     ]);
-    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "Cases to handle" })).toBeInTheDocument();
   });
 
   it("does not show a staff screen to a customer who types its URL", async () => {

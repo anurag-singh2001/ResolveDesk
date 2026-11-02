@@ -15,7 +15,6 @@ const DashboardPage = lazy(() => import("./pages/DashboardPage").then((m) => ({ 
 const SegmentsPage = lazy(() => import("./pages/SegmentsPage").then((m) => ({ default: m.SegmentsPage })));
 const InsightsPage = lazy(() => import("./pages/InsightsPage").then((m) => ({ default: m.InsightsPage })));
 const ApprovalDetailPage = lazy(() => import("./pages/ApprovalDetailPage").then((m) => ({ default: m.ApprovalDetailPage })));
-const ApprovalsPage = lazy(() => import("./pages/ApprovalsPage").then((m) => ({ default: m.ApprovalsPage })));
 const CasePage = lazy(() => import("./pages/CasePage").then((m) => ({ default: m.CasePage })));
 const CasesPage = lazy(() => import("./pages/CasesPage").then((m) => ({ default: m.CasesPage })));
 const DevPage = lazy(() => import("./pages/DevPage").then((m) => ({ default: m.DevPage })));
@@ -88,7 +87,7 @@ function TenantApp() {
         <Route path="/queue" element={<Only when={staff}><QueuePage /></Only>} />
         <Route path="/cases" element={<CasesPage />} />
         <Route path="/cases/:caseId" element={<CasePage />} />
-        <Route path="/approvals" element={<Only when={staff}><ApprovalsPage /></Only>} />
+        <Route path="/approvals" element={<Only when={staff}><Navigate to="/queue?reason=awaiting_approval" replace /></Only>} />
         <Route path="/approvals/:proposalId" element={<Only when={staff}><ApprovalDetailPage /></Only>} />
         <Route path="/insights" element={<Only when={canSeeInsights(me.role)}><InsightsPage /></Only>} />
         <Route path="/dashboard" element={<Only when={staff}><DashboardPage /></Only>} />

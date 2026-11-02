@@ -699,3 +699,9 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Decision: `GET /cases/{id}` gives staff who can see the case the customer's name, phone, email and reference. Customers get null. The case page shows the Order card to customers too.
 - Why: owner request, 2026-11-02: HQ, franchisee and location staff need the customer and order inside the case.
 - Rejected: a masked phone or an audited reveal action, which keep exposure lower but were not what the owner asked for. Worth revisiting before real customer data, because this widens phone and email access to outlet staff and viewing is not audited. Check the privacy notice then too.
+
+## 2026-11-03 Approvals tab merged into Cases to handle
+- Decision: staff land on Cases to handle. The Approvals list and nav item are gone; /approvals redirects to Cases to handle filtered to "Waiting for a decision". The approval detail screen is unchanged. An Outlet filter was added, worked out from the list itself.
+- Why: owner review, 2026-11-02: every approval already appeared in Cases to handle, so two lists repeated the same work.
+- Lost from the old list: sort by amount, the action filter, the risk badge and the phone card layout. The GET /approvals API stays, as the approval detail page uses it.
+- Rejected: keeping both tabs, or merging all three (Cases still holds closed history).

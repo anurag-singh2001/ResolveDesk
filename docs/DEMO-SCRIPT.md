@@ -37,7 +37,7 @@ Accounts used:
    Sign in as *Kabir S.* → open a late order → report "My order came over an hour late and cold".
    The AI files it as late delivery and proposes a refund within the tier in force on the order
    date (for example 50%, ₹244.50 on a ₹489 order). Sign out; sign in as *Asha Kulkarni* →
-   **Approvals** → **Review**: the customer's words, the cited policy section, and the checks.
+   **Cases to handle** → **Open**: the customer's words, the cited policy section, and the checks.
    **Approve**. Back as Kabir the case ends at **Confirmed**; while the provider has not confirmed
    it reads *Processing*, never paid.
 2. **Voucher, auto-approved (BrewCo, browser-checked).**
@@ -63,7 +63,7 @@ Accounts used:
 - Staff-only screens are not in the menu.
 
 **Location manager (BrewCo: Neha Joshi; Spice Route: Rohit Shinde).**
-- **Approvals** and **Cases to handle**: only their outlet. Try **Switch remedy** and **Ask the
+- **Cases to handle**: only their outlet. Try **Switch remedy** and **Ask the
   customer** on a proposal.
 - **Dashboard**: charts for their outlet; set **Period** to 90 days and **Week**; open **Table view**.
 - **Segments**: counts by segment; hover a name for its meaning; small groups show *Hidden*.

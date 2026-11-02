@@ -67,7 +67,7 @@ export function DecisionPanel({ proposal, onDone, onLocked }: { proposal: Pendin
               : "The remedy will be carried out. The case page shows its progress."
             : "The customer's case will show that no remedy was approved."}
         </p>
-        <Link to="/approvals" className="mt-2 inline-block font-medium underline underline-offset-2 hover:text-brand">
+        <Link to="/queue" className="mt-2 inline-block font-medium underline underline-offset-2 hover:text-brand">
           Back to approvals
         </Link>
       </Alert>
@@ -133,7 +133,7 @@ export function ApprovalDetailPage() {
   const p = data?.find((x) => x.proposal_id === proposalId);
   if (!p) {
     return (
-      <EmptyState title="This proposal is no longer waiting" action={<Link to="/approvals" className="text-sm font-medium text-foreground underline underline-offset-2 hover:text-brand">Back to approvals</Link>}>
+      <EmptyState title="This proposal is no longer waiting" action={<Link to="/queue" className="text-sm font-medium text-foreground underline underline-offset-2 hover:text-brand">Back to approvals</Link>}>
         It may already have been decided, or it's outside your outlets.
       </EmptyState>
     );
@@ -157,8 +157,8 @@ export function ApprovalDetailPage() {
 
   return (
     <>
-      <Link to="/approvals" className="mb-4 inline-flex text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground">
-        ← Approvals
+      <Link to="/queue" className="mb-4 inline-flex text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground">
+        ← Cases to handle
       </Link>
       <PageHeader
         title={`${humanize(p.action)} · ${formatPaise(p.amount_paise)}`}

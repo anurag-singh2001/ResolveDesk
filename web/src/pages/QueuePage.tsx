@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { Badge, Button, EmptyState, ErrorState, Loading, PageHeader, inputClass, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { categoryLabel, humanize, languageLabel } from "../lib/format";
@@ -22,7 +22,11 @@ function waited(seconds: number): string {
 
 /** Cases that need a person, in the caller's scope, oldest wait first (S7.3). */
 export function QueuePage() {
-  const [reason, setReason] = useState("");
+  // In the URL so the old /approvals link lands on the same filtered list.
+  const [params, setParams] = useSearchParams();
+  const reason = params.get("reason") ?? "";
+  const setReason = (value: string) => setParams(value ? { reason: value } : {}, { replace: true });
+  const [outlet, setOutlet] = useState("");
   const [category, setCategory] = useState("");
   const [mine, setMine] = useState(false);
   const cats = useApi(() => api.categories(), []);
@@ -30,13 +34,16 @@ export function QueuePage() {
     () => api.caseQueue({ reason, category, owned_by_me: mine }),
     [reason, category, mine],
   );
-  const filtered = Boolean(reason || category || mine);
+  const filtered = Boolean(reason || category || mine || outlet);
+  // The list is already limited to the caller's scope, so its own outlets are the choices.
+  const outlets = [...new Set((data ?? []).map((c) => c.location_name).filter((n): n is string => Boolean(n)))].sort();
+  const rows = outlet ? (data ?? []).filter((c) => c.location_name === outlet) : data;
 
   return (
     <>
       <PageHeader
         title="Cases to handle"
-        subtitle="Cases that need a person, with the oldest wait first. Each has an owner: the manager of the outlet, or HQ for larger amounts."
+        subtitle="Everything that needs a person, oldest wait first: remedies to approve and cases passed to staff. Nothing is paid or sent until a person decides."
         actions={
           <Button variant="quiet" onClick={() => void reload()}>
             Refresh
@@ -51,6 +58,17 @@ export function QueuePage() {
             {REASONS.map(([v, label]) => (
               <option key={v} value={v}>
                 {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center text-sm text-muted-foreground">
+          <span className="mr-2">Outlet</span>
+          <select className={SELECT} value={outlet} onChange={(e) => setOutlet(e.target.value)}>
+            <option value="">All outlets</option>
+            {outlets.map((n) => (
+              <option key={n} value={n}>
+                {n}
               </option>
             ))}
           </select>
@@ -75,9 +93,9 @@ export function QueuePage() {
         <Loading label="Loading cases…" />
       ) : error ? (
         <ErrorState error={error} onRetry={reload} />
-      ) : !data || data.length === 0 ? (
+      ) : !rows || rows.length === 0 ? (
         filtered ? (
-          <EmptyState title="No cases match these filters">Try a different reason or category, or clear the filters.</EmptyState>
+          <EmptyState title="No cases match these filters">Try a different reason, outlet or category, or clear the filters.</EmptyState>
         ) : (
           <EmptyState title="Nothing waiting for a person">You're all caught up. Escalated cases and cases waiting for a decision appear here.</EmptyState>
         )
@@ -96,7 +114,7 @@ export function QueuePage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((c) => (
+              {rows.map((c) => (
                 <tr key={c.case_id}>
                   <td className={tdClass}>
                     <div className="font-medium text-foreground">{categoryLabel(c.category)}</div>
