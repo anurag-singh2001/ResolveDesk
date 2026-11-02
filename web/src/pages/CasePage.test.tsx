@@ -171,6 +171,19 @@ describe("case page", () => {
     expect(screen.getByText("Delivered")).toBeInTheDocument();
   });
 
+  it("shows a Hindi customer the order card in Hindi", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("customer") },
+      "GET /me/preferences": { body: { language: "hi" } },
+      "GET /cases/c-1": { body: said },
+      "GET /cases/c-1/timeline": { body: [] },
+      "GET /orders/t-1": { body: order },
+    });
+    renderApp("/cases/c-1");
+    expect(await screen.findByRole("heading", { name: "ऑर्डर" })).toBeInTheDocument();
+  });
+
   it("labels the customer's own messages 'You wrote' and shows the order but no customer card", async () => {
     const { calls } = setup("customer", said);
     renderApp("/cases/c-1");

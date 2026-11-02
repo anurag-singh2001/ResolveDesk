@@ -65,7 +65,9 @@ class SpendIn(BaseModel):
     def _channel_ok(cls, v: str) -> str:
         v = v.strip().lower()
         if not _CHANNEL.match(v) or v == "whatsapp":
-            raise ValueError("channel must be a short lowercase name, not whatsapp")
+            raise ValueError(
+                "Use a short name with lowercase letters and underscores, like aggregator_ads"
+            )
         return v
 
 

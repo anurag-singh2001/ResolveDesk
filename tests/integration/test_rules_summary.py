@@ -234,3 +234,25 @@ def test_in_force_since_is_not_the_pack_refresh_time(app_engine, owner_engine, s
             conn.execute(
                 update(VerticalPackRow).where(VerticalPackRow.slug == slug).values(updated_at=old)
             )
+
+
+def test_a_lower_brand_limit_is_mentioned_and_the_org_only_summary_says_nothing(app_engine, sample):
+    _, tid, _ = sample
+    with pytest.raises(_Rollback), tenant_session(tid, app_engine) as s:
+        now = datetime.now(UTC)
+        rows = list(s.scalars(select(TenantSetting)))
+        for row in rows:
+            if row.brand_id is not None or row.location_id is not None:
+                s.delete(row)
+        s.flush()
+        assert build_rules_summary(s, "en", now, staff=False).narrower_note is None
+        brand = s.scalar(select(Transaction.brand_id).limit(1))
+        s.add(
+            TenantSetting(
+                tenant_id=tid, key="voucher_auto_approve_max_paise", value=5000, brand_id=brand
+            )
+        )
+        s.flush()
+        for lang in LANGUAGES:
+            assert build_rules_summary(s, lang, now, staff=False).narrower_note
+        raise _Rollback

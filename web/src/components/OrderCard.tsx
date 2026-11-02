@@ -1,19 +1,26 @@
 import { useApi } from "../lib/useApi";
 import { api } from "../api/endpoints";
-import type { CustomerMessage } from "../api/types";
+import type { CustomerMessage, Language } from "../api/types";
 import { Card, Dl, ErrorState, Loading, cx, numClass, tableClass, tdClass, thClass } from "./ui";
 import { formatDateTime } from "../lib/format";
 import { formatPaise } from "../lib/money";
 
 /** The order behind a case: items ordered vs received, total, times, outlet and brand.
  * Uses GET /orders/{id}, which is already scoped to what the caller may see. */
-export function OrderCard({ orderId }: { orderId: string }) {
+const LABELS = {
+  en: { order: "Order", brand: "Brand", outlet: "Outlet", placed: "Placed", promised: "Promised by", delivered: "Delivered", none: "No items on this order.", item: "Item", ordered: "Ordered", received: "Received", price: "Price" },
+  "hi-Latn": { order: "Order", brand: "Brand", outlet: "Outlet", placed: "Order kiya", promised: "Vaada kiya gaya samay", delivered: "Pahuncha", none: "Is order mein koi item nahin.", item: "Item", ordered: "Order kiya", received: "Mila", price: "Keemat" },
+  hi: { order: "ऑर्डर", brand: "ब्रांड", outlet: "आउटलेट", placed: "ऑर्डर किया", promised: "वादा किया गया समय", delivered: "पहुँचा", none: "इस ऑर्डर में कोई आइटम नहीं।", item: "आइटम", ordered: "ऑर्डर किया", received: "मिला", price: "क़ीमत" },
+};
+
+export function OrderCard({ orderId, language = "en" }: { orderId: string; language?: Language }) {
+  const L = LABELS[language] ?? LABELS.en;
   const { data: o, error, loading, reload } = useApi(() => api.order(orderId), [orderId]);
 
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-border px-4 py-3">
-        <h2 className="font-montserrat text-sm font-semibold text-foreground">Order</h2>
+        <h2 className="font-montserrat text-sm font-semibold text-foreground">{L.order}</h2>
       </div>
       {loading ? (
         <Loading label="Loading order…" />
@@ -26,25 +33,25 @@ export function OrderCard({ orderId }: { orderId: string }) {
           <div className="p-4">
             <Dl
               items={[
-                ["Brand", o.brand_name],
-                ["Outlet", o.location_name],
-                ["Placed", formatDateTime(o.placed_at)],
-                ["Promised by", formatDateTime(o.promised_at)],
-                ["Delivered", formatDateTime(o.completed_at)],
+                [L.brand, o.brand_name],
+                [L.outlet, o.location_name],
+                [L.placed, formatDateTime(o.placed_at)],
+                [L.promised, formatDateTime(o.promised_at)],
+                [L.delivered, formatDateTime(o.completed_at)],
               ]}
             />
           </div>
           {o.items.length === 0 ? (
-            <p className="px-4 pb-4 text-sm text-muted-foreground">No items on this order.</p>
+            <p className="px-4 pb-4 text-sm text-muted-foreground">{L.none}</p>
           ) : (
             <div className="overflow-x-auto">
               <table className={tableClass}>
                 <thead>
                   <tr>
-                    <th scope="col" className={thClass}>Item</th>
-                    <th scope="col" className={`${thClass} text-right`}>Ordered</th>
-                    <th scope="col" className={`${thClass} text-right`}>Received</th>
-                    <th scope="col" className={`${thClass} text-right`}>Price</th>
+                    <th scope="col" className={thClass}>{L.item}</th>
+                    <th scope="col" className={`${thClass} text-right`}>{L.ordered}</th>
+                    <th scope="col" className={`${thClass} text-right`}>{L.received}</th>
+                    <th scope="col" className={`${thClass} text-right`}>{L.price}</th>
                   </tr>
                 </thead>
                 <tbody>

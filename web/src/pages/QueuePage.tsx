@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { api } from "../api/endpoints";
+import type { QueueItem } from "../api/types";
+import { RiskBadge } from "../components/badges";
 import { Badge, Button, EmptyState, ErrorState, Loading, PageHeader, inputClass, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { categoryLabel, humanize, languageLabel } from "../lib/format";
 import { formatPaise } from "../lib/money";
@@ -11,6 +13,12 @@ const REASONS: [string, string][] = [
   ["escalated", "Escalated"],
   ["awaiting_approval", "Waiting for a decision"],
 ];
+
+const SORTERS: Record<string, (a: QueueItem, b: QueueItem) => number> = {
+  oldest: (a, b) => b.waiting_seconds - a.waiting_seconds,
+  newest: (a, b) => a.waiting_seconds - b.waiting_seconds,
+  amount_desc: (a, b) => (b.amount_paise ?? -1) - (a.amount_paise ?? -1),
+};
 
 function waited(seconds: number): string {
   const mins = Math.floor(seconds / 60);
@@ -27,6 +35,8 @@ export function QueuePage() {
   const reason = params.get("reason") ?? "";
   const setReason = (value: string) => setParams(value ? { reason: value } : {}, { replace: true });
   const [outlet, setOutlet] = useState("");
+  const [action, setAction] = useState("");
+  const [sort, setSort] = useState("oldest");
   const [category, setCategory] = useState("");
   const [mine, setMine] = useState(false);
   const cats = useApi(() => api.categories(), []);
@@ -34,10 +44,13 @@ export function QueuePage() {
     () => api.caseQueue({ reason, category, owned_by_me: mine }),
     [reason, category, mine],
   );
-  const filtered = Boolean(reason || category || mine || outlet);
+  const filtered = Boolean(reason || category || mine || outlet || action);
   // The list is already limited to the caller's scope, so its own outlets are the choices.
   const outlets = [...new Set((data ?? []).map((c) => c.location_name).filter((n): n is string => Boolean(n)))].sort();
-  const rows = outlet ? (data ?? []).filter((c) => c.location_name === outlet) : data;
+  const actions = [...new Set((data ?? []).map((c) => c.action).filter((a): a is string => Boolean(a)))].sort();
+  const rows = data
+    ?.filter((c) => (!outlet || c.location_name === outlet) && (!action || c.action === action))
+    .sort(SORTERS[sort]);
 
   return (
     <>
@@ -84,6 +97,25 @@ export function QueuePage() {
             ))}
           </select>
         </label>
+        <label className="flex items-center text-sm text-muted-foreground">
+          <span className="mr-2">Action</span>
+          <select className={SELECT} value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">All actions</option>
+            {actions.map((a) => (
+              <option key={a} value={a}>
+                {humanize(a)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="flex items-center text-sm text-muted-foreground">
+          <span className="mr-2">Sort</span>
+          <select className={SELECT} value={sort} onChange={(e) => setSort(e.target.value)}>
+            <option value="oldest">Oldest first</option>
+            <option value="newest">Newest first</option>
+            <option value="amount_desc">Highest amount</option>
+          </select>
+        </label>
         <label className="flex items-center gap-2 text-sm text-muted-foreground">
           <input type="checkbox" className="h-4 w-4 accent-current" checked={mine} onChange={(e) => setMine(e.target.checked)} />
           Owned by me
@@ -127,6 +159,7 @@ export function QueuePage() {
                     <Badge tone={c.reason_kind === "escalated" ? "warning" : "purple"}>
                       {c.reason_kind === "escalated" ? "Escalated" : "Waiting for a decision"}
                     </Badge>
+                    {c.risk && <span className="ml-2"><RiskBadge risk={c.risk} /></span>}
                     <div className="mt-1 max-w-xs truncate text-xs text-muted-foreground" title={c.reason}>
                       {c.reason}
                     </div>

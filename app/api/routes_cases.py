@@ -399,6 +399,8 @@ class QueueItemOut(BaseModel):
     language: str
     amount_paise: int | None = None
     proposal_id: uuid.UUID | None = None
+    action: str | None = None
+    risk: str | None = None
 
 
 @router.get("/cases/queue")
@@ -512,6 +514,8 @@ def cases_to_handle(
                 language=langs.get(case.customer_id) or "en",
                 amount_paise=proposal.amount_paise if proposal else None,
                 proposal_id=proposal.id if proposal else None,
+                action=proposal.action if proposal else None,
+                risk=proposal.risk if proposal else None,
             )
         )
     items.sort(key=lambda i: (i.waiting_since, str(i.case_id)))

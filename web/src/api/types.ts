@@ -123,6 +123,7 @@ export interface RulesSummary {
   settings_updated: string | null;
   in_force_since: string;
   in_force_text: string;
+  narrower_note?: string | null;
   categories: CategoryRule[];
   settings: RuleSetting[];
 }
@@ -281,6 +282,8 @@ export interface QueueItem {
   language: string;
   amount_paise: number | null;
   proposal_id: string | null;
+  action?: string | null;
+  risk?: string | null;
 }
 
 export interface PendingApproval {

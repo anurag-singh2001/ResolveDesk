@@ -92,6 +92,28 @@ describe("Cases to handle", () => {
     expect(screen.getByText("Needs a manager")).toBeInTheDocument();
   });
 
+  it("sorts by amount, filters by action and shows the risk", async () => {
+    seedSession();
+    mockFetch({
+      "GET /me": { body: makeMe("location_manager") },
+      "GET /cases/queue": {
+        body: [
+          { ...item, amount_paise: 100, action: "refund", risk: "high", reason: "Small" },
+          { ...item, case_id: "c-2", amount_paise: 900, action: "free_item_voucher", reason: "Large" },
+        ],
+      },
+      "GET /meta/categories": { body: { categories: ["missing_items"], free_text: false } },
+      "GET /approvals": { body: [] },
+    });
+    renderApp("/queue");
+    expect(await screen.findByText("High risk")).toBeInTheDocument();
+    await userEvent.selectOptions(screen.getByLabelText("Sort"), "amount_desc");
+    const cells = screen.getAllByRole("row").map((r) => r.textContent ?? "");
+    expect(cells.findIndex((t) => t.includes("Large"))).toBeLessThan(cells.findIndex((t) => t.includes("Small")));
+    await userEvent.selectOptions(screen.getByLabelText("Action"), "refund");
+    expect(screen.queryByText("Large")).not.toBeInTheDocument();
+  });
+
   it("filters are sent to the server", async () => {
     const { fn } = setup();
     renderApp("/queue");

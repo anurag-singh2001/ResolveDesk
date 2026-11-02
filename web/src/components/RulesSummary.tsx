@@ -25,6 +25,7 @@ export function RulesSummarySection({ staff }: { staff: boolean }) {
                   }`
                 : data.in_force_text}
             </p>
+            {data.narrower_note && <p className="mt-1 text-sm text-muted-foreground">{data.narrower_note}</p>}
             <div className="mt-4 grid gap-5 md:grid-cols-2">
               {data.categories.map((c) => (
                 <CategoryBlock key={c.category} rule={c} />

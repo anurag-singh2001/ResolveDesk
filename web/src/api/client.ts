@@ -96,7 +96,7 @@ export function errorMessage(err: unknown): string {
     if (err.status >= 500) return "Something went wrong on our side. Please try again.";
     if (Array.isArray(err.detail)) {
       return err.detail
-        .map((d) => (typeof d === "string" ? d : (d as { msg?: string })?.msg ?? ""))
+        .map((d) => (typeof d === "string" ? d : ((d as { msg?: string })?.msg ?? "").replace(/^Value error, /, "")))
         .filter(Boolean)
         .join(" ");
     }

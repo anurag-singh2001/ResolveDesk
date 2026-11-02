@@ -745,3 +745,12 @@ def test_repeated_reports_cannot_grow_a_case_without_limit(api, app_engine, flow
             select(func.count()).select_from(TicketMessage).where(TicketMessage.ticket_id == ticket)
         )
     assert count == MAX_CUSTOMER_MESSAGES
+
+
+def test_the_queue_says_which_action_and_risk_wait_for_a_decision(api, flow):
+    f = flow
+    opened = _open(api, f)
+    rows = api.get("/cases/queue", headers=f["hq"]).json()
+    row = next(r for r in rows if r["case_id"] == opened["id"])
+    assert row["action"] == "refund"
+    assert row["risk"] in ("low", "medium", "high")

@@ -1,10 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { MetricGroup, MetricPoint, MetricsResponse, Role } from "../api/types";
 import { formatBp, bucketLabel, timezoneLabel } from "../lib/dashboard";
 import { formatPaise, formatPaiseShort } from "../lib/money";
 import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
+
+// The lazy chart chunk is large: a slow first import under load used to fail a test's wait.
+beforeAll(async () => {
+  await import("./DashboardPage");
+}, 60000);
 
 function point(over: Partial<MetricPoint> = {}): MetricPoint {
   return {

@@ -241,6 +241,7 @@ export function CasePage() {
   const staff = isStaff(me?.role);
   const kase = useApi(() => api.case(caseId), [caseId]);
   const timeline = useApi(() => loadTimeline(caseId), [caseId]);
+  const prefs = useApi(() => (staff ? Promise.resolve(null) : api.preferences()), [staff]);
 
   const stage = kase.data?.stage ?? "";
   const timedOut = usePolling(isActiveStage(stage), () => {
@@ -292,7 +293,7 @@ export function CasePage() {
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <CustomerMessages messages={c.customer_messages ?? []} own={!staff} />
-            {c.transaction_id && <OrderCard orderId={c.transaction_id} />}
+            {c.transaction_id && <OrderCard orderId={c.transaction_id} language={staff ? "en" : prefs.data?.language} />}
             {c.stage === "awaiting_info" && !staff && (
               <ReplyBox
                 caseId={c.id}

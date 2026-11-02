@@ -71,6 +71,9 @@ class RulesSummary:
     settings_updated: date | None
     in_force_since: date
     in_force_text: str
+    # Set when a brand or outlet lowers a voucher limit: the figures above are then the most
+    # any order can get, not what every order gets.
+    narrower_note: str | None
     categories: list[CategoryRule]
     settings: list[dict[str, Any]]  # key, value, source (staff view only)
 
@@ -233,6 +236,10 @@ def build_rules_summary(
         row.key: row for row in setting_rows if row.brand_id is None and row.location_id is None
     }
     used = list(dict.fromkeys(k for c in cats for k in c.setting_keys))
+    narrower = any(
+        (row.brand_id is not None or row.location_id is not None) and row.key in _VOUCHER_KEYS
+        for row in setting_rows
+    )
     pack_updated = business_date(pack_row.updated_at, settings)
     stamps = [business_date(overrides[k].updated_at, settings) for k in used if k in overrides]
     # "In force since" must be a real date. pack_row.updated_at is only when the pack was last
@@ -269,6 +276,7 @@ def build_rules_summary(
         settings_updated=max(stamps) if stamps else None,
         in_force_since=since,
         in_force_text=t("rules.in_force", lang, date=format_date(since, lang)),
+        narrower_note=t("rules.narrower", lang) if narrower else None,
         categories=cats,
         settings=detail,
     )

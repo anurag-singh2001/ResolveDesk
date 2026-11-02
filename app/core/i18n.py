@@ -1183,6 +1183,12 @@ TEMPLATES: dict[str, dict[str, str]] = {
             "तो टीम का एक सदस्य निर्णय लेता है।"
         ),
     },
+    "rules.narrower": {
+        "en": "Some brands or outlets set a lower limit, so your order may get less.",
+        "hi-Latn": "Kuch brands ya outlets ki seema kam hai, isliye aapke order par kam mil "
+        "sakta hai.",
+        "hi": "कुछ ब्रांड या आउटलेट की सीमा कम है, इसलिए आपके ऑर्डर पर कम मिल सकता है।",
+    },
     "rules.in_force": {
         "en": "These rules have been in force since {date}.",
         "hi-Latn": "Ye niyam {date} se lagu hain.",

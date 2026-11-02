@@ -1,8 +1,13 @@
 import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import type { CohortsResponse, Role, SegmentCell, SegmentsResponse } from "../api/types";
 import { makeMe, mockFetch, renderApp, seedSession } from "../test/utils";
+
+// The lazy chart chunk is large: a slow first import under load used to fail a test's wait.
+beforeAll(async () => {
+  await import("./SegmentsPage");
+}, 60000);
 
 const SEGMENTS = ["new", "active", "loyal", "at_risk", "lapsed", "lapsed_regular", "one_and_done"];
 
