@@ -41,7 +41,7 @@ Accounts used:
    **Approve**. Back as Kabir the case ends at **Confirmed**; while the provider has not confirmed
    it reads *Processing*, never paid.
 2. **Voucher, auto-approved (BrewCo, browser-checked).**
-   *Dev P.* → report "My cappuccino was lukewarm and tasted burnt". Food quality → ₹100 voucher,
+   *Dev P.* → report, pick **Quality**, "My cappuccino was lukewarm and tasted burnt" → ₹100 voucher,
    under the ₹150 auto-approve cap → **Confirmed**, "Your voucher worth ₹100.00 has been issued."
 3. **Outlet scope (BrewCo).** *Neha Joshi* (Baner manager) sees only Baner's cases;
    *Meera Iyer* (HQ) sees all five outlets; *Vikram Rao* sees his two.
@@ -78,8 +78,10 @@ Accounts used:
 - **Segments**: use the **Brand** menu; read the WhatsApp column note (consent only).
 - **Growth** (BrewCo, browser-checked): *Meera Iyer* → **Insights** (Baner stands out at about
   37% repeat rate) → **Growth** → **Refresh signals** → "Baner: repeat customers down" with the
-  evidence and causes marked "not confirmed" → **Propose win-back campaign** (audience, holdout,
-  budget) → **Approve**. Approving twice is refused. Sign in as *Neha Joshi* and approve → **Sent**.
+  evidence and causes marked "not confirmed". Sign in as *Neha Joshi* → **Growth** → **Propose
+  win-back campaign** (audience, holdout, budget). The proposer cannot approve their own campaign,
+  and one approval must come from HQ, so a person other than the one HQ owner proposes it. Sign in
+  as *Meera Iyer* and **Approve** (approving twice is refused), then as *Vikram Rao* and approve → **Sent**.
   **Demo controls** → clock +15 days → **Growth** → **Measure result**: with 154 offered and 17 held
   out the verdict is honestly **Inconclusive** ("too few people to tell"). Reset the clock afterwards.
 - **Return on the offer** appears under that campaign, with the offered and held-out groups and
@@ -91,9 +93,8 @@ Accounts used:
   not charted.
 - **Add spend by hand** (bottom of **Growth**): enter a channel, an amount in rupees and a date
   range, **Save spend**. It is kept as typed, is not verified, and is not part of campaign ROI.
-- **Spice Route**: Growth is on, but the demo has only Asha (HQ) and Rohit (manager), and a
-  campaign needs two approvers who are not its proposer. Show the screens; do not promise to
-  complete a campaign there. That flow is not yet proven on Spice Route (S12.6).
+- **Spice Route**: after a reseed it has Asha (HQ) and two Kharadi managers, so Meena proposes and
+  Asha and Rohit approve.
 - **Privacy requests**: staff list of customer download and erasure requests (HQ only).
 - **Help**: the manual for the signed-in role.
 
@@ -101,8 +102,7 @@ Accounts used:
 - **Health**, **Scheduled jobs** (run history only; it cannot start a job), **Logs and alerts**,
   **AI performance**. On the demo the rows are seeded demo rows from `seed_portal_demo`, so say so.
 - **Scenario lab**: pick a business, open a scenario, **Check** it; held-out scenarios are
-  read-only. Running scenarios needs a scratch database and real model keys; do not run it live
-  without a rehearsal (the last real run, S10.1, stalled).
+  read-only. Running scenarios needs a scratch database and real model keys; rehearse once first.
 
 ## After the demo
 

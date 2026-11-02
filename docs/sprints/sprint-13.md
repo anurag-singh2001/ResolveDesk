@@ -29,6 +29,18 @@ Static review by safety-reviewer, then live attacks on localhost against the eva
 | Dev clock is process-wide | Low | Not changed: dev and test only |
 | Account lockout can be used to deny one user | Low | Accepted: a per-IP limit needs a real proxy setup |
 | /auth/businesses lists tenants without login | Low | Accepted: the login page needs it |
+| Safety review: a reject and an old approval could both win | High | Fixed: a rejected request is final for approve and withdraw |
+| Safety review: two approved vouchers at once could both issue | High | Fixed: the executor locks the order row first |
+
+## Found in end-to-end testing
+
+- Scenario flows on the scratch DB: voucher to Confirmed, AI asks then customer replies, privacy reject, campaign proposed by a manager, approved by HQ and a franchisee, sending.
+- The demo script had the HQ owner propose then approve, which can never send with one HQ owner. Script corrected, and HQ now gets a warning before proposing.
+- A 403 hid the server's reason on Growth, and "2 of 2" showed while HQ approval was missing. Both fixed.
+- Spice Route's default campaign was over the Rs 10,000 budget limit, so none could be proposed. `growth_campaign_budget_paise` for cloud kitchens is now Rs 60,000. Owner to confirm the figure.
+- Signing in while the demo clock was moved gave a token dated in the future, refused on use. Tokens now use real time.
+- All staff pages fit 375px with no page overflow.
+- Not clicked through: the payment timeout path (no suitable order on the scratch data; covered by the chaos batch), the Spice Route measure step, a campaign with real calendar warnings (none overlapped; covered by web and backend tests).
 
 Held under live attack: forged, tampered, unsigned and garbage tokens; tenant token on platform routes; customers on staff routes; customer and cross-tenant IDOR on orders; staff opening customer cases; bad switch amounts; parallel approval and replay (one refund confirmed); SQL text in a filter; oversized message.
 

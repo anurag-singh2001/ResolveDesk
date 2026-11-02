@@ -90,3 +90,13 @@ def test_prod_get_clock_ignores_the_offset(monkeypatch):
     assert deps.get_clock() > datetime.now(UTC) + timedelta(days=9)  # dev/test applies it
     _prod(monkeypatch)
     assert deps.get_clock() < datetime.now(UTC) + timedelta(seconds=5)
+
+
+def test_signing_in_while_the_clock_is_moved_still_gives_a_working_token(api, seeded, tenant):
+    """The demo moves the clock, then signs in as someone else."""
+    h = _hq(api, seeded, tenant)
+    assert (
+        api.post("/admin/clock", headers=h, json={"advance_seconds": 15 * 86400}).status_code == 200
+    )
+    fresh = _hq(api, seeded, tenant)
+    assert api.get("/me", headers=fresh).status_code == 200

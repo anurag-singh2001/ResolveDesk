@@ -235,7 +235,7 @@ export function PrivacyRequestsPage() {
       ) : error ? (
         <ErrorState error={error} onRetry={reload} />
       ) : !data || data.items.length === 0 ? (
-        <EmptyState title="No open privacy requests">Requests that are withdrawn or completed leave this list.</EmptyState>
+        <EmptyState title="No open privacy requests">Requests that are withdrawn, rejected or completed leave this list.</EmptyState>
       ) : (
         <div className={tableWrapClass}>
           <table className={tableClass}>

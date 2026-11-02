@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
-import { errorMessage } from "../api/client";
+import { ApiError, errorMessage } from "../api/client";
 import type { Campaign, GrowthSignal } from "../api/types";
 import { Alert, Badge, Button, Card, Dl, EmptyState, ErrorState, Loading, PageHeader } from "../components/ui";
 import { formatDateTime, humanize } from "../lib/format";
@@ -31,7 +31,8 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
     try {
       setCampaign(await call());
     } catch (err) {
-      setActionError(errorMessage(err)); // the server's own words, e.g. why this approver can't count
+      // The server's own words, e.g. why this approver can't count (a 403 included).
+      setActionError(err instanceof ApiError && typeof err.detail === "string" ? err.detail : errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -55,7 +56,9 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
           ["Audience (offer sent)", `${current.treatment_n} customers`],
           ["Holdout (no offer, for comparison)", `${current.holdout_n} customers`],
           ["Budget", formatPaise(current.budget_paise)],
-          ["Approvals so far", `${approved.length} of 2: ${approved.map((a) => humanize(a.role)).join(", ") || "none yet"}`],
+          ["Approvals so far", `${approved.length} of 2: ${approved.map((a) => humanize(a.role)).join(", ") || "none yet"}${
+            approved.length >= 2 && !approved.some((a) => a.role === "hq_owner") ? ". An HQ owner must still approve" : ""
+          }`],
           ["Approval needed by", formatDateTime(current.expires_at)],
           ["Sent", current.sent_at ? formatDateTime(current.sent_at) : "Not sent"],
         ]}
@@ -111,6 +114,7 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
 }
 
 function SignalCard({ signal, location }: { signal: GrowthSignal; location: string }) {
+  const { me } = useAuth();
   const [campaignId, setCampaignId] = useState<string | null>(signal.campaign_id ?? null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -165,6 +169,11 @@ function SignalCard({ signal, location }: { signal: GrowthSignal; location: stri
           <Button variant="soft" loading={busy} onClick={() => void propose()}>
             Propose win-back campaign
           </Button>
+          {me?.role === "hq_owner" && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Whoever proposes cannot approve, and one approval must come from an HQ owner. If you are the only HQ owner, ask the outlet's manager to propose it.
+            </p>
+          )}
           {error && (
             <div className="mt-3">
               <Alert tone="danger">{error}</Alert>

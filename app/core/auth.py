@@ -133,4 +133,5 @@ def authenticate(
             session.execute(delete(LoginFailure).where(LoginFailure.failed_at <= since))
     if not ok:
         raise InvalidCredentials()
-    return issue_token_with_expiry(tenant_id, user_id, now)
+    # Real time: `now` may be the dev clock, and a token dated in the future is refused on use.
+    return issue_token_with_expiry(tenant_id, user_id)

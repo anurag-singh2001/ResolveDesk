@@ -69,7 +69,7 @@ settings:
   approval_expiry_minutes: {kind: limit, default: 240}
   # Growth campaigns: the most one may cost (offer x treatment audience; lower only), and the
   # share of the audience held out unmessaged so lift can be measured.
-  growth_campaign_budget_paise: {kind: limit, default: 1000000}
+  growth_campaign_budget_paise: {kind: limit, default: 6000000}
   growth_holdout_percent: {kind: value, default: 10}
   # ROI estimates (S11.3b): what one WhatsApp message costs, and the gross margin used when
   # growth_roi_basis is margin. Both are estimates and are labelled so on the page.

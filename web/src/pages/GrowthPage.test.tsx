@@ -141,6 +141,26 @@ describe("growth page", () => {
     expect(await screen.findByText("you already approved this campaign")).toBeInTheDocument();
   });
 
+  it("gives the reason when a person may not approve, and says when HQ must still approve", async () => {
+    setup("hq_owner", true, {
+      "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },
+      "GET /growth/campaigns/c-1": {
+        body: { ...campaign, approvals: [{ role: "location_manager" }, { role: "franchisee_owner" }].map((a) => ({ ...campaign.approvals[0], ...a })) },
+      },
+      "POST /growth/campaigns/c-1/approve": {
+        status: 403,
+        body: { detail: "you proposed this campaign, so someone else must approve it" },
+      },
+    });
+    const user = userEvent.setup();
+    renderApp("/growth");
+    expect(await screen.findByText(/An HQ owner must still approve/)).toBeInTheDocument();
+    await user.click(await screen.findByRole("button", { name: "Approve campaign" }));
+    const yes = screen.queryByRole("button", { name: /^(yes|confirm)/i });
+    if (yes) await user.click(yes);
+    expect(await screen.findByText(/someone else must approve it/)).toBeInTheDocument();
+  });
+
   it("shows the updated campaign after an approval", async () => {
     setup("hq_owner", true, {
       "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },

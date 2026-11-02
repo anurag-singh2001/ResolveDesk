@@ -705,3 +705,14 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: owner review, 2026-11-02: every approval already appeared in Cases to handle, so two lists repeated the same work.
 - Lost from the old list: sort by amount, the action filter, the risk badge and the phone card layout. The GET /approvals API stays, as the approval detail page uses it.
 - Rejected: keeping both tabs, or merging all three (Cases still holds closed history).
+
+## 2026-11-03 Sprint 13 money and privacy limits
+- Decision: one voucher per order, across cases; refund_max_percent is per order and counts earlier refunds; a rejected erasure request is final, and the customer can file a new one; staff views of customer contact details are audited once per person, case and hour; phone and email stay visible.
+- Why: pen test and safety review showed a repeat report could earn a second remedy. Owner, 2026-11-03: keep phone and email visible for now.
+- Rejected: masking contact details; a per-case limit only, which a closed case gets around.
+- Open: a refund and a voucher can still both be given on one order, each within its own limit. A person must approve the refund.
+
+## 2026-11-03 Cloud kitchen campaign budget limit raised to Rs 60,000
+- Decision: `growth_campaign_budget_paise` default for the cloud kitchen pack goes from 1000000 to 6000000.
+- Why: Spice Route's default win-back audience costs more than the old limit, so no campaign could be proposed. Dummy data; the owner should confirm the figure before real use.
+- Rejected: a smaller default offer, which would change the BrewCo walk too.
