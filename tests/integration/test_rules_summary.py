@@ -43,10 +43,19 @@ def sample(app_engine, seeded_history, tenant):
     with tenant_session(tid, app_engine) as s:
         uid = s.scalar(select(User.id).where(User.email == email))
         cust = s.scalar(select(Customer.id).where(Customer.user_id == uid))
+        # The summary is organisation level, so the sample must sit outside any narrower limit.
+        rows = list(s.scalars(select(TenantSetting)))
+        brands = {r.brand_id for r in rows if r.brand_id}
+        locations = {r.location_id for r in rows if r.location_id}
         order_id = s.scalar(
             select(Transaction.id)
             .join(Fulfilment, Fulfilment.transaction_id == Transaction.id)
-            .where(Transaction.customer_id == cust, Fulfilment.status == "completed")
+            .where(
+                Transaction.customer_id == cust,
+                Fulfilment.status == "completed",
+                Transaction.brand_id.not_in(brands),
+                Transaction.location_id.not_in(locations),
+            )
             .order_by(Transaction.placed_at.desc())
             .limit(1)
         )
@@ -190,8 +199,9 @@ def test_a_pack_stored_before_a_setting_existed_still_loads(api, sample, monkeyp
     cfg, _, _ = sample
     hq = next(u for u in cfg.users if u.role == "hq_owner")
 
-    def older_pack(session):
-        return {k: v for k, v in effective_settings(session).items() if k != "voucher_percent"}
+    def older_pack(session, *args, **kwargs):
+        stored = effective_settings(session, *args, **kwargs)
+        return {k: v for k, v in stored.items() if k != "voucher_percent"}
 
     monkeypatch.setattr("app.engine.rules_summary.effective_settings", older_pack)
     r = api.get("/policies/rules-summary", headers=login(api, cfg.slug, hq.email))
