@@ -2,6 +2,7 @@
 its connector with a stable key, and the case is resolved only after the provider confirms.
 The agent path is covered in test_agent_graph.py."""
 
+import contextlib
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
@@ -306,10 +307,8 @@ def test_two_approved_vouchers_at_once_issue_only_one(api, app_engine, flow):
 
     def run(pid):
         gate.wait()
-        try:
+        with contextlib.suppress(ExecutionRefused):  # the loser is refused
             execute_voucher(app_engine, f["hq_ctx"], pid)
-        except Exception:
-            pass  # the loser is refused; the count below is what matters
 
     threads = [threading.Thread(target=run, args=(pid,)) for pid in ids]
     for t in threads:
