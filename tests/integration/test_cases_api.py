@@ -24,8 +24,11 @@ from app.core.models import (
     User,
     Verification,
 )
+from app.actions.base import get_action
+from app.core.money import percent_of
 from app.core.tenancy import tenant_id_for
 from app.engine.approvals import check_usable
+from app.engine.eligibility import order_facts
 from app.engine.cases import MAX_CUSTOMER_MESSAGES
 from mocks.base import Chaos
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
@@ -754,3 +757,31 @@ def test_the_queue_says_which_action_and_risk_wait_for_a_decision(api, flow):
     row = next(r for r in rows if r["case_id"] == opened["id"])
     assert row["action"] == "refund"
     assert row["risk"] in ("low", "medium", "high")
+
+
+def test_two_refunds_on_one_order_stay_within_the_percent_limit(api, app_engine, flow):
+    """Pen test: the limit used to apply to each refund, so a repeat report could double it."""
+    f = flow
+    first = _open(api, f)
+    item = next(
+        p for p in api.get("/approvals", headers=f["hq"]).json() if p["case_id"] == first["id"]
+    )
+    decided = api.post(
+        f"/approvals/{item['proposal_id']}/decision", headers=f["hq"], json={"decision": "approved"}
+    )
+    assert decided.status_code == 200
+    assert api.get(f"/cases/{first['id']}", headers=f["customer"]).json()["stage"] == "confirmed"
+    with tenant_session(f["tid"], app_engine) as s:
+        _, facts = order_facts(s, f["order_id"])
+    limit = percent_of(facts.order_total_paise, facts.settings["refund_max_percent"])
+    assert facts.refunded_paise == f["missing_paise"]
+    over = limit - facts.refunded_paise + 1
+    action = get_action("refund")()
+    result = action.validate(
+        None,
+        action.Input(transaction_id=f["order_id"], amount_paise=over, reason="again"),
+        facts,
+    )
+    assert not result.ok and any("earlier refunds" in e for e in result.errors)
+    top = action.amount_range(facts)
+    assert top is None or top.max_paise == limit - facts.refunded_paise

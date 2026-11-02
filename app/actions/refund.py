@@ -36,11 +36,14 @@ class Refund(NotYetExecutable, Action):
     def validate(self, ctx, inp: RefundInput, facts: Facts) -> ValidationResult:
         s = facts.settings
         errors = []
-        cap = percent_of(facts.order_total_paise, s["refund_max_percent"])
+        full_cap = percent_of(facts.order_total_paise, s["refund_max_percent"])
+        cap = max(0, full_cap - facts.refunded_paise)  # the limit is per order, not per refund
         if s["refund_channel"] != "tenant_gateway":
             errors.append("refunds for this order go through the aggregator, not us")
         if inp.amount_paise > cap:
-            errors.append(f"amount exceeds {s['refund_max_percent']}% of the order")
+            errors.append(
+                f"amount exceeds {s['refund_max_percent']}% of the order, counting earlier refunds"
+            )
         if inp.amount_paise > facts.refundable_paise:
             errors.append("amount exceeds the refundable balance")
         return ValidationResult(
@@ -60,7 +63,7 @@ class Refund(NotYetExecutable, Action):
         if s["refund_channel"] != "tenant_gateway" or facts.order_total_paise is None:
             return None
         top = min(
-            percent_of(facts.order_total_paise, s["refund_max_percent"]),
+            percent_of(facts.order_total_paise, s["refund_max_percent"]) - facts.refunded_paise,
             facts.refundable_paise or 0,
         )
         if top < MIN_SWITCH_REFUND_PAISE:

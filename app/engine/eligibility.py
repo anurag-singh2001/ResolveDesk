@@ -27,6 +27,19 @@ HOLDING_STATUSES = ("reserved", "submitted", "succeeded", "unknown", "pending_re
 CAPTURED_STATUSES = ("captured", "partially_refunded")
 
 
+def refunded_paise(
+    session: Session, transaction_id: uuid.UUID, exclude_proposal: uuid.UUID | None = None
+) -> int:
+    """Refunds on this order that are paid or may yet be paid, by any case."""
+    held = select(func.coalesce(func.sum(RefundOperation.amount_paise), 0)).where(
+        RefundOperation.transaction_id == transaction_id,
+        RefundOperation.status.in_(HOLDING_STATUSES),
+    )
+    if exclude_proposal is not None:
+        held = held.where(RefundOperation.proposal_id != exclude_proposal)
+    return int(session.scalar(held))
+
+
 def refundable_paise(
     session: Session, transaction_id: uuid.UUID, exclude_proposal: uuid.UUID | None = None
 ) -> int:
@@ -35,13 +48,7 @@ def refundable_paise(
             Payment.transaction_id == transaction_id, Payment.status.in_(CAPTURED_STATUSES)
         )
     )
-    held = select(func.coalesce(func.sum(RefundOperation.amount_paise), 0)).where(
-        RefundOperation.transaction_id == transaction_id,
-        RefundOperation.status.in_(HOLDING_STATUSES),
-    )
-    if exclude_proposal is not None:
-        held = held.where(RefundOperation.proposal_id != exclude_proposal)
-    return int(captured) - int(session.scalar(held))
+    return int(captured) - refunded_paise(session, transaction_id, exclude_proposal)
 
 
 FAIR_USE_WINDOW = timedelta(days=30)
@@ -152,6 +159,7 @@ def order_facts(
         settings=settings,
         order_total_paise=order.total_paise,
         refundable_paise=refundable_paise(session, order.id, exclude_proposal),
+        refunded_paise=refunded_paise(session, order.id, exclude_proposal),
         vouchers_on_order=vouchers_on_order(session, order.id, exclude_proposal),
     )
     return order, facts

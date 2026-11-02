@@ -93,6 +93,29 @@ describe("privacy requests queue", () => {
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({ payload_hash: dry.payload_hash, approval_token: dry.approval_token });
   });
 
+  it("rejects only with a chosen reason and after a confirmation", async () => {
+    seedSession();
+    const { calls } = mockFetch({
+      "GET /me": { body: makeMe("hq_owner") },
+      "GET /data-requests/queue": { body: queue },
+      "GET /data-requests/r-1/dry-run": { body: dry },
+      "POST /data-requests/r-1/reject": { body: { id: "r-1", status: "rejected" } },
+    });
+    const user = userEvent.setup();
+    renderApp("/privacy-requests");
+    await user.click((await screen.findAllByRole("button", { name: "Review" }))[0]);
+    const start = await screen.findByRole("button", { name: "Reject…" });
+    expect(start).toBeDisabled();
+    await user.selectOptions(screen.getByLabelText("Reason shown to the customer"), "duplicate");
+    await user.click(start);
+    expect(calls.some((c) => c.path.endsWith("/reject"))).toBe(false);
+    await user.click(screen.getByRole("button", { name: "Yes, reject" }));
+    await waitFor(() => {
+      const sent = calls.find((c) => c.method === "POST" && c.path === "/data-requests/r-1/reject");
+      expect(sent?.body).toEqual({ reason: "duplicate" });
+    });
+  });
+
   it("says so when the data changed since the review and offers to review again", async () => {
     setup("hq_owner", { status: 409, body: { detail: "the request or the customer's data changed since you reviewed it; review again" } });
     renderApp("/privacy-requests");
