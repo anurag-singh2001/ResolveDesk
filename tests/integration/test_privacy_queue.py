@@ -542,3 +542,28 @@ def test_rejection_is_audited_once_without_personal_content(
             )
         )
         assert len(rows) == 1 and rows[0].payload == {"reason": "legal_hold"}
+
+
+def test_an_old_approval_cannot_undo_a_rejection(api, app_engine, tid, made, people, tenant, slug):
+    """Safety review: a token issued before the rejection used to erase anyway."""
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    look = _look(api, hq, req["id"])
+    assert _reject(api, hq, req["id"]).status_code == 200
+    r = _approve_with(api, hq, req["id"], look)
+    assert r.status_code == 409
+    assert _name(app_engine, tid, cid) == "Real Person"
+    assert api.get("/me/erasure-request", headers=auth).json()["status"] == "rejected"
+
+
+def test_a_rejected_request_cannot_be_withdrawn(api, app_engine, tid, made, people, tenant, slug):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    assert _reject(api, hq, req["id"]).status_code == 200
+    assert api.post("/me/erasure-request/cancel", headers=auth).status_code == 409
+    seen = api.get("/me/erasure-request", headers=auth).json()
+    assert seen["status"] == "rejected" and seen["reason_code"] == "legal_hold"

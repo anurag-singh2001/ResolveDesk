@@ -25,7 +25,14 @@ from app.actions.base import get_action
 from app.connectors.base import VoucherOutcome, connector_for
 from app.core import audit
 from app.core.db import tenant_session
-from app.core.models import ActionProposal, Approval, Case, DomainEvent, Execution
+from app.core.models import (
+    ActionProposal,
+    Approval,
+    Case,
+    DomainEvent,
+    Execution,
+    Transaction,
+)
 from app.core.tenancy import TenantContext
 from app.engine.approvals import check_usable, evaluate_proposal
 from app.engine.executor import EXEC_FORWARD, RESERVE_RACE_CONSTRAINTS, TERMINAL, ExecutionRefused
@@ -177,7 +184,10 @@ def _start_once(engine, ctx, proposal_id, now) -> "_Job | VoucherResult":
         proposal = s.get(ActionProposal, proposal_id)
         if proposal is None or proposal.action != ACTION:
             raise ExecutionRefused("not_found")
-        # The case row lock serialises workers on this proposal (vouchers have no order lock).
+        # The order row first, as open_case does: one voucher per order must hold across cases.
+        # Then the case row, which serialises workers on this proposal.
+        order_id = s.scalar(select(Case.transaction_id).where(Case.id == proposal.case_id))
+        s.execute(select(Transaction.id).where(Transaction.id == order_id).with_for_update())
         case = s.scalar(select(Case).where(Case.id == proposal.case_id).with_for_update())
         params = proposal.params
         inp = get_action(ACTION)().Input.model_validate_json(json.dumps(params))

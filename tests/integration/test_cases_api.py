@@ -6,6 +6,7 @@ import uuid
 import pytest
 from sqlalchemy import delete, func, select, update
 
+from app.actions.base import get_action
 from app.config import get_settings
 from app.core.db import tenant_session
 from app.core.models import (
@@ -24,12 +25,11 @@ from app.core.models import (
     User,
     Verification,
 )
-from app.actions.base import get_action
 from app.core.money import percent_of
 from app.core.tenancy import tenant_id_for
 from app.engine.approvals import check_usable
-from app.engine.eligibility import order_facts
 from app.engine.cases import MAX_CUSTOMER_MESSAGES
+from app.engine.eligibility import order_facts
 from mocks.base import Chaos
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
 from tests.helpers import login

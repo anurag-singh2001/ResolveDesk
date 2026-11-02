@@ -2,6 +2,7 @@
 its connector with a stable key, and the case is resolved only after the provider confirms.
 The agent path is covered in test_agent_graph.py."""
 
+import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
@@ -263,3 +264,56 @@ def test_a_second_report_on_the_order_never_issues_a_second_voucher(api, app_eng
     seen = api.get(f"/cases/{second['id']}", headers=f["customer"]).json()
     assert seen["stage"] not in ("processing", "confirmed")
     assert len(_vouchers(f)) == 1  # the mock provider got exactly one issue
+
+
+def test_two_approved_vouchers_at_once_issue_only_one(api, app_engine, flow):
+    """Safety review: nothing else held two proposals apart before either had an execution."""
+    f = flow
+    now = datetime.now(UTC)
+    with tenant_session(f["tid"], app_engine) as s:
+        case_id = uuid.uuid4()
+        s.add(
+            Case(
+                id=case_id,
+                tenant_id=f["tid"],
+                customer_id=f["customer_id"],
+                transaction_id=f["order_id"],
+                status="awaiting_approval",
+                channel="app",
+                opened_at=now,
+            )
+        )
+        s.flush()
+        ids = [
+            create_proposal(
+                s,
+                f["tid"],
+                case_id=case_id,
+                action="free_item_voucher",
+                reason="policy",
+                params={
+                    "transaction_id": str(f["order_id"]),
+                    "value_paise": 1000 + i * 100,
+                    "reason": "x",
+                },
+            ).id
+            for i in range(2)
+        ]
+    for pid in ids:
+        with tenant_session(f["tid"], app_engine) as s:
+            decide(s, f["hq_ctx"], pid, "approved", now)
+    gate = threading.Barrier(2)
+
+    def run(pid):
+        gate.wait()
+        try:
+            execute_voucher(app_engine, f["hq_ctx"], pid)
+        except Exception:
+            pass  # the loser is refused; the count below is what matters
+
+    threads = [threading.Thread(target=run, args=(pid,)) for pid in ids]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(_vouchers(f)) == 1

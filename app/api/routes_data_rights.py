@@ -363,6 +363,8 @@ def withdraw_my_erasure_request(
         raise not_found()
     if req.status == "completed":
         raise HTTPException(status.HTTP_409_CONFLICT, "this request has already been carried out")
+    if req.status == "rejected":
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request has already been decided")
     return _my_request(req, db, customer)
 
 
@@ -496,6 +498,10 @@ def approve_data_request(
     if req.status == "withdrawn":
         raise HTTPException(
             status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
+        )
+    if req.status == "rejected":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "this request was rejected; nothing was erased"
         )
     if checked and body.payload_hash:
         privacy_queue.record_approval(db, ctx.tenant_id, ctx.user_id, req, body.payload_hash)

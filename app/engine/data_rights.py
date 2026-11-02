@@ -327,7 +327,7 @@ def withdraw_erasure(
         .limit(1)
         .with_for_update()
     )
-    if req is None or req.status in ("completed", "withdrawn"):
+    if req is None or req.status in ("completed", "withdrawn", "rejected"):
         return req
     req.status, req.reason_code, req.deferred_until = "withdrawn", None, None
     erasure_notice.drop(s, tenant_id, req.id)  # no send will happen: the destination goes now
@@ -364,7 +364,7 @@ def run_erasure(
         .where(DataRequest.tenant_id == tenant_id, DataRequest.id == request_id)
         .with_for_update()
     )
-    if req is None or req.status in ("completed", "withdrawn"):
+    if req is None or req.status in ("completed", "withdrawn", "rejected"):
         return req  # a withdrawn request never runs, even if a person approves it later
     # Lock the customer before checking the guards and keep it until commit: case writes take
     # a share lock on the same row (engine/cases.lock_customer), so nothing new can start
