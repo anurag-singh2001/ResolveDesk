@@ -694,3 +694,8 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Decision: the `.test` support contacts in tenant config stay as they are.
 - Why: owner, 2026-11-01: both tenants are dummy data, so these are kept for now.
 - Rejected: real-looking contacts, which would suggest real businesses.
+
+## 2026-11-02 Staff see customer contact details on a case; customers see their order there
+- Decision: `GET /cases/{id}` gives staff who can see the case the customer's name, phone, email and reference. Customers get null. The case page shows the Order card to customers too.
+- Why: owner request, 2026-11-02: HQ, franchisee and location staff need the customer and order inside the case.
+- Rejected: a masked phone or an audited reveal action, which keep exposure lower but were not what the owner asked for. Worth revisiting before real customer data, because this widens phone and email access to outlet staff and viewing is not audited. Check the privacy notice then too.

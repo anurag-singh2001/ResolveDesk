@@ -108,6 +108,13 @@ class StaffMessageOut(BaseModel):
     sender_user_id: uuid.UUID | None
 
 
+class CaseCustomerOut(BaseModel):
+    ref: str
+    name: str
+    phone: str | None
+    email: str | None
+
+
 class CaseDetailOut(CaseOut):
     # The customer's own words, oldest first. Only on GET /cases/{id}, after visible_case
     # (the owning customer or staff who can see the order); list responses omit the field.
@@ -123,6 +130,9 @@ class CaseDetailOut(CaseOut):
     # language (customer) or English (staff). Fixed templates and our own policy table only.
     basis: list[str] = []
     sources: list[SourceOut] = []
+    # Staff only, and only after visible_case: who to contact about this case. An erased
+    # customer's redacted values come through as stored. Customers never receive this field.
+    customer: CaseCustomerOut | None = None
 
 
 def _out(db: Session, case: Case, now: datetime, order: Transaction | None = None) -> CaseOut:
@@ -564,6 +574,7 @@ def get_case(
     proposal = db.get(ActionProposal, uuid.UUID(out.proposal_id)) if out.proposal_id else None
     lang = case_language(db, case) if ctx.role == "customer" else "en"
     why = decision_sources(db, ctx, proposal, lang) if proposal is not None else None
+    person = db.get(Customer, case.customer_id) if ctx.role != "customer" else None
     return CaseDetailOut(
         **out.model_dump(),
         basis=why.basis if why else [],
@@ -575,6 +586,13 @@ def get_case(
         staff_messages=staff_msgs,
         closed=case.status == "closed",
         close_reason=case.close_reason,
+        customer=(
+            CaseCustomerOut(
+                ref=person.external_ref, name=person.name, phone=person.phone, email=person.email
+            )
+            if person
+            else None
+        ),
     )
 
 

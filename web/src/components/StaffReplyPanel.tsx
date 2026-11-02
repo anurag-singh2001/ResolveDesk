@@ -5,7 +5,7 @@ import { api } from "../api/endpoints";
 import type { Case } from "../api/types";
 import { useApi } from "../lib/useApi";
 import { formatDateTime, humanize } from "../lib/format";
-import { Alert, Button, Card, Field, inputClass } from "./ui";
+import { Alert, Button, Card, ErrorState, Field, Loading, inputClass } from "./ui";
 
 function newKey(): string {
   try {
@@ -40,7 +40,17 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
       </Card>
     );
   }
-  if (!data) return null; // still loading, or not available: show nothing rather than guess
+  if (opts.loading && !data) return <Loading label="Loading replies…" />;
+  if (!data) {
+    return (
+      <Card className="p-4 sm:p-6">
+        <h2 className="font-montserrat text-sm font-semibold text-foreground">Reply to the customer</h2>
+        <div className="mt-3">
+          <ErrorState error={opts.error} onRetry={opts.reload} />
+        </div>
+      </Card>
+    );
+  }
   const chosen = data.templates.find((x) => x.id === templateId);
 
   async function send(e: FormEvent) {
@@ -85,7 +95,7 @@ export function StaffReplyPanel({ kase, onChanged }: { kase: Case; onChanged: ()
       <form onSubmit={send} className="mt-3 space-y-3">
         <Field label="Message" htmlFor="staff-template" hint={`Sent in the customer's language (${data.language}). Figures are filled in by the system.`}>
           <select id="staff-template" className={inputClass} value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
-            <option value="">Choose a message…</option>
+            <option value="">{data.templates.length ? "Choose a message…" : "No messages fit this case right now"}</option>
             {data.templates.map((x) => (
               <option key={x.id} value={x.id}>
                 {x.label}

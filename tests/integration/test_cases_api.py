@@ -659,3 +659,28 @@ def test_case_list_loads_orders_in_one_query(api, app_engine, flow):
     assert all("transactions.id IN" in q for q in order_loads)
     assert len(order_loads) == 1, order_loads  # the single prefetch (IN), no per-row lookup
     assert len(c.statements) <= 2 + 8 * len(resp.json()), len(c.statements)
+
+
+def test_case_detail_gives_staff_the_customer_and_customers_nothing(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    with tenant_session(f["tid"], app_engine) as s:
+        owner = select(Case.customer_id).where(Case.id == opened["id"]).scalar_subquery()
+        person = s.scalar(select(Customer).where(Customer.id == owner))
+        want = {
+            "ref": person.external_ref,
+            "name": person.name,
+            "phone": person.phone,
+            "email": person.email,
+        }
+    url = f"/cases/{opened['id']}"
+    assert api.get(url, headers=f["customer"]).json()["customer"] is None
+    assert api.get(url, headers=f["hq"]).json()["customer"] == want
+    for user in f["cfg"].users:
+        if user.role in ("customer", "hq_owner"):
+            continue
+        resp = api.get(url, headers=login(api, f["cfg"].slug, user.email))
+        if resp.status_code == 200:  # a location in the user's scope: same details
+            assert resp.json()["customer"] == want
+        else:  # another location: the case does not exist for them
+            assert resp.status_code == 404

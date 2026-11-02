@@ -37,6 +37,7 @@ const order = {
 
 const said: Case = {
   ...base,
+  customer: { ref: "C-7", name: "Asha Test", phone: "+91 90000 00000", email: null },
   customer_messages: [
     { at: "2026-10-25T10:00:00Z", text: "One biryani was missing." },
     { at: "2026-10-25T10:20:00Z", text: "It was the chicken one." },
@@ -155,6 +156,9 @@ describe("case page", () => {
     setup("hq_owner", said);
     renderApp("/cases/c-1");
     expect(await screen.findByText("Customer said")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Customer" })).toBeInTheDocument();
+    expect(screen.getByText("Asha Test")).toBeInTheDocument();
+    expect(screen.getByText("+91 90000 00000")).toBeInTheDocument();
     const quotes = screen.getAllByRole("blockquote").map((q) => q.textContent);
     expect(quotes).toEqual(["One biryani was missing.", "It was the chicken one."]);
     expect(await screen.findByRole("heading", { name: "Order" })).toBeInTheDocument();
@@ -167,13 +171,14 @@ describe("case page", () => {
     expect(screen.getByText("Delivered")).toBeInTheDocument();
   });
 
-  it("labels the customer's own messages 'You wrote' and shows no order card", async () => {
+  it("labels the customer's own messages 'You wrote' and shows the order but no customer card", async () => {
     const { calls } = setup("customer", said);
     renderApp("/cases/c-1");
     expect(await screen.findByText("You wrote")).toBeInTheDocument();
     expect(screen.queryByText("Customer said")).not.toBeInTheDocument();
-    expect(screen.queryByRole("heading", { name: "Order" })).not.toBeInTheDocument();
-    expect(calls.some((c) => c.path === "/orders/t-1")).toBe(false);
+    expect(await screen.findByRole("heading", { name: "Order" })).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/orders/t-1")).toBe(true);
+    expect(screen.queryByRole("heading", { name: "Customer" })).not.toBeInTheDocument();
   });
 
   it("offers staff 'Run the AI again' on an AI-failure escalation, once, with a status line", async () => {

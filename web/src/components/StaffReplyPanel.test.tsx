@@ -71,6 +71,13 @@ describe("staff reply panel", () => {
     expect(calls.filter((c) => c.path === "/cases/c-1/staff-reply")).toHaveLength(1);
   });
 
+  it("shows an error, not an empty space, when the messages cannot load", async () => {
+    setup("hq_owner", kase, { "GET /cases/c-1/reply-templates": { status: 500, body: { detail: "down" } } });
+    renderApp("/cases/c-1");
+    expect(await screen.findByRole("heading", { name: "Reply to the customer" })).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: /try again|retry/i })).toBeInTheDocument();
+  });
+
   it("disables send until a template is chosen", async () => {
     setup("hq_owner");
     renderApp("/cases/c-1");

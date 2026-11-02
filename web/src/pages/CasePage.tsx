@@ -292,7 +292,7 @@ export function CasePage() {
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <CustomerMessages messages={c.customer_messages ?? []} own={!staff} />
-            {staff && c.transaction_id && <OrderCard orderId={c.transaction_id} />}
+            {c.transaction_id && <OrderCard orderId={c.transaction_id} />}
             {c.stage === "awaiting_info" && !staff && (
               <ReplyBox
                 caseId={c.id}
@@ -326,6 +326,19 @@ export function CasePage() {
             {staff && <AuditTrail caseId={c.id} />}
           </div>
           <div className="space-y-6">
+            {staff && c.customer && (
+              <Card className="p-4">
+                <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Customer</h2>
+                <Dl
+                  items={[
+                    ["Name", c.customer.name],
+                    ["Phone", c.customer.phone ?? "Not given"],
+                    ["Email", c.customer.email ?? "Not given"],
+                    ["Customer ref", <span key="ref" className="font-mono">{c.customer.ref}</span>],
+                  ]}
+                />
+              </Card>
+            )}
             <Remedy c={c} staff={staff} />
             {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
             {!staff && <CustomerOffer caseId={c.id} onChanged={() => { void kase.reload(); void timeline.reload(); }} />}

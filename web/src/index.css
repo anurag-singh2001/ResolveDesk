@@ -70,6 +70,12 @@
   body {
     @apply bg-background font-sans text-foreground antialiased;
   }
+  /* A transparent select can open a list the operating system paints, unreadable on Windows. */
+  select,
+  select option {
+    background-color: var(--background);
+    color: var(--foreground);
+  }
   :focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;

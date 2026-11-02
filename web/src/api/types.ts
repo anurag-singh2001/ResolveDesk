@@ -174,8 +174,17 @@ export interface CustomerMessage {
   text: string;
 }
 
+/** Staff only: who to contact about a case. Customers never receive this. */
+export interface CaseCustomer {
+  ref: string;
+  name: string;
+  phone: string | null;
+  email: string | null;
+}
+
 export interface Case {
   id: string;
+  customer?: CaseCustomer | null;
   transaction_id: string | null;
   order_ref?: string | null; // NEW
   category: string | null;
