@@ -16,6 +16,7 @@ from app.core.models import (
     ActionProposal,
     Approval,
     Case,
+    Execution,
     Payment,
     RefundOperation,
     Transaction,
@@ -108,6 +109,27 @@ def is_aggregator_order(order: Transaction, settings: dict) -> bool:
     return str(order.source or "").strip().lower() in names
 
 
+def vouchers_on_order(
+    session: Session, transaction_id: uuid.UUID, exclude_proposal: uuid.UUID | None = None
+) -> int:
+    """Vouchers issued or being issued for this order, by any case. A failed one that was never
+    sent does not count. The proposal under review is left out so a retry can finish."""
+    query = (
+        select(func.count())
+        .select_from(Execution)
+        .join(ActionProposal, ActionProposal.id == Execution.proposal_id)
+        .join(Case, Case.id == ActionProposal.case_id)
+        .where(
+            Case.transaction_id == transaction_id,
+            ActionProposal.action == "free_item_voucher",
+            Execution.status != "failed",
+        )
+    )
+    if exclude_proposal is not None:
+        query = query.where(ActionProposal.id != exclude_proposal)
+    return int(session.scalar(query))
+
+
 def order_facts(
     session: Session,
     transaction_id: uuid.UUID,
@@ -130,5 +152,6 @@ def order_facts(
         settings=settings,
         order_total_paise=order.total_paise,
         refundable_paise=refundable_paise(session, order.id, exclude_proposal),
+        vouchers_on_order=vouchers_on_order(session, order.id, exclude_proposal),
     )
     return order, facts

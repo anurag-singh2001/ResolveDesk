@@ -249,3 +249,17 @@ def test_a_refused_voucher_is_a_failed_execution_and_escalates_the_case(
         assert s.get(Case, case_id).status == "escalated"
     again = execute_voucher(app_engine, f["hq_ctx"], pid)  # a retry or the sweeper
     assert again.status == "failed" and _vouchers(f) == []
+
+
+def test_a_second_report_on_the_order_never_issues_a_second_voucher(api, app_engine, flow):
+    """Pen test: once a case closed, reporting the same order again used to earn another voucher."""
+    f = flow
+    first = _open(api, f)
+    assert first["action"] == "free_item_voucher"
+    assert api.get(f"/cases/{first['id']}", headers=f["customer"]).json()["stage"] == "confirmed"
+    assert len(_vouchers(f)) == 1
+    second = _open(api, f)
+    assert second["id"] != first["id"]
+    seen = api.get(f"/cases/{second['id']}", headers=f["customer"]).json()
+    assert seen["stage"] not in ("processing", "confirmed")
+    assert len(_vouchers(f)) == 1  # the mock provider got exactly one issue

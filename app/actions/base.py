@@ -34,6 +34,7 @@ class Facts:
     settings: dict[str, Any]  # effective settings for the order's brand + location
     order_total_paise: int | None = None
     refundable_paise: int | None = None  # captured payments minus held/succeeded refunds
+    vouchers_on_order: int = 0  # issued or in flight, from other proposals on this order
 
 
 @dataclass(frozen=True)

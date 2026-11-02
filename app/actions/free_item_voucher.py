@@ -45,6 +45,8 @@ class FreeItemVoucher(NotYetExecutable, Action):
             checks["order_total_paise"] = total  # shown next to the value to the approver
             if inp.value_paise > total:
                 errors.append("voucher exceeds what the customer paid for the order")
+        if facts.vouchers_on_order:
+            errors.append("this order already has a voucher")
         return ValidationResult(ok=not errors, errors=errors, checks=checks)
 
     def can_auto_approve(self, inp: VoucherInput, facts: Facts) -> bool:
