@@ -689,3 +689,8 @@ The owner approved every recommendation in docs/research/owner-decisions-money-p
 - Why: the repeat_drop rule draws from the simulator RNG, so the whole Spice Route history shifts; the segments golden (`tests/integration/golden/segments_seed42.json`) was refreshed with UPDATE_GOLDEN=1 (only Spice Route's entries changed; BrewCo's are byte-identical). Demo DB: Spice Route must be re-seeded (`make seed TENANT=spice_route`) to get the drop and the new user; until then the demo shows the old history and the old user list. It was not reseeded here.
 - Why 3000 customers: the shared tests seed at 5% scale (75 customers, ~140 orders per window at one location). With 75 customers the pool saturates, every customer is a regular and no churn swap can lower the repeat rate (measured: 76.6% -> 77.5%, never flagged). 3000 gives 150 customers and the planted drop reads 57.0% -> 40.3% (z 2.66), above the 5-point and 1.64 z gates. BrewCo needs no change because 5 locations spread the orders. Full scale is 2 orders per customer, still plausible for a cloud kitchen.
 - Rejected: adding the user to the HQ role (does not give a third distinct actor at the location) and a Spice-only test fixture (tests must not name a tenant).
+
+## 2026-11-02 `.test` support contacts stay
+- Decision: the `.test` support contacts in tenant config stay as they are.
+- Why: owner, 2026-11-01: both tenants are dummy data, so these are kept for now.
+- Rejected: real-looking contacts, which would suggest real businesses.

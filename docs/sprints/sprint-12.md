@@ -97,3 +97,23 @@ Not yet (sprint not started). If time runs short: drop S12.4 and S12.7 first, ne
 
 ### Open items for the owner
 Confirm docs/HINDI-REVIEW.md is ready; approve the final merge (S12.13).
+
+### S12.12 evidence (2026-11-02)
+
+| Check | Result |
+|---|---|
+| Backend suite, 18 batches | 2,738 passed, 0 failed, on 9c4b128 plus the three test fixes in 4b07878 |
+| Lint and format | clean, 317 files |
+| Web tests | first run 2 failed, not named or looked into; next run 255 passed |
+| Type check and web build | clean. index 203.94 kB, dashboard 384.87 kB, HelpPage 134.79 kB, PlatformApp 24.53 kB, CasePage 21.94 kB |
+| Eval spice_route | report eval-20261102-053754; sr-late-001 and -006 scenarios then fixed and rerun, both pass |
+| Eval brewco | report eval-20261102-054905; bc-wrong-002 (agents) fails, it escalates instead of offering a voucher, also failed 2026-10-31 |
+| Scenario lab | run 64b2781cfe01, 3 scenarios, 82s, all same as last report |
+| Privacy erasure (eval DB, API) | no token: 409; with token: stays deferred; customer withdraw works. Completed erasure only in tests |
+| Pages by role | owner both tenants, franchisee, location manager, customer: all open, blocked pages say not found, no console errors |
+| Detail pages | approval and case open (about 3s); customer order detail not opened |
+| 375px | customer pages only: no page overflow. Staff pages not checked at 375px |
+| Languages | Privacy page en, hi, hi-Latn on both tenants. Other customer pages not rechecked in hi and hi-Latn |
+| Light and dark | body background correct; one dark screenshot, Dashboard |
+
+Known gaps: staff have no reject action on a privacy request; rules summary shows the organisation limit, not Bowl Theory's lower voucher limit; the demo DB is not reseeded, so S12.6 data is not on it and the Dashboard shows 0 orders in the last 30 days; PC clock runs 2.4s behind Neon.
