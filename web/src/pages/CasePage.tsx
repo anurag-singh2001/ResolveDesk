@@ -6,7 +6,13 @@ import { api } from "../api/endpoints";
 import type { AuditEvent, Case, TimelineEntry } from "../api/types";
 import { useAuth } from "../auth/session";
 import { StageBadge } from "../components/badges";
+import { DecideCase } from "../components/DecideCase";
 import { StageStepper } from "../components/StageStepper";
+import { CustomerMessages, OrderCard } from "../components/OrderCard";
+import { CustomerOffer } from "../components/CustomerOffer";
+import { CaseRemedyChoice } from "../components/RemedyChoice";
+import { RemedyBasis, SourceLinks } from "../components/DecisionSources";
+import { StaffReplyPanel } from "../components/StaffReplyPanel";
 import { Alert, Button, Card, Dl, ErrorState, Loading, PageHeader, Spinner, cx, inputClass } from "../components/ui";
 import { categoryLabel, formatDateTime, humanize, shortId } from "../lib/format";
 import { formatPaise } from "../lib/money";
@@ -25,6 +31,10 @@ async function loadTimeline(id: string): Promise<TimelineEntry[] | null> {
   }
 }
 
+// The choice (and its "you can ask" wording) is shown only before a decision; after that the
+// case status speaks, so a request is never presented as done.
+const PRE_DECISION: string[] = ["received", "investigating", "awaiting_info"];
+
 function remedyHeading(stage: string): string {
   if (stage === "confirmed") return "Confirmed remedy";
   if (stage === "processing") return "Approved remedy";
@@ -32,26 +42,33 @@ function remedyHeading(stage: string): string {
   return "Proposed remedy";
 }
 
-function Remedy({ c }: { c: Case }) {
+function Remedy({ c, staff }: { c: Case; staff: boolean }) {
   if (!c.action) return null;
   return (
     <Card className="p-4">
-      <h2 className="text-sm font-semibold text-slate-900">{remedyHeading(c.stage)}</h2>
+      <h2 className="font-montserrat text-sm font-semibold text-foreground">{remedyHeading(c.stage)}</h2>
       <div className="mt-3 flex items-baseline justify-between gap-3">
-        <span className="text-sm text-slate-700">{humanize(c.action)}</span>
-        {c.amount_paise != null && <span className="text-xl font-semibold tabular-nums text-slate-900">{formatPaise(c.amount_paise)}</span>}
+        <span className="text-sm text-foreground">{humanize(c.action)}</span>
+        {c.amount_paise != null && <span className="font-mono text-xl font-semibold tabular-nums text-foreground">{formatPaise(c.amount_paise)}</span>}
       </div>
+      <RemedyBasis lines={c.basis} />
+      {c.sources && c.sources.length > 0 && (
+        <div className="mt-3 border-t border-border pt-3">
+          <h3 className="text-xs font-medium text-muted-foreground">Based on our policy</h3>
+          <SourceLinks sources={c.sources} showVersion={staff} />
+        </div>
+      )}
       {c.stage === "awaiting_approval" && (
-        <p className="mt-2 text-xs text-slate-500">A person reviews this before anything is paid. Nothing is final until it's confirmed.</p>
+        <p className="mt-2 text-xs text-muted-foreground">A person reviews this before anything is paid. Nothing is final until it's confirmed.</p>
       )}
     </Card>
   );
 }
 
 function Timeline({ entries }: { entries: TimelineEntry[] }) {
-  if (entries.length === 0) return <p className="text-sm text-slate-500">No updates yet.</p>;
+  if (entries.length === 0) return <p className="text-sm text-muted-foreground">No updates yet.</p>;
   return (
-    <ol className="relative space-y-5 border-l border-slate-200 pl-5">
+    <ol className="relative space-y-5 border-l border-border pl-5">
       {entries.map((e, i) => {
         const tone = stageMeta(e.stage).tone;
         return (
@@ -59,17 +76,23 @@ function Timeline({ entries }: { entries: TimelineEntry[] }) {
             <span
               aria-hidden="true"
               className={cx(
-                "absolute -left-[1.6rem] top-1 h-2.5 w-2.5 rounded-full ring-4 ring-white",
-                tone === "success" ? "bg-emerald-500" : tone === "danger" ? "bg-rose-500" : tone === "warning" ? "bg-amber-500" : tone === "info" ? "bg-sky-500" : "bg-accent-500",
+                "absolute -left-[1.6rem] top-1 h-2.5 w-2.5 rounded-full border bg-background ring-4 ring-background",
+                tone === "success"
+                  ? "border-green-600 dark:border-green-400"
+                  : tone === "danger"
+                    ? "border-red-600 dark:border-red-400"
+                    : tone === "warning" || tone === "info"
+                      ? "border-yellow-600 dark:border-yellow-400"
+                      : "border-muted-foreground",
               )}
             />
             <div className="flex flex-wrap items-baseline justify-between gap-x-3">
-              <h3 className="text-sm font-medium text-slate-900">{e.title}</h3>
-              <time dateTime={e.at} className="text-xs text-slate-500">
+              <h3 className="text-sm font-medium text-foreground">{e.title}</h3>
+              <time dateTime={e.at} className="text-xs text-muted-foreground">
                 {formatDateTime(e.at)}
               </time>
             </div>
-            {e.text && <p className="mt-0.5 text-sm text-slate-600">{e.text}</p>}
+            {e.text && <p className="mt-0.5 text-sm text-muted-foreground">{e.text}</p>}
           </li>
         );
       })}
@@ -101,7 +124,7 @@ function ReplyBox({ caseId, onSent }: { caseId: string; onSent: () => void }) {
   return (
     <Card className="p-4 sm:p-6">
       <form onSubmit={submit} className="space-y-3">
-        <label htmlFor="reply" className="block text-sm font-semibold text-slate-900">
+        <label htmlFor="reply" className="block text-sm font-semibold text-foreground">
           Your reply
         </label>
         <textarea id="reply" rows={4} maxLength={2000} className={inputClass} value={text} onChange={(e) => setText(e.target.value)} />
@@ -110,6 +133,44 @@ function ReplyBox({ caseId, onSent }: { caseId: string; onSent: () => void }) {
           {busy ? "Sending…" : "Send reply"}
         </Button>
       </form>
+    </Card>
+  );
+}
+
+function RerunAi({ caseId, onStarted }: { caseId: string; onStarted: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await api.rerunAi(caseId);
+      setDone(true);
+      onStarted();
+    } catch (err) {
+      setError(errorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="p-4">
+      <h2 className="font-montserrat text-sm font-semibold text-foreground">The AI was unavailable</h2>
+      <p className="mt-2 text-xs text-muted-foreground">This case came to you because the AI could not run. Run it again to get a category and a suggested remedy.</p>
+      {error && <Alert>{error}</Alert>}
+      {done ? (
+        <p className="mt-3 text-sm text-foreground" role="status">
+          The AI is running again. This page updates by itself.
+        </p>
+      ) : (
+        <Button variant="outline" className="mt-3" onClick={() => void run()} disabled={busy}>
+          {busy ? "Starting…" : "Run the AI again"}
+        </Button>
+      )}
     </Card>
   );
 }
@@ -137,31 +198,31 @@ function AuditTrail({ caseId }: { caseId: string }) {
           if (isOpen && events === null) void load();
         }}
       >
-        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-slate-900 hover:bg-slate-50">
-          Audit trail <span className="font-normal text-slate-500">(staff only, raw events)</span>
+        <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted">
+          Audit trail <span className="font-normal text-muted-foreground">(staff only, raw events)</span>
         </summary>
         {open && (
-          <div className="border-t border-slate-200 px-4 py-3">
+          <div className="border-t border-border px-4 py-3">
             {error ? (
               <ErrorState error={error} onRetry={load} />
             ) : events === null ? (
-              <div className="flex items-center gap-2 py-2 text-sm text-slate-500">
+              <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
                 <Spinner className="h-4 w-4" /> Loading events…
               </div>
             ) : events.length === 0 ? (
-              <p className="text-sm text-slate-500">No events recorded.</p>
+              <p className="text-sm text-muted-foreground">No events recorded.</p>
             ) : (
               <ol className="space-y-3">
                 {events.map((ev, i) => (
-                  <li key={i} className="rounded-lg border border-slate-200 p-3">
+                  <li key={i} className="rounded-lg border border-border p-3">
                     <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="font-mono text-xs font-semibold text-slate-900">{ev.event}</span>
-                      <span className="text-xs text-slate-500">
+                      <span className="font-mono text-xs font-semibold text-foreground">{ev.event}</span>
+                      <span className="text-xs text-muted-foreground">
                         {humanize(ev.actor_type)} · {formatDateTime(ev.occurred_at)}
                       </span>
                     </div>
                     {ev.payload && Object.keys(ev.payload).length > 0 && (
-                      <pre className="mt-2 max-h-60 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-700">{JSON.stringify(ev.payload, null, 2)}</pre>
+                      <pre className="mt-2 max-h-60 overflow-auto rounded-md bg-muted p-2 font-mono text-xs text-foreground">{JSON.stringify(ev.payload, null, 2)}</pre>
                     )}
                   </li>
                 ))}
@@ -193,7 +254,7 @@ export function CasePage() {
 
   return (
     <>
-      <Link to="/cases" className="mb-4 inline-flex text-sm text-slate-500 hover:text-slate-900">
+      <Link to="/cases" className="mb-4 inline-flex text-sm text-muted-foreground hover:text-foreground">
         ← {staff ? "Cases" : "My cases"}
       </Link>
       <PageHeader
@@ -210,17 +271,17 @@ export function CasePage() {
       <div className="space-y-6">
         <Card className="p-4 sm:p-6">
           <StageStepper stage={c.stage} />
-          <div className="mt-6 rounded-lg bg-slate-50 px-4 py-3" aria-live="polite">
-            <p className="text-sm text-slate-800">{c.message}</p>
+          <div className="mt-6 rounded-lg border border-border px-4 py-3" aria-live="polite">
+            <p className="text-sm text-foreground">{c.message}</p>
             {isActiveStage(c.stage) && !timedOut && (
-              <p className="mt-2 flex items-center gap-2 text-xs text-slate-500">
+              <p className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
                 <Spinner className="h-3.5 w-3.5" /> Updating automatically…
               </p>
             )}
             {isActiveStage(c.stage) && timedOut && (
-              <div className="mt-2 flex items-center gap-3 text-xs text-slate-500">
+              <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
                 This is taking longer than usual.
-                <Button variant="secondary" className="px-2 py-1 text-xs" onClick={() => { void kase.reload(); void timeline.reload(); }}>
+                <Button variant="outline" className="!h-7 !px-2 text-xs" onClick={() => { void kase.reload(); void timeline.reload(); }}>
                   Refresh
                 </Button>
               </div>
@@ -230,6 +291,8 @@ export function CasePage() {
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
+            <CustomerMessages messages={c.customer_messages ?? []} own={!staff} />
+            {staff && c.transaction_id && <OrderCard orderId={c.transaction_id} />}
             {c.stage === "awaiting_info" && !staff && (
               <ReplyBox
                 caseId={c.id}
@@ -239,9 +302,18 @@ export function CasePage() {
                 }}
               />
             )}
+            {staff && (
+              <StaffReplyPanel
+                kase={c}
+                onChanged={() => {
+                  void kase.reload();
+                  void timeline.reload();
+                }}
+              />
+            )}
             {timeline.data !== null && (
               <Card className="p-4 sm:p-6">
-                <h2 className="mb-4 text-sm font-semibold text-slate-900">Timeline</h2>
+                <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Timeline</h2>
                 {timeline.loading ? (
                   <Loading label="Loading timeline…" />
                 ) : timeline.error ? (
@@ -254,9 +326,21 @@ export function CasePage() {
             {staff && <AuditTrail caseId={c.id} />}
           </div>
           <div className="space-y-6">
-            <Remedy c={c} />
+            <Remedy c={c} staff={staff} />
+            {!staff && PRE_DECISION.includes(c.stage) && <CaseRemedyChoice caseId={c.id} />}
+            {!staff && <CustomerOffer caseId={c.id} onChanged={() => { void kase.reload(); void timeline.reload(); }} />}
+            {staff && (<DecideCase caseId={c.id} stage={c.stage} onChanged={() => { void kase.reload(); void timeline.reload(); }} />)}
+            {staff && c.can_rerun_ai && (
+              <RerunAi
+                caseId={c.id}
+                onStarted={() => {
+                  void kase.reload();
+                  void timeline.reload();
+                }}
+              />
+            )}
             <Card className="p-4">
-              <h2 className="mb-4 text-sm font-semibold text-slate-900">Case details</h2>
+              <h2 className="mb-4 font-montserrat text-sm font-semibold text-foreground">Case details</h2>
               <Dl
                 items={[
                   ["Case", <span key="id" className="font-mono">{shortId(c.id)}</span>],

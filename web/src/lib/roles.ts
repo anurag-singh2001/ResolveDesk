@@ -18,7 +18,7 @@ export function isStaff(role: string | undefined): boolean {
 export interface NavItem {
   to: string;
   label: string;
-  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "growth" | "privacy";
+  icon: "orders" | "cases" | "approvals" | "help" | "dev" | "insights" | "dashboard" | "growth" | "privacy" | "policies";
 }
 
 /** Which screens a role sees. The API still enforces access on every call. */
@@ -36,6 +36,7 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
     return [
       { to: "/orders", label: "My orders", icon: "orders" },
       { to: "/cases", label: "My cases", icon: "cases" },
+      { to: "/policies", label: "Our policies", icon: "policies" },
       { to: "/privacy", label: "Privacy & data", icon: "privacy" },
       { to: "/help", label: "Help", icon: "help" },
     ];
@@ -43,9 +44,16 @@ export function navFor(role: string, growthEnabled = false): NavItem[] {
   if (isStaff(role)) {
     return [
       { to: "/approvals", label: "Approvals", icon: "approvals" },
+      { to: "/queue", label: "Cases to handle", icon: "cases" },
       { to: "/cases", label: "Cases", icon: "cases" },
+      { to: "/dashboard", label: "Dashboard", icon: "dashboard" },
+      { to: "/segments", label: "Segments", icon: "insights" },
       ...(canSeeInsights(role) ? [{ to: "/insights", label: "Insights", icon: "insights" as const }] : []),
       ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth", label: "Growth", icon: "growth" as const }] : []),
+      ...(role === "hq_owner" && growthEnabled ? [{ to: "/growth/brands", label: "Brand signals", icon: "growth" as const }] : []),
+      ...(canSeeGrowth(role, growthEnabled) ? [{ to: "/growth/calendar", label: "Campaign calendar", icon: "growth" as const }] : []),
+      ...(role === "hq_owner" ? [{ to: "/privacy-requests", label: "Privacy requests", icon: "privacy" as const }] : []),
+      { to: "/policies", label: "Policies", icon: "policies" },
       { to: "/help", label: "Help", icon: "help" },
     ];
   }

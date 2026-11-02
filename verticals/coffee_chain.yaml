@@ -15,7 +15,10 @@ issue_categories:
   - privacy_request
 actions: [refund, free_item_voucher, loyalty_credit, send_status_update]
 # Deterministic (no-LLM) remedy per issue category; unmapped categories escalate to a human.
-remedies: {wrong_order: voucher, missing_items: refund_missing, quality: voucher}
+# `{options: [...]}` lets the customer choose between remedies (S7.9). A refund option is only a
+# request: a team member decides on it (the manager-decides policy for a wrong item), and it is
+# never auto-approved. Owner approved 2026-10-31 (S8.8); hidden on aggregator-placed orders.
+remedies: {wrong_order: {options: [voucher, {refund_percent: 50}]}, missing_items: refund_missing, quality: voucher}
 metrics: [wrong_order_rate, repeat_rate, ticket_rate, avg_ticket_paise]
 features:
   growth: false
@@ -26,6 +29,9 @@ settings:
   # choice, never described as a legal deadline). Provisional, not legal advice.
   privacy_contact_name: {kind: value, default: ""}
   privacy_contact_email: {kind: value, default: ""}
+  # Where a customer disputes a decision (closing messages). Never the privacy contact.
+  support_contact_name: {kind: value, default: ""}
+  support_contact_email: {kind: value, default: ""}
   grievance_target_days: {kind: limit, default: 30}
   # Dated rules (policy versions, late tiers) use this local calendar, not UTC dates.
   business_timezone: {kind: value, default: "Asia/Kolkata"}
@@ -33,6 +39,12 @@ settings:
   # text and the customer's contact data are redacted. The job never goes below 365 (the
   # one-year floor), so a lower value is ignored.
   support_retention_days: {kind: value, default: 365}
+  # "What we hold" page (S8.5a, provisional). Years that payment, order and refund records are
+  # kept, in financial years (a tenant may only lower it; 8 per owner decision 2026-10-31). The "provisional" label and the
+  # confirmed "we do not keep" claims live in code (app/engine/data_held.py) so a tenant
+  # override cannot change them. data_not_kept only NARROWS what code has confirmed.
+  payment_retention_years: {kind: limit, default: 8}
+  data_not_kept: {kind: value, default: [card_numbers]}
   # DPDP s.11 access (S5.2, provisional): who else processes a customer's data. Shown in the
   # customer data export. A tenant can replace the list if its provider set differs.
   data_processors:
@@ -44,8 +56,12 @@ settings:
   refund_max_percent: {kind: limit, default: 100}
   refund_without_escalation_paise: {kind: limit, default: 50000}
   voucher_max_paise: {kind: limit, default: 30000}
+  # A voucher is at most this percent of the order total (100 = never above what was paid).
+  voucher_percent: {kind: limit, default: 100}
   # Rs 150: the largest voucher approved without a person (decision 2026-10-26); lower only.
   voucher_auto_approve_max_paise: {kind: limit, default: 15000}
+  # Days a customer has to answer an "ask the customer" question (S8.10); then the case returns to staff.
+  customer_answer_days: {kind: limit, default: 3}
   # Fair use: at this many refunds/vouchers approved for the customer in 30 days, nothing
   # more is auto-approved (a person decides; never an automatic denial). Lower only.
   fair_use_max_grants_30d: {kind: limit, default: 3}
@@ -55,6 +71,33 @@ settings:
   # share of the audience held out unmessaged so lift can be measured.
   growth_campaign_budget_paise: {kind: limit, default: 1000000}
   growth_holdout_percent: {kind: value, default: 10}
+  # ROI estimates (S11.3b): what one WhatsApp message costs, and the gross margin used when
+  # growth_roi_basis is margin. Both are estimates and are labelled so on the page.
+  growth_message_cost_paise: {kind: value, default: 86}
+  growth_gross_margin_bp: {kind: value, default: 6000}
+  growth_roi_basis: {kind: value, default: revenue, allowed: [revenue, margin]}
+  # Customer segments (S11.2). A customer is "lapsed" at a scope when their last order there is
+  # older than lapsed_days; win-back audiences and the segment counts share that one rule.
+  lapsed_days: {kind: value, default: 28}
+  segment_new_days: {kind: value, default: 30}
+  # "At risk": no order for this many times the customer's own typical gap between orders.
+  segment_at_risk_gap_multiple: {kind: value, default: 2}
+  # "Loyal": in the top this-many percent of the base on both order count and spend.
+  segment_loyal_top_percent: {kind: value, default: 20}
+  # Segment and cohort cells with fewer customers than this are hidden from every role but hq_owner.
+  small_cell_min: {kind: value, default: 10}
+  # Orders needed in each window before a brand repeat rate shows as a trend (below: low volume).
+  growth_min_orders: {kind: value, default: 30}
+  # The most (paise) an hq_owner may approve themselves after switching a remedy to a higher
+  # amount, with a written reason (owner decision M3, Rs 500). Lower only.
+  switch_self_approve_max_paise: {kind: limit, default: 50000}
+  # Campaigns need two approvers (one an hq_owner) when their budget is at or above this; 0 =
+  # every campaign (owner decision M4, 2026-10-31). A limit with default 0: no override can raise
+  # it, so every campaign needs two approvers. Read at tenant level only.
+  campaign_dual_approval_min_paise: {kind: limit, default: 0}
+  # Order sources (transactions.source) placed through a third-party delivery app. The app
+  # refunds those orders, so the refund option is hidden and a refund proposal is refused.
+  aggregator_order_sources: {kind: value, default: [swiggy, zomato]}
   refund_channel: {kind: value, default: tenant_gateway, allowed: [tenant_gateway, aggregator_only]}
   late_delivery_tiers:
     kind: value

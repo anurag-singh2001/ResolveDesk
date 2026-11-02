@@ -50,15 +50,17 @@ def proposal_made(
     return approval
 
 
-def escalate(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str) -> None:
+def escalate(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str, code: str = ""
+) -> None:
     with tenant_session(tenant_id, engine) as s:
         case = s.get(Case, case_id)
         if case.status not in ESCALATABLE:  # a person already owns/closed it: never overwrite
             return
         case.status = "escalated"
+        payload = {"reason": reason[:500], **({"code": code} if code else {})}
         audit.record(s, tenant_id, actor_type="system", actor_id=None, event="case.escalated",
-                     entity_type="case", entity_id=case_id,
-                     payload={"reason": reason[:500]})  # fmt: skip
+                     entity_type="case", entity_id=case_id, payload=payload)  # fmt: skip
         events.emit(s, tenant_id, "case.escalated", case_id, {"reason": reason[:200]})
 
 

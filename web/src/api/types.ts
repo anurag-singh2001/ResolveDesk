@@ -68,6 +68,65 @@ export interface Preferences {
   language: Language;
 }
 
+export interface PolicySection {
+  id: string;
+  anchor: string;
+  title: string;
+  text: string;
+}
+
+export interface PolicyDoc {
+  id: string;
+  title: string;
+  topic: string;
+  version: number;
+  in_force_from: string;
+  in_force_to: string | null;
+  scope: string;
+  sections: PolicySection[];
+}
+
+export interface RuleLine {
+  code: string;
+  kind: "voucher" | "refund" | "refund_missing" | "apology";
+  text: string;
+  approval: "instant" | "team" | null;
+  approval_text: string | null;
+  max_paise: number | null;
+  percent: number | null;
+  min_minutes_late: number | null;
+  label: string | null;
+}
+
+export interface CategoryRule {
+  category: string;
+  title: string;
+  options: RuleLine[];
+  tiers: RuleLine[];
+  notes: string[];
+  decided_by: "instant" | "team" | "mixed";
+  setting_keys: string[];
+}
+
+/** One setting behind the rules; only staff receive these. */
+export interface RuleSetting {
+  key: string;
+  value: unknown;
+  source: "pack_default" | "tenant_override";
+}
+
+export interface RulesSummary {
+  language: Language;
+  pack_name: string;
+  pack_version: number;
+  pack_updated: string;
+  settings_updated: string | null;
+  in_force_since: string;
+  in_force_text: string;
+  categories: CategoryRule[];
+  settings: RuleSetting[];
+}
+
 export interface PrivacyContact {
   name: string;
   email: string;
@@ -110,6 +169,11 @@ export type Stage =
   | "escalated"
   | "closed";
 
+export interface CustomerMessage {
+  at: string;
+  text: string;
+}
+
 export interface Case {
   id: string;
   transaction_id: string | null;
@@ -121,6 +185,33 @@ export interface Case {
   amount_paise: number | null;
   proposal_id: string | null;
   created_at?: string | null; // NEW
+  customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
+  can_rerun_ai?: boolean; // staff, GET /cases/{id}: escalated because the AI was unavailable
+  staff_messages?: StaffMessage[]; // GET /cases/{id}, staff only (S7.6)
+  closed?: boolean;
+  close_reason?: string | null;
+  basis?: string[]; // which rule set the amount (S8.3)
+  sources?: DecisionSource[]; // cited policy sections as links (S8.3)
+}
+
+export interface RerunAiResult {
+  status: "started" | "already_running" | string;
+}
+
+export interface StaffMessage {
+  at: string;
+  kind: "template" | "note";
+  template_id: string | null;
+  text: string;
+  sender_user_id: string | null;
+}
+
+export interface ReplyTemplates {
+  language: string;
+  templates: Array<{ id: string; label: string; preview: string }>;
+  close_reasons: Array<{ id: string; label: string }>;
+  note_max_length: number;
+  closed: boolean;
 }
 
 export interface TimelineEntry {
@@ -137,10 +228,50 @@ export interface AuditEvent {
   payload: Record<string, unknown>;
 }
 
+/** A cited policy section resolved on the server (S8.3): title and number from our policy table. */
+export interface DecisionSource {
+  doc_key: string | null;
+  version: number | null;
+  document_title: string | null;
+  section_id: string | null;
+  href: string; // /policies#<doc>-<section>, the document, or the page when the section changed
+  section_changed: boolean;
+  policy_revised?: boolean;
+  note: string | null;
+}
+
+export interface PolicySectionDetail extends PolicySection {
+  document_id: string;
+  document_title: string;
+  version: number;
+  in_force_from: string;
+  in_force_to: string | null;
+}
+
 export interface Citation {
   section_ref: string;
   doc_key: string;
   version: number | string;
+}
+
+/** A case that needs a person (GET /cases/queue, S7.3). */
+export interface QueueItem {
+  case_id: string;
+  order_ref: string | null;
+  location_name: string | null;
+  category: string | null;
+  status: string;
+  reason_kind: "escalated" | "awaiting_approval";
+  reason_code: string;
+  reason: string;
+  waiting_since: string;
+  waiting_seconds: number;
+  owner_user_id: string | null;
+  owner_name: string | null;
+  owned_by_me: boolean;
+  language: string;
+  amount_paise: number | null;
+  proposal_id: string | null;
 }
 
 export interface PendingApproval {
@@ -157,9 +288,53 @@ export interface PendingApproval {
   eligible: boolean;
   errors: string[];
   created_at?: string | null; // NEW
+  customer_messages?: CustomerMessage[]; // only on GET /cases/{id}
   customer_message?: string | null; // NEW
   location_name?: string | null; // NEW
   citations?: Citation[]; // NEW
+  basis?: string[]; // which rule set the amount (S8.3)
+  sources?: DecisionSource[]; // cited sections as links (S8.3)
+  offer?: StaffOffer | null; // S8.10: the question put to the customer, if any
+  queue_reason?: "customer_chose" | "no_customer_answer" | "safety_review" | null; // S8.10
+}
+
+/** S8.10: what an approver sees of a question put to the customer. */
+export interface StaffOffer {
+  state: "open" | "expired";
+  asked_at: string;
+  expires_at: string;
+  options: { code: string; kind: string; amount_paise: number }[];
+}
+
+export interface OfferedOption {
+  code: string;
+  action: string;
+  amount_paise: number;
+}
+
+export interface AskSuggestion {
+  proposal_id: string;
+  can_ask: boolean;
+  blocked_reason: string | null;
+  answer_days: number;
+  options: OfferedOption[];
+}
+
+export interface AskResult {
+  proposal_id: string;
+  expires_at: string;
+  options: OfferedOption[];
+}
+
+/** S8.10: what the customer sees. Text comes from server templates in the case language. */
+export interface CustomerOffer {
+  state: "none" | "open" | "chosen" | "expired" | "review";
+  heading: string;
+  intro: string;
+  expires_note: string;
+  status_text: string;
+  options: RemedyOption[];
+  expires_at?: string | null;
 }
 
 export interface OutletInsight {
@@ -228,12 +403,43 @@ export interface Campaign {
   approvals: CampaignApproval[];
   fully_approved: boolean;
   playbook: PlaybookEntry | null;
+  // Same counts as the calendar (S12.8); counts only, never customer ids.
+  overlap_customers: number | null; // null: not known for this caller (never shown as 0)
+  frequency_cap_customers: number | null;
 }
 
 export interface DecisionResponse {
   proposal_id: string;
   decision: "approved" | "rejected";
   expires_at: string;
+  execution: string;
+}
+
+export interface SwitchAlternative {
+  action: string;
+  min_paise: number;
+  max_paise: number;
+  step_paise: number;
+  needs_hq_above_paise: number | null;
+  you_can_approve_up_to_paise: number;
+}
+
+export interface Alternatives {
+  proposal_id: string;
+  current_action: string;
+  current_amount_paise: number | null;
+  alternatives: SwitchAlternative[];
+}
+
+export interface SwitchResponse {
+  old_proposal_id: string;
+  proposal_id: string;
+  action: string;
+  amount_paise: number | null;
+  decision: "approved" | null;
+  waiting_for: "hq_owner" | "second_person" | string | null;
+  self_approved?: "downgrade" | "owner_override" | null;
+  expires_at: string | null;
   execution: string;
 }
 
@@ -258,18 +464,404 @@ export interface ConsentEvent {
   at: string;
 }
 
+export interface ConsentPurposeCopy {
+  purpose: string;
+  channel: string;
+  granted: boolean;
+  title: string;
+  benefit: string;
+  sent: string;
+  cap: string;
+  cap_days: number;
+  channel_label: string;
+  switch_label: string;
+  state_label: string;
+}
+
+export interface ConsentHistoryCopy extends ConsentEvent {
+  purpose_label: string;
+  channel_label: string;
+  action_label: string;
+}
+
+export interface ConsentBenefits {
+  language: string;
+  headings: Record<"title" | "intro" | "history" | "note" | "on" | "off" | "notice", string>;
+  always_on: { title: string; body: string; badge: string };
+  purposes: ConsentPurposeCopy[];
+  history_labelled: ConsentHistoryCopy[];
+}
+
 export interface Consents {
   notice_version: string;
   consents: ConsentState[];
   history: ConsentEvent[];
+  benefits: ConsentBenefits;
+}
+
+export interface HeldItem {
+  key: string;
+  label: string;
+  purpose: string;
+  use: "help" | "marketing";
+  use_label: string;
+  retention: string;
+  retention_provisional: boolean;
+  value: string | null;
+  count: number | null;
+  summary: string;
+}
+
+export interface PrivacyContact {
+  label: string;
+  configured: boolean;
+  name: string;
+  email: string;
+  response_target_days: number;
+  response_text: string;
+}
+
+export interface DataHeld {
+  language: string;
+  headings: Record<"title" | "item" | "yours" | "purpose" | "keep" | "use" | "processors" | "not_kept" | "contact" | "page_title" | "page_subtitle" | "download_title" | "download_body" | "readable_link", string>;
+  items: HeldItem[];
+  processors: { name: string; role: string; data: string }[];
+  not_kept: string[];
+  provisional_label: string | null;
+  contact: PrivacyContact;
+}
+
+export type ErasureStage = "received" | "deferred" | "done" | "withdrawn";
+export interface ExportField {
+  label: string;
+  value: string;
+}
+
+export interface ExportSection {
+  key: string;
+  title: string;
+  purpose: string | null;
+  retention: string | null;
+  retention_provisional: boolean;
+  records: ExportField[][];
+  history?: ExportField[][];
+}
+
+export interface ReadableExport {
+  language: string;
+  title: string;
+  generated: string;
+  tz_note: string;
+  labels: { why: string; howlong: string; empty: string; history: string; print: string; back: string };
+  provisional_label: string | null;
+  sections: ExportSection[];
+  contact: PrivacyContact;
 }
 
 export interface ErasureRequest {
   id: string;
   kind: string;
-  status: "pending_approval" | "deferred" | "completed";
+  status: "pending_approval" | "deferred" | "completed" | "withdrawn";
+  stage: ErasureStage;
+  stage_label: string;
+  stage_text: string;
+  reason_code: string | null;
   reason: string | null;
   deferred_until: string | null;
-  requested_at: string;
+  received_at: string;
+  received_text: string;
+  expected_by: string | null;
+  expected_text: string | null;
   completed_at: string | null;
+  // What happened to the one completion message; null until it is final.
+  completion_message: "sent" | "failed" | "unknown" | "expired" | "none" | null;
+  can_withdraw: boolean;
+  contact: PrivacyContact;
+}
+
+export interface ErasureInfo {
+  language: string;
+  title: string;
+  intro: string;
+  headings: Record<"remove" | "keep" | "wait", string>;
+  remove: string[];
+  keep: { key: string; label: string; reason: string; provisional: boolean }[];
+  wait: string[];
+  provisional_label: string | null;
+  timing: string;
+  target_days: number;
+  contact: PrivacyContact;
+  completion_notice: {
+    channels: ("phone" | "email")[];
+    default: "phone" | "email" | null;
+    labels: Record<string, string>;
+    text: string;
+    choose: string;
+  };
+  buttons: Record<"request" | "confirm" | "back" | "withdraw", string>;
+  confirm: { title: string; body: string };
+  status_title: string;
+}
+
+export interface RemedyOption {
+  code: string;
+  kind: "voucher" | "refund" | string;
+  title: string;
+  summary: string; // amount computed by the server
+  amount_paise: number;
+  approval: "instant" | "team" | string;
+  timing: string;
+}
+
+export interface RemedyOptions {
+  options: RemedyOption[];
+  choice_required: boolean;
+}
+
+export interface StaffRemedyOption {
+  action: string;
+  min_paise: number;
+  max_paise: number;
+}
+
+export interface StaffRemedyOptions {
+  categories: string[];
+  category: string | null;
+  options: StaffRemedyOption[];
+  note: string | null;
+}
+
+export interface ProposedRemedy {
+  proposal_id: string;
+  case_id: string;
+  action: string;
+  amount_paise: number | null;
+  created: boolean;
+  status: "awaiting_approval" | "approved" | "executed" | "rejected" | "expired";
+  needs_hq: boolean;
+}
+
+export interface PrivacyQueueItem {
+  id: string;
+  kind: string;
+  customer_ref: string;
+  status: "pending_approval" | "deferred";
+  stage: "received" | "deferred";
+  received_at: string;
+  target_at: string;
+  days_left: number;
+  overdue: boolean;
+  deferred_until: string | null;
+  reason_code: string | null;
+  reason: string | null;
+}
+
+export interface PrivacyQueue {
+  target_days: number;
+  truncated: boolean;
+  items: PrivacyQueueItem[];
+}
+
+/** What approving an erasure would do, as counts only, with the approval bound to it. */
+export interface PrivacyDryRun {
+  request_id: string;
+  status: string;
+  remove: Record<string, number>;
+  keep: Record<string, number>;
+  deferred: { code: string; until: string | null; reason: string } | null;
+  payload_hash: string;
+  approval_token: string;
+  expires_at: string;
+}
+
+// GET /insights/metrics. Money is integer paise, *_bp are basis points, null means no data.
+export interface MetricPoint {
+  bucket_start: string; // YYYY-MM-DD, start of the day or ISO week in the response timezone
+  cases_opened: number;
+  cases_by_category: Record<string, number>;
+  refunds_count: number;
+  refunds_paise: number;
+  vouchers_count: number;
+  vouchers_paise: number;
+  remedy_spend_paise: number;
+  decisions: number;
+  median_decision_minutes: number | null;
+  sla_met_bp: number | null;
+  orders: number;
+  repeat_orders: number;
+  repeat_rate_bp: number | null;
+  revenue_paise: number;
+  aov_paise: number | null;
+  ai_decided: number;
+  ai_overridden: number;
+  ai_accuracy_bp: number | null;
+}
+
+export interface MetricGroup {
+  id: string | null;
+  name: string;
+  points: MetricPoint[];
+}
+
+export interface MetricsResponse {
+  granularity: "day" | "week";
+  timezone: string;
+  start: string;
+  end: string;
+  decision_sla_minutes: number;
+  groups: MetricGroup[];
+}
+
+export interface MetricsQuery {
+  granularity: "day" | "week";
+  days: number;
+  group_by: "none" | "location" | "brand";
+  location_id?: string;
+  brand_id?: string;
+}
+
+// --- Segments and cohorts (S11.2): aggregates only, no customer identity ---------------------
+export interface SegmentCell {
+  segment: string;
+  suppressed: boolean; // fewer customers than the small-cell minimum: numbers withheld
+  in_segment: number | null;
+  share_bp: number | null;
+  orders: number | null;
+  total_spend_paise: number | null;
+  aov_paise: number | null;
+  contactable_whatsapp: number | null;
+  own_channel: number | null;
+  aggregator_only: number | null;
+  aggregator_only_not_contactable: number | null;
+}
+
+export interface SegmentGroup {
+  id: string | null;
+  name: string;
+  customers: number | null; // null: hidden (under the small-cell minimum)
+  segments: SegmentCell[];
+}
+
+export interface SegmentsResponse {
+  as_of: string;
+  lapsed_days: number;
+  new_days: number;
+  small_cell_min: number;
+  cells_hidden_below_min: boolean;
+  groups: SegmentGroup[];
+}
+
+export interface CohortCell {
+  month: number;
+  measurable: boolean;
+  returned: number | null;
+  return_bp: number | null;
+}
+
+export interface CohortRow {
+  cohort_month: string;
+  suppressed: boolean;
+  size: number | null;
+  cells: CohortCell[];
+}
+
+export interface CohortGroup {
+  id: string | null;
+  name: string;
+  cohorts: CohortRow[];
+}
+
+export interface CohortsResponse {
+  as_of: string;
+  small_cell_min: number;
+  cells_hidden_below_min: boolean;
+  groups: CohortGroup[];
+}
+
+// S11.4: brand-level repeat-rate readings (GET /growth/brand-signals). Aggregates only.
+export interface BrandSignal {
+  brand_id: string;
+  name: string;
+  status: "drop" | "steady" | "low_volume";
+  baseline_orders: number;
+  recent_orders: number;
+  min_orders: number;
+  baseline_bp: number | null; // null when low_volume: no trend is shown
+  recent_bp: number | null;
+  drop_bp: number | null;
+  diagnosis: { findings?: string[]; hypotheses?: string[] } | null;
+}
+
+export interface BrandSignalsResponse {
+  as_of: string;
+  recent_start: string;
+  baseline_start: string;
+  definition: string;
+  brands: BrandSignal[];
+}
+
+// GET /growth/calendar (S11.3a). Read-only. Money is integer paise; warnings are counts only.
+export interface CalendarCampaign {
+  id: string;
+  status: string;
+  location_id: string;
+  location_name: string;
+  brands: { id: string; name: string }[];
+  audience_n: number;
+  treatment_n: number;
+  holdout_n: number;
+  budget_paise: number;
+  start: string;
+  window_end: string;
+  window_days: number;
+  // Treatment members per send state; every state stays apart (never one "sent" total).
+  send_counts: Record<string, number>;
+  overlap_customers: number;
+  frequency_cap_customers: number;
+}
+
+export interface CalendarResponse {
+  as_of: string;
+  campaigns: CalendarCampaign[];
+}
+
+export interface RoiArm {
+  customers: number;
+  ordered: number;
+  orders: number;
+  revenue_paise: number;
+}
+
+export interface RoiReport {
+  campaign_id: string;
+  status: string;
+  verdict: string | null;
+  window_over: boolean;
+  arms: { treatment: RoiArm; holdout: RoiArm };
+  send_states: Record<string, number>;
+  incremental_revenue_paise: number | null;
+  cost: { offer_budget_paise: number; message_cost_each_paise: number; message_cost_paise: number; succeeded_sends: number; gross_cost_paise: number; note: string };
+  gross_margin_bp: number;
+  gate: "ok" | "inconclusive" | "window_open";
+  headline: { basis: "revenue" | "margin"; value_paise: number; net_paise: number; ratio_bp: number | null } | null;
+  message: string | null;
+  people_needed_per_arm: number | null;
+  revenue_note: string;
+  holdout_advice: { holdout_percent: number; audience_n: number; detectable_lift_bp: number | null; recommended_holdout_percent: number | null; note: string };
+}
+
+// GET /growth/channel-mix and POST /growth/spend (S11.3b, S12.7). Money is integer paise.
+export interface ManualSpend {
+  id: string;
+  channel: string;
+  amount_paise: number;
+  period_start: string;
+  period_end: string;
+  verification: string;
+}
+
+export interface ChannelMix {
+  whatsapp: { campaigns: number; budget_cap_paise: number; treatment_sends: number; succeeded_sends: number; note: string };
+  manual_spend: ManualSpend[];
+  manual_spend_note: string;
 }

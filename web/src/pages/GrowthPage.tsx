@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { api } from "../api/endpoints";
 import { errorMessage } from "../api/client";
 import type { Campaign, GrowthSignal } from "../api/types";
@@ -7,6 +8,8 @@ import { formatDateTime, humanize } from "../lib/format";
 import { formatPaise } from "../lib/money";
 import { useApi } from "../lib/useApi";
 import { useAuth } from "../auth/session";
+import { ManualSpendPanel } from "./ManualSpendPanel";
+import { RoiPanel } from "./RoiPanel";
 
 /** Basis points → "12.3%", rounded half up with integer maths (same rule as the server's
  * format_pct in app/modules/growth/signals.py, so headline and diagnosis agree). */
@@ -40,9 +43,9 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
   const pending = current.status === "pending_approval";
   const approved = current.approvals.filter((a) => a.decision === "approved");
   return (
-    <div className="mt-4 space-y-3 border-t border-slate-100 pt-4" data-testid={`campaign-${signalId}`}>
+    <div className="mt-4 space-y-3 border-t border-border pt-4" data-testid={`campaign-${signalId}`}>
       <div className="flex flex-wrap items-center gap-2">
-        <h3 className="text-sm font-semibold text-slate-900">Win-back campaign for {location}</h3>
+        <h3 className="font-montserrat text-sm font-semibold text-foreground">Win-back campaign for {location}</h3>
         <Badge tone={current.status === "rejected" ? "danger" : current.fully_approved ? "success" : "warning"}>
           {humanize(current.status)}
         </Badge>
@@ -57,6 +60,19 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
           ["Sent", current.sent_at ? formatDateTime(current.sent_at) : "Not sent"],
         ]}
       />
+      {pending && (current.overlap_customers === null || current.frequency_cap_customers === null) && (
+        <Alert tone="info">
+          <span data-testid="calendar-warning-unavailable">Clash warnings are not available for your view of this campaign. Check the campaign calendar before approving.</span>
+        </Alert>
+      )}
+      {pending && ((current.overlap_customers ?? 0) > 0 || (current.frequency_cap_customers ?? 0) > 0) && (
+        <Alert tone="warning">
+          <span data-testid="calendar-warning">
+            Heads up, nothing is blocked: {current.overlap_customers ?? 0} customer{current.overlap_customers === 1 ? "" : "s"} also in an overlapping campaign and {current.frequency_cap_customers ?? 0} inside the 30-day frequency cap. See the{" "}
+            <Link to="/growth/calendar" className="underline underline-offset-2">campaign calendar</Link>.
+          </span>
+        </Alert>
+      )}
       {pending && (
         <>
           <Alert tone="info">
@@ -64,27 +80,28 @@ function CampaignPanel({ signalId, campaignId, location }: { signalId: string; c
             system checks this when you decide.
           </Alert>
           <div className="flex gap-2">
-            <Button loading={busy} onClick={() => void run(() => api.decideCampaign(current.id, "approved"))}>
+            <Button variant="soft" loading={busy} onClick={() => void run(() => api.decideCampaign(current.id, "approved"))}>
               Approve campaign
             </Button>
-            <Button variant="secondary" loading={busy} onClick={() => void run(() => api.decideCampaign(current.id, "rejected"))}>
+            <Button variant="outline" loading={busy} onClick={() => void run(() => api.decideCampaign(current.id, "rejected"))}>
               Reject campaign
             </Button>
           </div>
         </>
       )}
       {actionError && <Alert tone="danger">{actionError}</Alert>}
+      <RoiPanel campaignId={current.id} />
       {current.playbook ? (
-        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm" data-testid="playbook">
-          <div className="font-medium text-slate-900">Verdict: {humanize(current.playbook.verdict)}</div>
-          <p className="mt-1 text-slate-700">{current.playbook.lesson}</p>
-          <p className="mt-1 text-xs text-slate-500">
+        <div className="card-chai p-3 text-sm" data-testid="playbook">
+          <div className="font-medium text-foreground">Verdict: {humanize(current.playbook.verdict)}</div>
+          <p className="mt-1 text-foreground">{current.playbook.lesson}</p>
+          <p className="mt-1 text-xs text-muted-foreground">
             {current.playbook.confidence_note} ({current.playbook.treatment_n} offered, {current.playbook.holdout_n} held out)
           </p>
         </div>
       ) : (
         current.sent_at && (
-          <Button variant="secondary" loading={busy} onClick={() => void run(() => api.campaignVerdict(current.id))}>
+          <Button variant="outline" loading={busy} onClick={() => void run(() => api.campaignVerdict(current.id))}>
             Measure result
           </Button>
         )
@@ -116,8 +133,8 @@ function SignalCard({ signal, location }: { signal: GrowthSignal; location: stri
     <Card className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-sm font-semibold text-slate-900">{location}: repeat customers down</h2>
-          <p className="mt-0.5 text-sm text-slate-600">
+          <h2 className="font-montserrat text-sm font-semibold text-foreground">{location}: repeat customers down</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
             {pct(signal.baseline_bp)} before ({signal.baseline_n} orders), {pct(signal.recent_bp)} now ({signal.recent_n} orders),
             down {pct(signal.drop_bp)} points.
           </p>
@@ -125,14 +142,14 @@ function SignalCard({ signal, location }: { signal: GrowthSignal; location: stri
         <Badge>{humanize(signal.status)}</Badge>
       </div>
       {findings.length > 0 && (
-        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700" aria-label="What the data shows">
+        <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-foreground" aria-label="What the data shows">
           {findings.map((f) => (
             <li key={f}>{f}</li>
           ))}
         </ul>
       )}
       {hypotheses.length > 0 && (
-        <div className="mt-2 text-sm text-slate-600">
+        <div className="mt-2 text-sm text-muted-foreground">
           <span className="font-medium">Possible causes (not confirmed):</span>
           <ul className="list-disc pl-5">
             {hypotheses.map((h) => (
@@ -145,7 +162,7 @@ function SignalCard({ signal, location }: { signal: GrowthSignal; location: stri
         <CampaignPanel signalId={signal.id} campaignId={campaignId} location={location} />
       ) : (
         <div className="mt-4">
-          <Button loading={busy} onClick={() => void propose()}>
+          <Button variant="soft" loading={busy} onClick={() => void propose()}>
             Propose win-back campaign
           </Button>
           {error && (
@@ -188,7 +205,7 @@ export function GrowthPage() {
         subtitle="Outlets where repeat customers are dropping, and win-back campaigns to test. Nothing is sent without two approvals."
         actions={
           me?.role === "hq_owner" ? (
-            <Button variant="secondary" loading={refreshing} onClick={() => void refresh()}>
+            <Button variant="outline" loading={refreshing} onClick={() => void refresh()}>
               Refresh signals
             </Button>
           ) : undefined
@@ -214,6 +231,7 @@ export function GrowthPage() {
           ))}
         </ul>
       )}
+      {me?.role === "hq_owner" && <ManualSpendPanel />}
     </>
   );
 }

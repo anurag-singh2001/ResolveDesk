@@ -38,7 +38,14 @@ from app.modules.growth.executor import execute_campaign
 from tests.helpers import login
 from tests.integration import test_growth as growth_tests
 from tests.integration import test_retention as ret
-from tests.integration.test_growth import approvers, decide_as, make_signal, outbox, propose_for
+from tests.integration.test_growth import (
+    approvers,
+    decide_as,
+    make_signal,
+    outbox,
+    propose_for,
+    third_party,
+)
 from tests.integration.test_retention import (
     KEPT,
     NOW,
@@ -156,7 +163,9 @@ def test_growth_send_skips_a_customer_who_withdrew_after_approval(app_engine, ma
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid_, loc)
     try:
-        cid, _ = propose_for(app_engine, tid_, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid_, signal_id, third_party(app_engine, cfg, tid_, loc, hq, other)
+        )
     except ProposalError:
         pytest.skip("history too small for an audience at this scale")
     decide_as(app_engine, tid_, hq, cid)
@@ -249,7 +258,13 @@ def _request(api, auth):
 
 
 def _approve(api, hq, request_id):
-    r = api.post(f"/data-requests/{request_id}/approve", headers=hq)
+    look = api.get(f"/data-requests/{request_id}/dry-run", headers=hq)  # the approval needs it
+    # A completed request has no dry run; approving it again is the idempotent no-op.
+    assert look.status_code in (200, 409), look.text
+    approval = (
+        {k: look.json()[k] for k in ("payload_hash", "approval_token")} if look.is_success else {}
+    )
+    r = api.post(f"/data-requests/{request_id}/approve", json=approval, headers=hq)
     assert r.status_code == 200, r.text
     return r.json()
 
@@ -492,7 +507,7 @@ def test_case_writes_serialize_with_erasure(app_engine, tid, made, people):  # n
             result["out"] = "refused"
 
     with tenant_session(tid, app_engine) as s:
-        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC))
+        done = privacy.run_erasure(s, tid, req_id, None, datetime.now(UTC), guard=None)
         assert done.status == "completed"
         t = threading.Thread(target=report)
         t.start()

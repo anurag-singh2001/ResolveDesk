@@ -35,7 +35,7 @@ describe("insights page", () => {
     expect(within(table).getByText("Main Street")).toBeInTheDocument();
     expect(within(table).getByText("₹1,234.50")).toBeInTheDocument();
     expect(within(table).getByText("31.2%")).toBeInTheDocument();
-    expect(within(table).getByText("—")).toBeInTheDocument(); // no decisions yet
+    expect(within(table).getByText("n/a")).toBeInTheDocument(); // no decisions yet
   });
 
   it.each<Role>(["location_manager", "customer"])("%s has no nav item and gets page not found", async (role) => {

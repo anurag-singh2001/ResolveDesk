@@ -34,9 +34,17 @@ gone or expired: clear it and go to the login page with "Your session has ended"
 | POST | `/cases` | customer | `{transaction_id, category: slug or null, message}` | case (201). `category: null` only when `free_text` |
 | POST | `/cases/{id}/messages` NEW | customer (own case) | `{message}` (1-2000 chars) | case (201). Answers the AI's needs-info question; only while stage is `awaiting_info`, else 409. Other customers'/tenants' cases 404, staff 403. The case resumes (stage goes back to `investigating`) and the timeline gains a "You replied" step |
 | GET | `/cases?limit=` | any | – | `[case]` newest first |
-| GET | `/cases/{id}` | any | – | case. 404 if not visible |
+| GET | `/cases/{id}` | any | – | case, plus `customer_messages: [{at, text}]` (the customer's own words, oldest first; only on this detail call, `[]` in lists; shown to the owning customer and staff who can see the case, never to others). 404 if not visible. Staff pages pair it with `GET /orders/{transaction_id}` for the Order card (items ordered/received, prices, times, outlet, brand) |
 | GET | `/cases/{id}/timeline` NEW | any who can see the case | – | `[{at, stage, title, text}]` oldest first: customer-safe steps. `stage` uses the stage names below: `received`, `investigating`, `awaiting_info` (question asked), `awaiting_approval` (remedy proposed), `processing` (approved), `declined`, `confirmed` (refund confirmed by the provider), `escalated`, `closed`. Text comes from code templates, never from a model. 404 if not visible |
 | GET | `/cases/{id}/events` | staff | – | raw audit events (redacted) |
+
+### Cases to handle and case owner (S7.2, S7.3) NEW
+| GET | `/cases/queue?reason=&category=&owned_by_me=&limit=` | staff | – | `[queue_item]` oldest wait first. Scope: manager their outlets, franchisee theirs, HQ all (out-of-scope and other-tenant cases are simply absent). `reason` is `escalated` or `awaiting_approval` (else 422). Customers 403 |
+| POST | `/cases/{id}/owner` | franchisee_owner (their outlets), hq_owner | `{user_id}` | `{case_id, owner_user_id}`. 404 if the case is not visible to the caller (another outlet or tenant); 403 for a location manager; 409 if the case does not need a person; 422 if the new owner is not staff, cannot see the case's outlet, or (no outlet) is not HQ. Audited as `case.owner_changed`. Changes responsibility only, never approval rights |
+
+`queue_item` = `{case_id, order_ref, location_name, category, status, reason_kind: escalated | awaiting_approval, reason_code, reason, waiting_since, waiting_seconds, owner_user_id, owner_name, owned_by_me, language, amount_paise, proposal_id}`. `reason_code` is one of needs_approval, ai_unavailable, payment_check, no_automatic_remedy, privacy, other; `reason` is the fixed label for it (stored reasons can quote a model or customer, so they are never returned). `amount_paise`/`proposal_id` are null when no proposal is pending.
+
+Owner assignment (server side, no client call): when a case becomes `escalated` or `awaiting_approval` it gets `cases.owner_user_id` = the location manager of the order's outlet (lowest user id if several), else that outlet's franchisee owner, else an HQ owner; an amount above `refund_without_escalation_paise`, or no outlet, goes to HQ. An owner already set is kept.
 
 `case` = `{id, transaction_id, order_ref, category, stage, message, action, amount_paise, proposal_id, created_at}` (`order_ref`, `created_at` NEW; `order_ref` is the order's `external_ref` or null; `created_at` is when the case was opened).
 
@@ -49,16 +57,18 @@ customer for the current stage.
 | GET | `/me/consents` | customer | – | `{notice_version, consents: [{purpose, channel, granted, updated_at}], history: [{purpose, channel, granted, source, notice_version, at}]}`. No row means `granted: false`. Staff get 403 |
 | POST | `/me/consents/{purpose}` | customer | `{granted: bool, channel?}` (`purpose` is `marketing`; unknown purpose or channel 404) | same shape as GET. Granting and withdrawing are the same call; withdrawal applies to the next send |
 | GET | `/me/data-export` | customer | – | `{generated_at, profile: {name, phone, email, reference}, orders: [{order_ref, placed_at, brand, location, total_paise, status}], cases: [{id, order_ref, category, opened_at, stage, message}], consents: {as above}, processors: [{name, role, data}]}`. Own data only |
-| POST | `/me/erasure-request` | customer | – | `request` (201). One active request per customer: a second call returns it |
+| POST | `/me/erasure-request` | customer | `{notify_via?: "phone" or "email"}` (optional) | `request` (201). One active request per customer: a second call returns it. `notify_via` picks where the one completion message goes (default phone, else email, else none); the destination is held in a short-lived outbox row (7 days, deleted once the send is final) |
 | GET | `/me/erasure-request` | customer | – | the latest `request`, or `null` |
 | GET | `/data-requests` | hq_owner | – | `[request + customer_ref]`, newest first |
 | POST | `/data-requests/{id}/approve` | hq_owner | – | `request`. The server re-checks the guards: `completed`, or `deferred` with a reason. Unknown id 404 |
 
-`request` = `{id, kind: "erasure", status: pending_approval | deferred | completed, reason, deferred_until, requested_at, completed_at}`. `reason` is server template text, set when `deferred` (open case, refund in flight, legal hold, or inside the one-year minimum); show it as given.
+`request` = `{id, kind: "erasure", status: pending_approval | deferred | completed, reason, deferred_until, requested_at, completed_at, completion_message: sent, failed, unknown, expired, none or null}`. `completion_message` is the outcome of the one "your erasure is complete" message (null until final; `unknown` is never shown as delivered). `reason` is server template text, set when `deferred` (open case, refund in flight, legal hold, or inside the one-year minimum); show it as given.
 
 ## Approvals (staff)
 | GET | `/approvals?limit=&location_id=&action=&sort=` | staff | – | `[pending]`. `sort` is `oldest` (default), `newest` or `amount_desc`; unknown sort or action gives 422; a `location_id` the caller cannot see (or another tenant's) gives 404 |
 | POST | `/approvals/{proposal_id}/decision` | staff | `{decision: approved or rejected, note}` | `{proposal_id, decision, expires_at, execution}`. 403 out of scope / over the role's limit, 409 already decided |
+| GET | `/approvals/{proposal_id}/alternatives` | staff | – | `{proposal_id, current_action, current_amount_paise, alternatives: [{action, min_paise, max_paise, step_paise, needs_hq_above_paise, you_can_approve_up_to_paise}]}`. 404 out of scope / other tenant, 409 not pending (decided or switched) |
+| POST | `/approvals/{proposal_id}/switch` | staff | `{action, amount_paise, approve: bool, note, self_approve_reason?}` | `{old_proposal_id, proposal_id, action, amount_paise, decision: approved or null, waiting_for: hq_owner, second_person or null, self_approved: downgrade, owner_override or null, expires_at, execution}`. Supersedes the pending proposal with a new one (own hash, own approval). The caller is the AUTHOR (`proposed_by`) of the new proposal, so four-eyes applies: `approve` takes effect in the same step only for a downgrade (smaller amount of the same action, or a refund switched to a voucher worth no more), or for an hq_owner override (`self_approve_reason` required, amount at or below the setting `switch_self_approve_max_paise`, default 50000; audited `self_approved: true`). Otherwise it waits (`second_person`, or `hq_owner` above the caller's limit). 403 override by a non hq_owner, 404 out of scope, 409 not pending, 422 remedy or amount outside the rule or a missing reason |
 
 `pending` = `{proposal_id, case_id, category, action, risk, amount_paise, order_ref, order_total_paise, reason, checks, eligible, errors, created_at, customer_message, location_name, citations: [{section_ref, doc_key, version}]}` (`created_at`, `customer_message`, `location_name`, `citations` NEW). `checks` is a flat map of check name → bool; `errors` explain why `eligible` is false. In `citations`, `doc_key`/`version` may be null. `customer_message` is the customer's first message on the case (or null); show it as plain text, never as HTML.
 
@@ -84,9 +94,9 @@ null when nothing was decided; `repeat_rate_bp` (basis points, 3125 = 31.2%) is 
 Sending needs two different approvers, at least one `hq_owner`; the server enforces it. The UI
 shows `diagnosis.findings` (facts) and `hypotheses` (labelled unconfirmed), never model reasoning.
 
-## Dev panel (demo only)
+## Demo controls (demo only; formerly "Dev panel")
 Mounted only when `APP_ENV` is `dev` or `test`; **404 in prod**. `hq_owner` only (403 otherwise), and
-always the caller's own tenant, taken from the token. The frontend shows the "Dev panel" nav item
+always the caller's own tenant, taken from the token. The frontend shows the "Demo controls" nav item (route `/demo`; `/dev` redirects)
 only for an hq_owner whose `GET /admin/chaos` succeeds; a 404 hides it.
 | GET | `/admin/chaos` | hq_owner | – | `{service: {timeout_rate, transient_error_rate, accept_then_timeout_rate, error_rate, processing_rate, settle_after_polls, delay_ms, seed}}` |
 | POST | `/admin/chaos` | hq_owner | `{service, timeout_rate?, accept_then_timeout_rate?, transient_error_rate?, error_rate?, processing_rate?, settle_after_polls?, delay_ms?, seed?}` (rates 0..1; omitted = default, so `{service}` alone resets it) | the full chaos state, as GET. 422 for an unknown service or a rate outside 0..1 |

@@ -20,9 +20,15 @@ from app.core.models import (
     Case,
     Execution,
     RefundOperation,
+    Ticket,
+    TicketMessage,
+    Verification,
 )
 from app.core.money import format_inr
+from app.core.settings_resolver import effective_settings
+from app.engine.approvals import not_superseded
 from app.engine.needs import need_from_payload, question_for
+from app.engine.privacy import close_text
 
 
 @dataclass(frozen=True)
@@ -39,6 +45,7 @@ _CASE_EVENTS = {
     "case.info_added": ("investigating", "tl.replied.title", "tl.replied.text"),
     "case.escalate": ("escalated", "tl.passed.title", "status.escalated_team"),
     "case.escalated": ("escalated", "tl.passed.title", "status.escalated_team"),
+    "case.closed": ("closed", "tl.closed.title", ""),  # text from the reason (S7.6)
     "case.apology": ("closed", "tl.noted.title", "status.apology_closed"),
 }
 
@@ -86,14 +93,32 @@ def case_timeline(
     )
     for e in events:
         stage, title_key, text_key = _CASE_EVENTS[e.event]
+        if e.event == "case.closed":  # the reason is a code; the wording is ours
+            reason = e.payload.get("reason")
+            if f"close.{reason}" not in TEMPLATES:
+                continue
+            text_key = f"close.{reason}"
         text = t(text_key, lang)
+        if e.event == "case.closed":  # the no-remedy wording carries the contact (M2)
+            text = close_text(reason, effective_settings(session), lang)
         if e.event == "case.awaiting_info":  # say WHAT we need: a code-owned template
             text = question_for(need_from_payload(e.payload), lang)
         steps.append(TimelineStep(e.occurred_at, stage, t(title_key, lang), text))
 
+    # Staff replies (S7.6): the template text as sent, and any note under its own label.
+    for msg in session.scalars(
+        select(TicketMessage)
+        .join(Ticket, Ticket.id == TicketMessage.ticket_id)
+        .where(Ticket.case_id == case.id, TicketMessage.author == "staff")
+        .order_by(TicketMessage.sent_at, TicketMessage.id)
+    ):
+        title_key = "tl.staff_note.title" if msg.kind == "note" else "tl.staff.title"
+        steps.append(TimelineStep(msg.sent_at, "investigating", t(title_key, lang), msg.body))
+
     proposals = session.scalars(
         select(ActionProposal)
-        .where(ActionProposal.case_id == case.id)
+        # A remedy an approver switched away from never happened as far as the customer is told.
+        .where(ActionProposal.case_id == case.id, not_superseded())
         .order_by(ActionProposal.created_at, ActionProposal.id)
     )
     for proposal in proposals:
@@ -152,43 +177,96 @@ def _proposal_steps(
     ledger = session.scalar(
         select(RefundOperation).where(RefundOperation.proposal_id == proposal.id)
     )
+    verification = (
+        session.scalars(
+            select(Verification.status)
+            .where(Verification.execution_id == execution.id)
+            .order_by(Verification.created_at.desc(), Verification.id)
+        ).first()
+        if execution is not None
+        else None
+    )
+    case = session.get(Case, proposal.case_id)  # identity-map hit: the caller loaded it
+    escalated = case is not None and case.status == "escalated"
+    return steps + _refund_steps(
+        proposal, approval, execution, ledger, verification, now, lang, escalated
+    )
+
+
+def _refund_steps(
+    proposal,
+    approval,
+    execution,
+    ledger,
+    verification: str | None,
+    now: datetime,
+    lang: str,
+    escalated: bool = False,
+) -> list[TimelineStep]:
+    """Same rules as case_status (S12.5): "confirmed" needs the provider's success AND a
+    verifier match. A mismatch is "needs a check" (the money's state is unknown, so neither
+    "arrived" nor "failed" is said); a success not yet verified adds no step (still processing)."""
+    if (
+        escalated
+        and not (
+            execution is not None and execution.status == "succeeded" and verification == "verified"
+        )
+        and (execution is None or execution.status != "failed")
+    ):
+        # Same condition as case_status: handed to a person and not confirmed -> needs a check.
+        at = execution.updated_at if execution is not None else approval.decided_at
+        return [
+            TimelineStep(
+                at, "escalated", t("tl.passed.title", lang), t("tl.refund_check.text", lang)
+            )
+        ]
+    if execution is not None and verification == "mismatch":
+        return [
+            TimelineStep(
+                execution.updated_at,
+                "escalated",
+                t("tl.passed.title", lang),
+                t("tl.refund_check.text", lang),
+            )
+        ]
     if execution is not None and execution.status == "succeeded":
-        steps.append(
+        if verification != "verified":
+            return []
+        return [
             TimelineStep(
                 execution.updated_at,
                 "confirmed",
                 t("tl.refund_confirmed.title", lang),
                 t("status.refund_confirmed", lang, amount=format_inr(proposal.amount_paise)),
             )
-        )
-    elif execution is not None and execution.status == "failed":
-        steps.append(
+        ]
+    if execution is not None and execution.status == "failed":
+        # A failure the verifier did not confirm is unknown, not "failed" (rule 7).
+        key = "status.refund_failed" if verification == "verified" else "tl.refund_check.text"
+        return [
             TimelineStep(
-                execution.updated_at,
-                "escalated",
-                t("tl.passed.title", lang),
-                t("status.refund_failed", lang),
+                execution.updated_at, "escalated", t("tl.passed.title", lang), t(key, lang)
             )
-        )
-    elif execution is None and now >= approval.expires_at:  # same rule as case_status
-        steps.append(
+        ]
+    if execution is None and now >= approval.expires_at:  # same rule as case_status
+        return [
             TimelineStep(
                 approval.expires_at,
                 "escalated",
                 t("tl.passed.title", lang),
                 t("tl.refund_check.text", lang),
             )
-        )
-    elif ledger is not None and ledger.status == "pending_reconciliation":
-        steps.append(
+        ]
+    if ledger is not None and ledger.status == "pending_reconciliation":
+        return [
             TimelineStep(
                 ledger.updated_at,
                 "escalated",
                 t("tl.passed.title", lang),
                 t("tl.refund_check.text", lang),
             )
-        )
-    return steps
+        ]
+    return []
 
 
 def _voucher_steps(

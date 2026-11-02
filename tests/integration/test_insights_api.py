@@ -4,11 +4,12 @@ Runs for every tenant folder and never names one: who sees what comes from the u
 """
 
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 from sqlalchemy import delete, select
 
+from app.api.deps import get_clock
 from app.core.db import tenant_session
 from app.core.models import Case, RefundOperation, Transaction, User
 from app.core.money import percent_of
@@ -179,16 +180,24 @@ def money_moved(app_engine, maint_engine, seeded_history, tenant):
 
 def test_franchisee_numbers_equal_hq_numbers_for_the_same_locations(api, money_moved):
     cfg = money_moved["cfg"]
-    hq_rows = api.get("/insights/outlets", headers=login(api, cfg.slug, _hq(cfg))).json()
+    hq_headers = login(api, cfg.slug, _hq(cfg))
+    franchisees = [
+        (u.email, login(api, cfg.slug, u.email)) for u in _users(cfg, "franchisee_owner")
+    ]
+    # updated_at comes from the database clock and the window's end from this machine's. Ahead by
+    # a minute, so a row written a moment ago is inside the window however far the clocks differ.
+    # After the logins: a token issued by a clock in the future is not valid yet.
+    later = datetime.now(UTC) + timedelta(minutes=1)
+    api.app.dependency_overrides[get_clock] = lambda: later
+    hq_rows = api.get("/insights/outlets", headers=hq_headers).json()
     hit = next(r for r in hq_rows if r["location_id"] == money_moved["location_id"])
     # The numbers under test are real: this outlet has a case, a refund and a voucher.
     assert hit["cases_opened"] >= 1
     assert hit["refunds_confirmed_count"] >= 1
     assert hit["refunds_confirmed_paise"] >= money_moved["refund_paise"]
     assert hit["vouchers_issued_count"] >= 1 and hit["vouchers_issued_paise"] > 0
-    for user in _users(cfg, "franchisee_owner"):
-        headers = login(api, cfg.slug, user.email)
+    for email, headers in franchisees:
         own = set(api.get("/me", headers=headers).json()["location_ids"])
         rows = api.get("/insights/outlets", headers=headers).json()
         # Every field (each count and paise) matches HQ's row for the same location.
-        assert rows == [r for r in hq_rows if r["location_id"] in own], user.email
+        assert rows == [r for r in hq_rows if r["location_id"] in own], email

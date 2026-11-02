@@ -442,12 +442,34 @@ class TicketMessage(TenantOwned, Base):
         CheckConstraint(
             "author IN ('customer', 'system', 'staff')", name="ck_ticket_messages_author"
         ),
+        CheckConstraint(
+            "kind IS NULL OR kind IN ('template', 'note')", name="ck_ticket_messages_kind"
+        ),
+        # Same-tenant sender only; deleting the user clears only sender_user_id (migration 0022).
+        ForeignKeyConstraint(
+            ["tenant_id", "sender_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (sender_user_id)",
+            name="fk_ticket_messages_sender",
+        ),
+        Index(
+            "uq_ticket_messages_idem",
+            "tenant_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=text("idempotency_key IS NOT NULL"),
+        ),
     )
 
     ticket_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     author: Mapped[str] = mapped_column(String(16), nullable=False)
     body: Mapped[str] = mapped_column(Text, nullable=False)
     sent_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # Staff messages only (S7.6, migration 0022): a code-owned template or a labelled note.
+    kind: Mapped[str | None] = mapped_column(String(16))
+    template_id: Mapped[str | None] = mapped_column(String(48))
+    sender_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    idempotency_key: Mapped[str | None] = mapped_column(String(160))
 
 
 class Consent(TenantOwned, Base):
@@ -489,6 +511,7 @@ class DataRequest(TenantOwned, Base):
 
     __tablename__ = "data_requests"
     __table_args__ = (
+        UniqueConstraint("tenant_id", "id", name="uq_data_requests_tenant_id"),
         _fk("customer_id", "customers", ondelete="CASCADE"),
         # One active request per customer, enforced by the database.
         Index(
@@ -500,7 +523,7 @@ class DataRequest(TenantOwned, Base):
         ),
         CheckConstraint("kind IN ('erasure')", name="ck_data_requests_kind"),
         CheckConstraint(
-            "status IN ('pending_approval', 'deferred', 'completed')",
+            "status IN ('pending_approval', 'deferred', 'completed', 'withdrawn')",
             name="ck_data_requests_status",
         ),
     )
@@ -512,6 +535,34 @@ class DataRequest(TenantOwned, Base):
     deferred_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decided_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # What happened to the one completion message (migration 0032): sent | failed | unknown |
+    # expired | none (nowhere to send). NULL until the message reaches a final state.
+    completion_message: Mapped[str | None] = mapped_column(String(16))
+
+
+class ErasureNotice(TenantOwned, Base):
+    """Where to send the one "your erasure is done" message (migration 0030, owner decision P4).
+
+    The customer's contact is wiped when the erasure runs, so the destination is copied here at
+    request time, for this one purpose, and the row is deleted as soon as the send reaches a
+    final state or `expires_at` (7 days after the request) passes, whichever is first. It is
+    the only place a destination outlives the erasure. Nothing else about the customer is
+    copied, and the destination is never logged or audited."""
+
+    __tablename__ = "erasure_notices"
+    __table_args__ = (
+        _fk("request_id", "data_requests", ondelete="CASCADE"),
+        UniqueConstraint("tenant_id", "request_id", name="uq_erasure_notices_request"),
+        CheckConstraint("channel IN ('phone', 'email')", name="ck_erasure_notices_channel"),
+        CheckConstraint("state IN ('queued', 'sending')", name="ck_erasure_notices_state"),
+    )
+
+    request_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    channel: Mapped[str] = mapped_column(String(8), nullable=False)
+    destination: Mapped[str] = mapped_column(String(320), nullable=False)
+    language: Mapped[str] = mapped_column(String(8), nullable=False)
+    state: Mapped[str] = mapped_column(String(8), nullable=False, server_default="queued")
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
 
 
 # --- Engine (PROJECT.md section 7 "Engine", "Money", "Trust") ---------------------------
@@ -523,10 +574,35 @@ class Case(TenantOwned, Base):
         UniqueConstraint("tenant_id", "id", name="uq_cases_tenant_id"),
         _fk("customer_id", "customers"),
         _fk("transaction_id", "transactions"),
+        # Clears only owner_user_id when the user is deleted (migration 0021).
+        ForeignKeyConstraint(
+            ["tenant_id", "owner_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (owner_user_id)",
+            name="fk_cases_owner_user",
+        ),
         CheckConstraint(
             "status IN ('open', 'investigating', 'awaiting_info', 'awaiting_approval', "
             "'executing', 'resolved', 'escalated', 'closed')",
             name="ck_cases_status",
+        ),
+        CheckConstraint(
+            "language IS NULL OR language IN ('en', 'hi-Latn', 'hi')", name="ck_cases_language"
+        ),
+        CheckConstraint(
+            "language_pending IS NULL OR language_pending IN ('en', 'hi-Latn', 'hi')",
+            name="ck_cases_language_pending",
+        ),
+        ForeignKeyConstraint(
+            ["tenant_id", "closed_by_user_id"],
+            ["users.tenant_id", "users.id"],
+            ondelete="SET NULL (closed_by_user_id)",
+            name="fk_cases_closed_by_user",
+        ),
+        CheckConstraint(
+            "close_reason IS NULL OR close_reason IN "
+            "('resolved', 'no_remedy', 'duplicate', 'unreachable')",
+            name="ck_cases_close_reason",
         ),
     )
 
@@ -538,6 +614,20 @@ class Case(TenantOwned, Base):
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     # DB/admin only (no API path): the retention job skips held cases (migration 0017).
     legal_hold: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    # Reply language, detected from the customer's own messages (S7.12, migration 0020). NULL =
+    # not decided yet; `language_pending` is a different label seen once, awaiting a second.
+    language: Mapped[str | None] = mapped_column(String(10))
+    language_pending: Mapped[str | None] = mapped_column(String(10))
+    # Who is responsible once the case needs a person (S7.2, app/engine/routing.py).
+    owner_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    # The remedy option the customer picked where the category's rule lists several (S7.9,
+    # migration 0024). Only an option code from the pack; code re-checks it against the rule.
+    remedy_choice: Mapped[str | None] = mapped_column(String(32))
+    owner_assigned_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Set when staff close the case (S7.6, migration 0022).
+    close_reason: Mapped[str | None] = mapped_column(String(16))
+    closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
 
 
 class WorkflowRun(TenantOwned, Base):
@@ -598,6 +688,69 @@ class ActionProposal(TenantOwned, Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     citations: Mapped[list] = mapped_column(JSONB, nullable=False, server_default="[]")
     validation: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    # The staff user who proposed it (S7.5); NULL for engine/agent proposals. No FK: this table
+    # is immutable, and an erased user must not trigger an UPDATE (migration 0022).
+    proposed_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+
+
+class ProposalSupersession(TenantOwned, Base):
+    """An approver switched a pending proposal to another remedy (S7.10). Proposals are
+    immutable, so the old one is marked by this append-only link, never edited. A superseded
+    proposal can no longer be decided or executed."""
+
+    __tablename__ = "proposal_supersessions"
+    __table_args__ = (
+        _fk("old_proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("new_proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("switched_by", "users"),
+        CheckConstraint("old_proposal_id <> new_proposal_id", name="ck_supersession_distinct"),
+        UniqueConstraint("tenant_id", "old_proposal_id", name="uq_supersession_old"),
+        UniqueConstraint("tenant_id", "new_proposal_id", name="uq_supersession_new"),
+    )
+
+    old_proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    new_proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    switched_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class ProposalOffer(TenantOwned, Base):
+    """An approver asked the customer to choose between two remedies (S8.10). One row per
+    proposal. The two options are stored as code-computed rows ({code, action, amount_paise});
+    the customer's answer is write-once (a trigger refuses a second one). While the question is
+    open (unanswered and before `expires_at`) the proposal cannot be approved. The proposal
+    itself stays immutable and undecided: a pick supersedes it with a new proposal."""
+
+    __tablename__ = "proposal_offers"
+    __table_args__ = (
+        _fk("proposal_id", "action_proposals", ondelete="CASCADE"),
+        _fk("case_id", "cases", ondelete="CASCADE"),
+        _fk("asked_by", "users"),
+        _fk("new_proposal_id", "action_proposals"),
+        UniqueConstraint("tenant_id", "proposal_id", name="uq_proposal_offers_proposal"),
+        CheckConstraint(
+            "(chosen_code IS NULL) = (chosen_at IS NULL)", name="ck_proposal_offers_answer"
+        ),
+        CheckConstraint(
+            "(chosen_code IS NULL) = (new_proposal_id IS NULL)", name="ck_proposal_offers_pick"
+        ),
+        CheckConstraint("expires_at > asked_at", name="ck_proposal_offers_deadline"),
+        CheckConstraint(
+            "closed_reason IS NULL OR (chosen_code IS NULL AND closed_reason = 'safety_review')",
+            name="ck_proposal_offers_closed",
+        ),
+    )
+
+    proposal_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    case_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    asked_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    asked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    options: Mapped[list] = mapped_column(JSONB, nullable=False)
+    chosen_code: Mapped[str | None] = mapped_column(String(32))
+    chosen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    new_proposal_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
+    closed_reason: Mapped[str | None] = mapped_column(String(24))
 
 
 class Approval(TenantOwned, Base):
@@ -747,6 +900,77 @@ class DomainEvent(TenantOwned, Base):
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class LlmUsage(TenantOwned, Base):
+    """One row per (agent run, role, provider, model): counters from the run's RunBudget (S9.2).
+    Numbers and labels only: never a prompt, a reply or a message. Money is integer
+    micro-paise (1 paise = 1,000,000), an ESTIMATE from the settings price table."""
+
+    __tablename__ = "llm_usage"
+    __table_args__ = (
+        CheckConstraint("outcome IN ('ok', 'error', 'fallback_used')", name="ck_llm_usage_outcome"),
+        CheckConstraint(
+            "calls >= 0 AND input_tokens >= 0 AND output_tokens >= 0 AND failures >= 0 "
+            "AND latency_ms >= 0 AND estimated_cost_micro_paise >= 0",
+            name="ck_llm_usage_counters",
+        ),
+        Index("ix_llm_usage_tenant_run", "tenant_id", "run_id"),
+    )
+
+    run_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))  # workflow run, no FK
+    role: Mapped[str] = mapped_column(String(16), nullable=False)  # main | classifier
+    provider: Mapped[str] = mapped_column(String(16), nullable=False)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    calls: Mapped[int] = mapped_column(Integer, nullable=False)  # provider requests sent
+    input_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    output_tokens: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    estimated_cost_micro_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    failures: Mapped[int] = mapped_column(Integer, nullable=False)
+    latency_ms: Mapped[int] = mapped_column(BigInteger, nullable=False)  # summed over calls
+    outcome: Mapped[str] = mapped_column(String(16), nullable=False)
+    error_class: Mapped[str | None] = mapped_column(String(80))  # exception class name only
+
+
+class JobRun(TenantOwned, Base):
+    """One background job execution for one tenant (S9.2). Counts are integers only and the
+    error is the exception class name: no personal content."""
+
+    __tablename__ = "job_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'ok', 'failed', 'skipped')", name="ck_job_runs_status"
+        ),
+        Index("ix_job_runs_tenant_job_started", "tenant_id", "job", "started_at"),
+    )
+
+    job: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    error_class: Mapped[str | None] = mapped_column(String(80))
+
+
+class PlatformJobRun(Base):
+    """One platform-level job execution (S9.3): no tenant, so no tenant_id and no RLS. Also the
+    scheduler's own record of skipped runs. Same rules as job_runs: integers and a class name."""
+
+    __tablename__ = "platform_job_runs"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('running', 'ok', 'failed', 'skipped')", name="ck_platform_job_runs_status"
+        ),
+        Index("ix_platform_job_runs_job_started", "job", "started_at"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    job: Mapped[str] = mapped_column(String(40), nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    counts: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    error_class: Mapped[str | None] = mapped_column(String(80))
+
+
 # --- Policies (PROJECT.md section 11) ----------------------------------------------------
 
 
@@ -877,7 +1101,7 @@ class CampaignMember(TenantOwned, Base):
         CheckConstraint("arm IN ('treatment', 'holdout')", name="ck_campaign_members_arm"),
         CheckConstraint(
             "send_status IN ('pending', 'submitted', 'processing', 'succeeded', 'failed', "
-            "'unknown')",
+            "'unknown', 'skipped')",
             name="ck_campaign_members_send_status",
         ),
         # Holdout members are never contacted.
@@ -892,6 +1116,10 @@ class CampaignMember(TenantOwned, Base):
     send_status: Mapped[str] = mapped_column(String(12), nullable=False, server_default="pending")
     idempotency_key: Mapped[str] = mapped_column(String(120), nullable=False)
     provider_reference: Mapped[str | None] = mapped_column(String(120))
+    # Set when the executor claims the member for sending (migration 0029); the send-time
+    # frequency cap counts from here. `skipped` members carry a reason code instead.
+    claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    skip_reason: Mapped[str | None] = mapped_column(String(32))
 
 
 class CampaignApproval(TenantOwned, Base):
@@ -944,6 +1172,24 @@ class PlaybookEntry(TenantOwned, Base):
     lesson: Mapped[str] = mapped_column(Text, nullable=False)
 
 
+class ManualSpend(TenantOwned, Base):
+    """S11.3b: ad spend on a channel the platform cannot see (an aggregator), typed in by hand.
+    Append-only (the app role cannot update or delete it) and never verified."""
+
+    __tablename__ = "growth_manual_spend"
+    __table_args__ = (
+        _fk("entered_by", "users"),
+        CheckConstraint("amount_paise > 0", name="ck_growth_manual_spend_amount"),
+        CheckConstraint("period_end >= period_start", name="ck_growth_manual_spend_period"),
+    )
+
+    channel: Mapped[str] = mapped_column(String(32), nullable=False)
+    amount_paise: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    entered_by: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+
+
 # Loaded from tenant folders (the loader syncs these and only these).
 CONFIG_MODELS = [
     Organization,
@@ -970,6 +1216,7 @@ COMMERCE_MODELS = [
     Consent,
     ConsentEvent,
     DataRequest,
+    ErasureNotice,
 ]
 # Cases, proposals, approvals, executions and the refund ledger: they reference commerce rows,
 # so reseeding history (dev only) clears them first.
@@ -982,6 +1229,8 @@ ENGINE_MODELS = [
     Verification,
     RefundOperation,
     DomainEvent,
+    LlmUsage,
+    JobRun,
 ]
 # Auth bookkeeping (lockout counters); not config, not history.
 AUTH_MODELS = [LoginFailure]
@@ -990,7 +1239,14 @@ APPEND_ONLY_MODELS = [AuditEvent]
 # Policy documents + chunks (written by app/rag/ingest.py, not the tenant loader).
 POLICY_MODELS = [PolicyDocument, PolicyChunk]
 # Growth tables reference commerce rows (customers, locations): reseeding clears them first.
-GROWTH_MODELS = [Signal, Campaign, CampaignMember, CampaignApproval, PlaybookEntry]
+GROWTH_MODELS = [
+    Signal,
+    Campaign,
+    CampaignMember,
+    CampaignApproval,
+    PlaybookEntry,
+    ManualSpend,
+]
 # Parents before children: cleanup code deletes in reverse order.
 TENANT_MODELS = (
     CONFIG_MODELS

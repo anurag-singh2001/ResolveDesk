@@ -20,6 +20,8 @@ settings:
   org:
     privacy_contact_name: Privacy desk, BrewCo
     privacy_contact_email: privacy@brewco.test
+    support_contact_name: Support, BrewCo
+    support_contact_email: support@brewco.test
     voucher_auto_approve_max_paise: 10000
   brands: {}
   locations:

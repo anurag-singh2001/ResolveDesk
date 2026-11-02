@@ -1,7 +1,7 @@
 id: bc-missing-004
 tenant: brewco
 kind: hinglish
-message: Mere bag mein croissant nahi tha, jabki paise lag gaye the. Please check karke paise wapas kijiye.
+message: Mere bag mein ek item nahi tha, jabki paise lag gaye the. Please check karke paise wapas kijiye.
 order:
   select: shortfall
 expect:

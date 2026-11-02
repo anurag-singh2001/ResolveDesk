@@ -210,7 +210,10 @@ def open_case(s: Session, tid: uuid.UUID, order: Transaction | None, message: st
     now = datetime.now(UTC)
     if order is None:  # no order named: the customer of the newest order writes in
         customer_id = s.scalar(
-            select(Transaction.customer_id).order_by(Transaction.placed_at.desc()).limit(1)
+            select(Transaction.customer_id)
+            .where(Transaction.tenant_id == tid)  # RLS already limits it; belt and braces
+            .order_by(Transaction.placed_at.desc())
+            .limit(1)
         )
     else:
         customer_id = order.customer_id
@@ -229,6 +232,29 @@ def open_case(s: Session, tid: uuid.UUID, order: Transaction | None, message: st
     return case_id
 
 
+def _read_back(engine: Engine, tid: uuid.UUID, case_id: uuid.UUID, res: Result) -> None:
+    """Copy what the pipeline left (category, newest proposal) into the result. A case that is
+    gone means something else wrote to this database during the run (a concurrent reseed or
+    test cleanup): an error for this scenario, not a crash of the whole run."""
+    with tenant_session(tid, engine) as s:
+        case = s.get(Case, case_id)
+        if case is None:
+            res.outcome = "error"
+            res.error = res.error or "case disappeared during the run (database shared?)"
+            return
+        res.category = case.category
+        p = s.scalars(
+            select(ActionProposal)
+            .where(ActionProposal.case_id == case_id)
+            .order_by(ActionProposal.created_at.desc())
+            .limit(1)
+        ).one_or_none()
+        if p is not None:
+            res.action = p.action
+            amount_field = get_action(p.action).amount_field
+            res.amount = p.params.get(amount_field) if amount_field else None
+
+
 def run_scenarios(
     engine: Engine,
     slug: str,
@@ -243,13 +269,19 @@ def run_scenarios(
     used: set[uuid.UUID] = set()
     results = []
     for sc in scenarios:
-        with tenant_session(tid, engine) as s:
-            order = select_order(s, sc.order, skip | used, planted)
-            if order is not None:
-                used.add(order.id)
-            order_id = order.id if order is not None else None
-            ceiling = ceiling_for(s, sc.expect.category, order_id)
-            case_id = open_case(s, tid, order, sc.message)
+        try:
+            with tenant_session(tid, engine) as s:
+                order = select_order(s, sc.order, skip | used, planted)
+                if order is not None:
+                    used.add(order.id)
+                order_id = order.id if order is not None else None
+                ceiling = ceiling_for(s, sc.expect.category, order_id)
+                case_id = open_case(s, tid, order, sc.message)
+        except Exception as exc:  # bookkeeping failed: this scenario is an error, the run goes on
+            res = Result(sc, pipeline, None, Ceiling(None, None), outcome="error")
+            res.error = f"setup failed, {type(exc).__name__}: {str(exc)[:160]}"
+            results.append(res)
+            continue
         res = Result(sc, pipeline, str(order_id) if order_id else None, ceiling)
         res.case_id = str(case_id)
         started = time.perf_counter()
@@ -263,19 +295,11 @@ def run_scenarios(
         except Exception as exc:  # recorded as a failure, the run goes on
             res.outcome, res.error = "error", f"{type(exc).__name__}: {str(exc)[:200]}"
         res.seconds = time.perf_counter() - started
-        with tenant_session(tid, engine) as s:
-            case = s.get(Case, case_id)
-            res.category = case.category
-            p = s.scalars(
-                select(ActionProposal)
-                .where(ActionProposal.case_id == case_id)
-                .order_by(ActionProposal.created_at.desc())
-                .limit(1)
-            ).one_or_none()
-            if p is not None:
-                res.action = p.action
-                amount_field = get_action(p.action).amount_field
-                res.amount = p.params.get(amount_field) if amount_field else None
+        try:
+            _read_back(engine, tid, case_id, res)
+        except Exception as exc:
+            res.outcome = "error"
+            res.error = res.error or f"read-back failed, {type(exc).__name__}: {str(exc)[:160]}"
         results.append(res)
         if pause_seconds:
             time.sleep(pause_seconds)  # free-tier rate limits (tokens per minute)

@@ -1,0 +1,14 @@
+id: sr-wrong-002
+tenant: spice_route
+kind: wrong_claim
+language: hi
+message: मैंने जो खाना मँगाया था वह नहीं आया, बिल्कुल अलग डिश भेज दी गई है। यह मेरे ऑर्डर का नहीं है।
+order:
+  select: latest
+expect:
+  category: wrong_item
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
+held_out: true
+note: 'S7.12: Devanagari variant of sr-wrong-001'

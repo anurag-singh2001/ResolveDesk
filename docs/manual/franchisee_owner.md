@@ -14,7 +14,7 @@ Five wrong passwords lock the account for a few minutes ("Too many attempts"). "
 ended" means you need to sign in again. Use **Sign out** (top right) on shared devices.
 
 The top bar shows your business, your name, your role badge (**Franchisee owner**), **Help** and
-**Sign out**. The menu has **Approvals**, **Cases**, **Insights**, **Growth** (if switched on for your business) and **Help**.
+**Sign out**. The menu has **Approvals**, **Cases to handle**, **Cases**, **Dashboard**, **Segments**, **Insights**, **Policies** and **Help**; where Growth is switched on for your business it also has **Growth** and **Campaign calendar**.
 
 ## Approvals
 
@@ -28,8 +28,7 @@ Open one with **Review**. The page shows:
 
 1. **Customer's message**: the customer's own words. It is a claim, not a fact.
 2. **Why this was proposed**: the reason, based on the order's records.
-3. **Policy cited**: chips naming the policy sections and versions used. Policy text never sets
-   the amount; your configured rules do.
+3. **Policy cited**: links to the exact policy section (document title and section number, with the version in force at the decision). Under "Why this was proposed", plain lines say which rule set the amount. Policy text never sets the amount; your configured rules do. If a section has changed since, the link opens the document and says so.
 4. **Checks**: ✓ passed, ✗ failed, with any problems listed underneath.
 5. **Proposal**: action, amount, order total, when proposed, and a link to the case.
 
@@ -49,11 +48,42 @@ If you see **"Needs a senior approver"**, the amount is above the limit your rol
 (large refunds need HQ). **"Someone has already decided this proposal"** means another approver
 decided it first. Approvals bind to exactly what you saw and expire after a few hours if unused.
 
+
+## Switching the remedy
+
+If the proposed remedy is not the fair one (say a voucher where a partial refund fits, or the voucher is too small), click **Switch remedy** instead of rejecting. You get the remedies the rules allow for this case, each with its amount range. Choose one, enter the amount in rupees, and say **why** (it is saved in the audit trail). Optionally tick **Approve it now as well**. Then **Review switch** and confirm with **Yes, switch** (**Cancel** is selected first).
+
+- The old proposal is replaced and can no longer be approved. A new proposal is created and checked by the same rules as any other (limits, voucher not above the order total, repeat-claim warning).
+- **You are the author of the new proposal**, so you cannot approve it yourself, except as a **downgrade**: a smaller amount of the same remedy, or a voucher worth no more in place of a refund. Anything higher waits for a different approver, and above your limit for a senior approver (the case is handed to HQ); you are told so.
+- The customer only ever sees the result of the new proposal, never the one you replaced.
+- "Someone has already decided or switched this proposal" means another approver got there first; reload the queue.
+
+## Asking the customer first
+
+When you want the customer's view before anything is decided, click **Ask the customer** (outline button, under your decision). Read the policy cited above first. You get two options the rules allow right now, a voucher and a partial refund, each at its maximum; you can lower either amount. Click **Review question** and confirm with **Yes, ask the customer** (**Cancel** is selected first).
+
+- The proposal stays as it is and shows **Waiting for the customer**. It can't be approved until the customer answers or the time runs out (3 days by default). You can still reject it. Nothing is paid.
+- The customer sees the two options in their language, told plainly that it is a choice and that a team member reviews it.
+- When they pick, the case comes back to the queue as "The customer chose an option: review it", with a new proposal for that option. You or a colleague review it; the person who asked can't approve it, so a second person decides. Repeat-claim warnings still need a person.
+- If they do not answer, the case comes back as "The customer did not answer" and the original proposal is yours to decide.
+- If you asked the customer and are the only person who can approve the pick (for example the only HQ owner), nobody else can approve it. Use the override route (S8.8) or reject it. If another approver exists, the case is handed to them when the customer picks.
+- You can't ask for allergy, illness or foreign-object reports (the policy sends those straight to a manager), for privacy requests, or for a delivery-app order where only a voucher is possible. The screen tells you why.
+
+
+## Cases to handle
+
+**Cases to handle** lists the cases that need a person: ones the system escalated, and ones waiting for a staff decision. You see the cases of all your outlets. The number next to the menu item is how many are waiting. The oldest wait comes first.
+
+Each row shows the case (category, order and outlet), the **reason** it needs a person, how long it has been **waiting**, its **owner**, the customer's **language**, and the **amount** when a remedy has been proposed. Use **Reason**, **Category** and **Owned by me** to narrow the list. **Open** goes to the approval (when a decision is waiting) or to the case.
+
+Every such case has one owner, chosen automatically when it needs a person: the location manager of the order's outlet; if the outlet has none, its franchisee owner; and HQ when the amount is above the limit an outlet may handle, when there is no outlet, or when nobody else is assigned. You can hand a case at one of your outlets to another staff member who can see that outlet (the change is recorded in the case's events). Being the owner means the case is yours to chase. It does not change who may approve: the approval rules are the same as before.
+
 ## Cases
 
 **Cases** lists every case at your outlets with a stage badge; filter with **Stage**. A case page
 shows the progress bar, the current customer message, the remedy, the timeline and a collapsible
 **Audit trail** of raw events (personal details hidden).
+It also has an **Order** card (items ordered vs received, total, times, outlet, brand) and **Customer said** with the customer's exact words.
 
 | Stage | Meaning |
 | --- | --- |
@@ -73,6 +103,50 @@ shows the progress bar, the current customer message, the remedy, the timeline a
 refunds confirmed, vouchers issued, median time to decision and repeat-customer rate (**-** means
 no data). If **Growth** is in your menu you can propose a win-back campaign for a flagged outlet
 and approve it, but sending also needs a second, different approver and an HQ owner's approval.
+
+## Dashboard
+
+**Dashboard** (menu) is a read-only page of charts for your outlets. It never changes anything.
+
+- At the top, **Day** or **Week** sets the size of each bar or point, and **Period** sets how far back to look (last 7, 14, 30, 90, 180 or 366 days; 30 is the default, and periods over 90 days start weekly). Your choices stay in the page address.
+- Charts: **Cases opened**, **Remedy spend** (refunds and vouchers, by when they succeeded), **Median decision time** (minutes from proposal to a person's decision, with a dashed line at the decision target of 240 minutes), **Decisions within SLA**, **Repeat rate**, **AI accuracy** (share of AI proposals staff did not override), **Orders** and **Average order value**. Under each chart, **Table view** shows the same numbers as a table. A gap in a line means there was no data for that period, not zero.
+- A **By location** table (and **By brand** where you have more than one) lists cases, remedy spend, orders and revenue for the period. Click a name to drill in; **All in scope** at the top takes you back.
+- If the period has no activity the page says so; try a longer period.
+- Times are in the business's own time zone, shown under the title.
+
+## Segments
+
+**Segments** (menu) shows who your customers are by how they order. It shows counts only, never names or phone numbers, and it is read-only.
+
+- Hover a segment's name for its one-line meaning: **New**, **Active**, **Loyal**, **At risk**, **Lapsed**, **Lapsed regulars** and **One-and-done**. A customer can be in more than one, so the bars do not add up to the customer total.
+- For each segment the table shows customers, share of the base, average order, total spend, and how many **can be messaged on WhatsApp** (the customer agreed to marketing and has one phone number). It also splits customers by **Own channel** and **Delivery app only**; delivery-app customers who are not contactable cannot be reached by us at all.
+- Counts include customers who have not agreed to marketing; only the WhatsApp column reflects consent. That column can be higher than a real campaign audience, because the 30-day frequency cap is not applied here.
+- **First-order cohorts** show the share of each month's new customers who ordered again 1, 2 and 3 months later. "Not yet" means that month is not over.
+- Small groups are hidden to protect privacy: a group below the minimum shown on the page says "Hidden: fewer than ...". Some larger figures are hidden as well, so a hidden one cannot be worked out from the rest.
+- Where your outlets serve more than one brand, a **Brand** menu switches between them.
+
+## Brand signals
+
+**Brand signals** is an HQ owner page. It is not in your menu and its address does not open for your role. Your outlets' repeat-customer rates are on **Growth** (where it is switched on) and, if you have it, **Insights**. Ask an HQ owner if you need the brand view.
+
+## Campaign calendar
+
+**Campaign calendar** (menu, only where Growth is switched on) lists the win-back campaigns in your scope with their measurement windows. It is read-only: approve or reject on **Growth**. Each row shows the outlet and brand, the status (*Pending approval*, *Approved*, *Sent*, *Measured*, *Rejected*, *Expired*), a bar for the window with its dates, the audience (treated and held out), the budget, the sends and the warnings. The **Sends** column keeps each state apart (pending, submitted, processing, succeeded, failed, unknown, skipped); a campaign is never described there as simply "sent". A yellow note counts customers who are in overlapping campaigns or inside the 30-day frequency cap. Nothing is blocked by the note; the cap itself is enforced when the audience is built and again at send time. The same warning shows on a campaign on **Growth** before you decide.
+
+## Offer ROI and manual spend
+
+- **Return on the offer** appears under a campaign on **Growth**. It compares the offered group with the held-out group (customers deliberately not contacted). When the window has closed and there are enough people, it shows a headline: revenue ROI (incremental revenue minus cost) or margin ROI (using an estimated gross margin, labelled as an estimate), as a rupee amount and a percentage of cost. With too few people it says so and how many would be needed; while the window is open it says there is no result yet. Cost is an upper bound and message cost is an estimate. Failed and unknown sends stay in the offered group. The panel also says what lift this holdout size can reliably see.
+- **Add spend by hand** is for HQ owners only, so you will not see that form. Spend entered there is not part of a campaign's ROI.
+
+## Scenario lab
+
+**Scenario lab** is not part of this app. It is a tool for the platform operator, in a separate platform portal with its own sign-in, and no business role can open it. If you want a type of case checked against the AI, ask the person who runs the platform.
+
+## Policies
+
+Open **Policies** in the menu to read the policy documents in force for your business. Each document shows its version and the date it came into force, and every section has a link you can copy to point a colleague at the exact clause. Older versions are not listed, but a link to one still opens. Policy text is shown as plain text exactly as written; nothing in it is run or followed as an instruction.
+
+**Rules in plain words** at the top of the page lists, for each issue category, what a customer gets and who decides (instant or a team member). As staff you also see the pack version, the date the settings last changed, and a table of the settings behind the rules, showing whether each value is the pack default or a tenant override. Change a setting and this summary changes with it; it is generated from the same rules the system applies.
 
 ## What the AI does and doesn't do
 

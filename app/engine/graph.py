@@ -41,6 +41,7 @@ from app.core import audit, events
 from app.core.business_time import business_date
 from app.core.db import tenant_session
 from app.core.i18n import case_language
+from app.core.language import observe as observe_language
 from app.core.models import (
     ActionProposal,
     Approval,
@@ -51,14 +52,16 @@ from app.core.models import (
     WorkflowRun,
 )
 from app.core.settings_resolver import tenant_pack
+from app.core.telemetry import record_llm_usage
 from app.engine import lifecycle
+from app.engine.approvals import head_proposal_id
 from app.engine.checkpoint import open_checkpointer, thread_config, thread_id
 from app.engine.dispatch import run_approved
 from app.engine.eligibility import order_facts
 from app.engine.needs import NEED_DETAILS, NEED_ORDER, question_for
 from app.engine.privacy import ESCALATION_REASON, PRIVACY_CATEGORY
 from app.engine.proposals import ProposalError, create_proposal
-from app.engine.resolver import Remedy, decide_remedy
+from app.engine.resolver import Remedy, decide_remedy, record_fallback
 from app.llm.providers import LLMError
 from app.rag.retrieve import search_policies
 
@@ -152,6 +155,14 @@ def _privacy_guard(w: dict, out: CaseState) -> CaseState:
     return out
 
 
+def _decide_language(deps: Deps, state: CaseState, message: str, label=None, conf=None) -> None:
+    """Set the case's reply language once, if no earlier message decided it (S7.12)."""
+    with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+        case = s.get(Case, uuid.UUID(state["case_id"]))
+        if case is not None and case.language is None:
+            observe_language(s, case, message, llm_label=label, llm_confidence=conf)
+
+
 def build_graph(deps: Deps, checkpointer=None):
     def classify(state: CaseState) -> CaseState:
         step = _step(state)
@@ -164,9 +175,14 @@ def build_graph(deps: Deps, checkpointer=None):
             known = case.category
         if known:  # the customer already chose a category (form): no LLM call needed
             return _privacy_guard(w, {"category": known, "need": None, "step_count": step})
-        result: Classification = deps.classifier.invoke_structured(
-            classifier_messages(message, categories, vocabulary), Classification
-        )
+        try:
+            result: Classification = deps.classifier.invoke_structured(
+                classifier_messages(message, categories, vocabulary), Classification
+            )
+        except Exception:
+            _decide_language(deps, state, message)  # model unavailable: rule + word list only
+            raise
+        _decide_language(deps, state, message, result.language, result.language_confidence)
         unsure = (
             result.category not in categories
             or result.confidence < deps.min_confidence
@@ -207,6 +223,7 @@ def build_graph(deps: Deps, checkpointer=None):
             actions = enabled_actions(tenant_pack(s).actions)
             _, facts = order_facts(s, uuid.UUID(order_id))
             ceiling = decide_remedy(s, s.get(Case, uuid.UUID(state["case_id"])))
+            record_fallback(s, tid, uuid.UUID(state["case_id"]), ceiling)
         if ceiling.action is None:  # business rules allow nothing automatic: a person decides
             w["reason"] = f"business rules: {ceiling.reason}"
             return {"outcome": "escalated", "step_count": step}
@@ -246,10 +263,11 @@ def build_graph(deps: Deps, checkpointer=None):
         if decision is None:
             interrupt({"kind": "approval", "proposal_id": state["proposal_id"]})
             decision = _decision(deps, state)  # the database is the truth, not the resume value
+        head = _current_proposal(deps, state)  # an approver may have switched the remedy (S7.10)
         if decision is None:  # woken without a decision: pause again
-            return {"approval_status": "pending"}
+            return {"approval_status": "pending", "proposal_id": head}
         outcome = "declined" if decision == "rejected" else "approved"
-        return {"approval_status": decision, "outcome": outcome}
+        return {"approval_status": decision, "outcome": outcome, "proposal_id": head}
 
     def execute(state: CaseState) -> CaseState:
         result = lifecycle.execute_approved(
@@ -325,11 +343,18 @@ def build_graph(deps: Deps, checkpointer=None):
     return g.compile(checkpointer=checkpointer)
 
 
+def _current_proposal(deps: Deps, state: CaseState) -> str:
+    """The proposal this run is waiting on: the state's own, or the one that replaced it when
+    an approver switched the remedy (the old one can never be decided or executed)."""
+    with tenant_session(uuid.UUID(state["tenant_id"]), deps.engine) as s:
+        return str(head_proposal_id(s, uuid.UUID(state["proposal_id"])))
+
+
 def _decision(deps: Deps, state: CaseState) -> str | None:
-    """approved | rejected | None (no decision yet), for this state's proposal."""
+    """approved | rejected | None (no decision yet), for this state's current proposal."""
     tid = uuid.UUID(state["tenant_id"])
     with tenant_session(tid, deps.engine) as s:
-        proposal = s.get(ActionProposal, uuid.UUID(state["proposal_id"]))
+        proposal = s.get(ActionProposal, head_proposal_id(s, uuid.UUID(state["proposal_id"])))
         if proposal is None or str(proposal.case_id) != state["case_id"]:
             return "rejected"  # never act on a proposal that is not this case's
         return s.scalar(select(Approval.decision).where(Approval.proposal_id == proposal.id))
@@ -490,8 +515,20 @@ FINISHABLE_FROM = {
 }
 
 
+# Machine code on the audit payload of an escalation caused by the AI being unavailable
+# (S7.4): staff may re-run such a case. The reason text is for people; this is for code.
+AI_UNAVAILABLE = "ai_unavailable"
+TRANSIENT_LLM_ERRORS = frozenset({"ProviderFailed", "MissingAPIKey", "RateLimited"})
+
+
 def _finish(
-    deps: Deps, state: CaseState, status: str, reason: str, ticket: str = "", need: str = ""
+    deps: Deps,
+    state: CaseState,
+    status: str,
+    reason: str,
+    ticket: str = "",
+    need: str = "",
+    code: str = "",
 ) -> None:
     """Set the case status, audit why, emit case.<status>; `ticket` is code-written text for
     the customer. The event payload carries no reason text (it may quote the model)."""
@@ -516,6 +553,8 @@ def _finish(
         payload = {"reason": reason[:500]}
         if need:  # a code, not text: the customer-facing question is looked up from it
             payload["need"] = need
+        if code:
+            payload["code"] = code
         audit.record(s, tid, actor_type="agent", actor_id=None, event=f"case.{status}",
                      entity_type="case", entity_id=case.id, payload=payload)  # fmt: skip
         events.emit(s, tid, f"case.{status}", case.id, {"run_id": state.get("run_id")})
@@ -607,7 +646,9 @@ def _guarded(deps: Deps, base: CaseState, work) -> tuple[dict, bool]:
                     "reason": f"{kind} after execution: {type(exc).__name__}"}, False  # fmt: skip
         final = {**base, "outcome": "escalated", "reason": f"{kind}: {type(exc).__name__}"}
         try:
-            _finish(deps, final, "escalated", final["reason"])
+            transient = isinstance(exc, LLMError) and type(exc).__name__ in TRANSIENT_LLM_ERRORS
+            _finish(deps, final, "escalated", final["reason"],
+                    code=AI_UNAVAILABLE if transient else "")  # fmt: skip
         except Exception:
             log.exception("could not escalate case %s", base.get("case_id"))
         return final, False
@@ -661,6 +702,8 @@ def _record(deps: Deps, tenant_id, run_id: uuid.UUID, final: dict, paused: bool,
                 run.error = (final.get("reason") or "")[:500]
     except Exception:
         log.exception("could not record the result of run %s", run_id)
+    # After the transaction above is closed; best effort, never raises (S9.2).
+    record_llm_usage(deps.engine, tenant_id, budget, run_id)
     return snapshot
 
 
@@ -819,7 +862,10 @@ def resume_case(
     }
 
 
-def escalate_now(engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str) -> None:
+def escalate_now(
+    engine: Engine, tenant_id: uuid.UUID, case_id: uuid.UUID, reason: str, code: str = ""
+) -> None:
     """Escalate a case without running the graph (e.g. the models can't be built)."""
     deps = Deps(engine=engine, classifier=None, resolver=None, embedder=None)
-    _finish(deps, {"tenant_id": str(tenant_id), "case_id": str(case_id)}, "escalated", reason)
+    _finish(deps, {"tenant_id": str(tenant_id), "case_id": str(case_id)}, "escalated", reason,
+            code=code)  # fmt: skip

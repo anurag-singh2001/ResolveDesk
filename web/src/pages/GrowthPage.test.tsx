@@ -1,4 +1,4 @@
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import type { Campaign, GrowthSignal, Role } from "../api/types";
@@ -36,6 +36,8 @@ const campaign: Campaign = {
   approvals: [{ decided_by: "u-9", role: "franchisee_owner", decision: "approved", expires_at: "2999-01-01T00:00:00Z" }],
   fully_approved: false,
   playbook: null,
+  overlap_customers: 0,
+  frequency_cap_customers: 0,
 };
 
 function setup(role: Role, growth: boolean, extra: Record<string, { status?: number; body?: unknown }> = {}) {
@@ -56,6 +58,15 @@ describe("growth page", () => {
     renderApp("/growth");
     expect(await screen.findByText("Main Street: repeat customers down")).toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Growth" }).length).toBeGreaterThan(0);
+  });
+
+  it("highlights Calendar, not Growth, in the side nav on /growth/calendar", async () => {
+    setup("hq_owner", true, { "GET /growth/calendar": { body: { as_of: "2026-10-30T00:00:00Z", campaigns: [] } } });
+    renderApp("/growth/calendar");
+    const nav = await screen.findByTestId("side-nav");
+    await within(nav).findByRole("link", { name: "Campaign calendar" });
+    expect(within(nav).getByRole("link", { name: "Campaign calendar" })).toHaveAttribute("aria-current", "page");
+    expect(within(nav).getByRole("link", { name: "Growth" })).not.toHaveAttribute("aria-current");
   });
 
   it("hides Growth when the tenant's flag is off", async () => {
@@ -85,6 +96,38 @@ describe("growth page", () => {
     expect(screen.getByText(/1 of 2: Franchisee owner/)).toBeInTheDocument();
     expect(screen.getByText(/two different approvers, and at least one must be an HQ owner/)).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST" && c.path === "/growth/signals/s-1/campaign")).toBe(true);
+  });
+
+  it("shows calendar warnings on the approval screen, and none when there are none", async () => {
+    setup("hq_owner", true, {
+      "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },
+      "GET /growth/campaigns/c-1": { body: { ...campaign, overlap_customers: 3, frequency_cap_customers: 1 } },
+    });
+    renderApp("/growth");
+    const warning = await screen.findByTestId("calendar-warning");
+    expect(warning).toHaveTextContent("3 customers also in an overlapping campaign");
+    expect(warning).toHaveTextContent("1 inside the 30-day frequency cap");
+    expect(within(warning).getByRole("link", { name: "campaign calendar" })).toHaveAttribute("href", "/growth/calendar");
+  });
+
+  it("says warnings are unavailable, not zero, when the server does not know", async () => {
+    setup("hq_owner", true, {
+      "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },
+      "GET /growth/campaigns/c-1": { body: { ...campaign, overlap_customers: null, frequency_cap_customers: null } },
+    });
+    renderApp("/growth");
+    expect(await screen.findByTestId("calendar-warning-unavailable")).toBeInTheDocument();
+    expect(screen.queryByTestId("calendar-warning")).not.toBeInTheDocument();
+  });
+
+  it("shows no warning when the campaign has no clashes", async () => {
+    setup("hq_owner", true, {
+      "GET /growth/signals": { body: [{ ...signal, campaign_id: "c-1" }] },
+      "GET /growth/campaigns/c-1": { body: campaign },
+    });
+    renderApp("/growth");
+    await screen.findByRole("button", { name: "Approve campaign" });
+    expect(screen.queryByTestId("calendar-warning")).not.toBeInTheDocument();
   });
 
   it("shows the server's error when the approval is refused", async () => {

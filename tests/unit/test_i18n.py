@@ -19,6 +19,15 @@ _SAMPLE = {
     "contact": "Asha (a@example.com)",
     "label": "thing",
     "remedy": "x",
+    "days": 30,
+    "years": 7,
+    "reference": "A1B2C3D4",
+    "n": 3,
+    "percent": 50,
+    "minutes": 20,
+    "count": 3,
+    "cap": "₹150.00",
+    "tier": 30,
 }
 
 
@@ -142,3 +151,89 @@ def test_a_remedy_always_states_its_amount_in_every_language():
             assert amount in text, (action, lang)
     assert _remedy(SimpleNamespace(action="x_y", amount_paise=34900), "en") == "a x y of ₹349.00"
     assert _remedy(SimpleNamespace(action="x_y", amount_paise=None), "en") == "a x y"
+
+
+_LEGAL_DEADLINE = re.compile(
+    r"legal (limit|ceiling|deadline)|kanooni seema|कानूनी सीमा|\b90 (days|din|दिन)\b", re.I
+)
+
+
+def test_no_text_states_a_legal_response_or_erasure_deadline():
+    """Owner decision P2: our targets are ours; Rule 14(3) is not in force and is not an
+    erasure deadline, so no customer text may call 90 days (or anything) a legal limit."""
+    for key, variants in TEMPLATES.items():
+        for lang, text in variants.items():
+            assert not _LEGAL_DEADLINE.search(text), (key, lang)
+
+
+def test_the_contact_is_labelled_privacy_and_grievance_never_dpo():
+    assert TEMPLATES["held.contact.label"]["en"] == "Privacy and grievance contact"
+    for key, variants in TEMPLATES.items():
+        for text in variants.values():
+            assert "data protection officer" not in text.lower(), key
+
+
+def test_the_response_line_promises_only_what_the_system_does():
+    """B3: nothing sends a 48-hour acknowledgement, so no text may promise one."""
+    for lang, text in TEMPLATES["held.contact.target"].items():
+        assert "{days}" in text and "{hours}" not in text and "48" not in text, lang
+    assert "straight away" in TEMPLATES["held.contact.target"]["en"]
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_no_remedy_close_names_the_support_contact_never_the_privacy_one(lang):
+    from app.engine.privacy import close_text
+
+    s = {
+        "privacy_contact_name": "Priv",
+        "privacy_contact_email": "priv@example.com",
+        "support_contact_name": "Help",
+        "support_contact_email": "help@example.com",
+        "grievance_target_days": 30,
+    }
+    text = close_text("no_remedy", s, lang)
+    assert "Help (help@example.com)" in text and "priv@" not in text
+    bare = close_text(
+        "no_remedy", {**s, "support_contact_name": "", "support_contact_email": ""}, lang
+    )
+    assert "priv@" not in bare and "help@" not in bare and "1915" in bare and "{" not in bare
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_privacy_page_copy_comes_from_one_locale(lang):
+    """S12.2: every privacy-page heading exists in this language; none falls back to English."""
+    from app.engine import consent_benefits, data_held
+
+    keys = [f"held.h.{k}" for k in data_held.HEADINGS]
+    keys += [f"consent.h.{k}" for k in consent_benefits.HEADINGS]
+    for key in keys:
+        variants = TEMPLATES[key]
+        assert variants.get(lang, "").strip(), (key, lang)
+        if lang == "hi" and len(variants["en"]) > 4:
+            assert variants[lang] != variants["en"], (key, lang)
+
+
+@pytest.mark.parametrize("lang", LANGUAGES)
+def test_privacy_and_erasure_messages_keep_the_privacy_contact(lang):
+    """S12.1: a distinct support contact must never leak into privacy-request wording."""
+    opened = datetime(2026, 10, 27, 6, 0, tzinfo=UTC)
+    s = {
+        "privacy_contact_name": "Priv",
+        "privacy_contact_email": "priv@example.com",
+        "support_contact_name": "Help",
+        "support_contact_email": "help@example.com",
+        "grievance_target_days": 30,
+        "business_timezone": "Asia/Kolkata",
+    }
+    msg = customer_message(opened, s, lang)
+    assert "Priv (priv@example.com)" in msg and "help@" not in msg
+    from app.engine import privacy
+
+    assert privacy.contact_line(s) == "Priv (priv@example.com)"
+    assert privacy.support_line(s) == "Help (help@example.com)"
+    import uuid
+
+    from app.engine.erasure_notice import completion_text
+
+    done = completion_text(s, lang, uuid.uuid4())
+    assert "Priv (priv@example.com)" in done and "help@" not in done

@@ -16,7 +16,8 @@ def main() -> int:
     for slug, r in reports.items():
         print(
             f"{slug}: executed {len(r.executed)}, reconciled {len(r.reconciled)}, "
-            f"escalated {len(r.escalated_cases)} case(s)"
+            f"escalated {len(r.escalated_cases)} case(s), "
+            f"owners assigned {len(r.owners_assigned)}"
         )
     return 0
 

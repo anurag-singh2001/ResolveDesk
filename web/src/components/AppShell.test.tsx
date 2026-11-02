@@ -21,17 +21,32 @@ async function navLabels(role: Role, path = "/") {
 
 describe("role-based navigation", () => {
   it("customers see their orders and cases", async () => {
-    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Privacy & data", "Help"]);
+    expect(await navLabels("customer")).toEqual(["My orders", "My cases", "Our policies", "Privacy & data", "Help"]);
     expect(await screen.findByRole("heading", { name: "My orders" })).toBeInTheDocument();
   });
 
   it("location managers see approvals and cases", async () => {
-    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases", "Help"]);
+    expect(await navLabels("location_manager")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Segments", "Policies", "Help"]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
-  it.each<Role>(["franchisee_owner", "hq_owner"])("%s also sees insights", async (role) => {
-    expect(await navLabels(role)).toEqual(["Approvals", "Cases", "Insights", "Help"]);
+  it("franchisee owners also see insights", async () => {
+    expect(await navLabels("franchisee_owner")).toEqual(["Approvals", "Cases to handle", "Cases", "Dashboard", "Segments", "Insights", "Policies", "Help"]);
+    expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
+  });
+
+  it("only the HQ owner sees the privacy requests queue", async () => {
+    expect(await navLabels("hq_owner")).toEqual([
+      "Approvals",
+      "Cases to handle",
+      "Cases",
+      "Dashboard",
+      "Segments",
+      "Insights",
+      "Privacy requests",
+      "Policies",
+      "Help",
+    ]);
     expect(await screen.findByRole("heading", { name: "Approvals" })).toBeInTheDocument();
   });
 
@@ -68,9 +83,17 @@ describe("privacy contact", () => {
     });
     renderApp("/help");
     expect(await screen.findByRole("link", { name: "privacy@acme.test" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Privacy contact" })).toHaveAttribute(
+    expect(screen.getByRole("link", { name: "Privacy and grievance contact" })).toHaveAttribute(
       "href",
       "mailto:privacy@acme.test",
     );
+  });
+});
+
+describe("route-level code splitting", () => {
+  it("opens a lazily loaded page inside the shell, which stays on screen", async () => {
+    await navLabels("customer", "/help");
+    expect(screen.getByTestId("side-nav")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: /help/i })).toBeInTheDocument();
   });
 });

@@ -25,13 +25,17 @@ from app.core.models import (
     Customer,
     DataRequest,
     DomainEvent,
+    ErasureNotice,
     Execution,
     FeatureFlag,
     Fulfilment,
+    JobRun,
     LineItem,
+    LlmUsage,
     Location,
     LocationBrand,
     LoginFailure,
+    ManualSpend,
     Membership,
     MembershipBrand,
     MembershipLocation,
@@ -152,6 +156,7 @@ def _seed_policy(s, t: SeededTenant) -> None:
 
 def _seed_commerce(s, t: SeededTenant) -> None:
     """One row in every commerce table, so the generic RLS tests cover them too."""
+    request_id = uuid.uuid4()
     now = datetime.now(UTC)
     tid = t.tenant_id
     customer_id, order_id, ticket_id = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
@@ -227,6 +232,7 @@ def _seed_commerce(s, t: SeededTenant) -> None:
                 notice_version="v1",
             ),
             DataRequest(
+                id=request_id,
                 tenant_id=tid,
                 customer_id=customer_id,
                 kind="erasure",
@@ -235,6 +241,16 @@ def _seed_commerce(s, t: SeededTenant) -> None:
         ]
     )
     s.flush()
+    s.add(
+        ErasureNotice(
+            tenant_id=tid,
+            request_id=request_id,
+            channel="email",
+            destination="seed@example.test",
+            language="en",
+            expires_at=now,
+        )
+    )
     s.add(
         TicketMessage(tenant_id=tid, ticket_id=ticket_id, author="customer", body="hi", sent_at=now)
     )
@@ -314,6 +330,14 @@ def _seed_engine(s, t: SeededTenant, customer_id, order_id, now) -> None:
     s.flush()
     s.add(Verification(tenant_id=tid, execution_id=execution_id, status="unknown"))
     s.add(DomainEvent(tenant_id=tid, event="test.created", entity_id=case_id))
+    s.add(
+        LlmUsage(
+            tenant_id=tid, role="main", provider="p", model="m", calls=1, input_tokens=1,
+            output_tokens=1, estimated_cost_micro_paise=0, failures=0, latency_ms=1,
+            outcome="ok",
+        )
+    )  # fmt: skip
+    s.add(JobRun(tenant_id=tid, job="test", status="ok", started_at=datetime.now(UTC)))
     s.add(AuditEvent(tenant_id=tid, actor_type="system", event="test", entity_type="case"))
 
 
@@ -376,6 +400,16 @@ def _seed_growth(s, t: SeededTenant, customer_id, now) -> None:
             role="hq_owner",
             decided_at=now,
             expires_at=now + timedelta(hours=24),
+        )
+    )
+    s.add(
+        ManualSpend(
+            tenant_id=tid,
+            channel="aggregator",
+            amount_paise=1000,
+            period_start=now.date(),
+            period_end=now.date(),
+            entered_by=t.user_id,
         )
     )
     s.add(

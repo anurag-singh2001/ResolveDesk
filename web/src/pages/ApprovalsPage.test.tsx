@@ -74,4 +74,24 @@ describe("approvals filter bar", () => {
     renderApp("/approvals?action=refund");
     expect(await screen.findByText("No approvals match these filters")).toBeInTheDocument();
   });
+
+  it("shows a repeat claimant as a yellow 'Needs a person' chip, not a red 'Checks failed'", async () => {
+    setup([
+      { ...pending, eligible: false, checks: { within_cap: true, fair_use_ok: false } },
+      { ...pending, proposal_id: "p-2", eligible: false, checks: { within_cap: false } },
+    ]);
+    renderApp("/approvals");
+    expect((await screen.findAllByText("Needs a person")).length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Checks failed").length).toBeGreaterThan(0);
+    const chip = screen.getAllByText("Needs a person")[0];
+    expect(chip.className).not.toMatch(/red|danger/);
+  });
+
+  it("flags a voucher above its order total", async () => {
+    setup([
+      { ...pending, action: "free_item_voucher", amount_paise: 15000, order_total_paise: 14900, eligible: false },
+    ]);
+    renderApp("/approvals");
+    expect((await screen.findAllByText("Over the order total")).length).toBeGreaterThan(0);
+  });
 });

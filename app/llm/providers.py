@@ -155,6 +155,11 @@ class RunBudget:
     output_tokens: int = 0
     estimated_cost_paise: int = 0  # placeholder: free tiers; integer paise (hard rule 3)
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False, compare=False)
+    # Per (role, provider, model) usage for the persisted records (S9.2). Numbers and class
+    # names only. Underscore: not part of snapshot().
+    _usage: dict[tuple[str, str, str], dict[str, Any]] = field(
+        default_factory=dict, repr=False, compare=False
+    )
 
     @classmethod
     def from_settings(cls, settings: Settings | None = None) -> "RunBudget":
@@ -183,6 +188,43 @@ class RunBudget:
     def bump(self, counter: str, n: int = 1) -> None:
         with self._lock:
             setattr(self, counter, getattr(self, counter) + n)
+
+    def note_request(
+        self,
+        role: str,
+        provider: str,
+        model: str,
+        *,
+        latency_ms: int,
+        input_tokens: int = 0,
+        output_tokens: int = 0,
+        error_class: str | None = None,
+        fallback: bool = False,
+    ) -> None:
+        """One request that reached a provider (cache hits send none)."""
+        with self._lock:
+            u = self._usage.setdefault(
+                (role, provider, model),
+                {"calls": 0, "input_tokens": 0, "output_tokens": 0, "failures": 0,
+                 "latency_ms": 0, "fallback": False, "error_class": None},
+            )  # fmt: skip
+            u["calls"] += 1
+            u["input_tokens"] += input_tokens
+            u["output_tokens"] += output_tokens
+            u["latency_ms"] += latency_ms
+            u["fallback"] = u["fallback"] or fallback
+            if error_class:
+                u["failures"] += 1
+                u["error_class"] = error_class
+
+    def take_usage(self) -> list[dict[str, Any]]:
+        """The per-model usage so far, cleared so a second recording cannot double count."""
+        with self._lock:
+            rows = [
+                {"role": r, "provider": p, "model": m, **u} for (r, p, m), u in self._usage.items()
+            ]
+            self._usage.clear()
+        return rows
 
     def snapshot(self) -> dict[str, int]:
         with self._lock:
@@ -239,10 +281,12 @@ class LLMClient:
         settings: Settings | None = None,
         cache: ResponseCache | None = None,
         sleep: Callable[[float], None] = time.sleep,
+        role: str = "main",
     ):
         self.s = settings or get_settings()
         self.targets = [primary] + ([fallback] if fallback else [])
         self.budget, self.cache, self._sleep = budget, cache, sleep
+        self.role = role
 
     @classmethod
     def for_role(
@@ -264,7 +308,7 @@ class LLMClient:
                 log.warning("LLM fallback disabled: %s", e)
         cache = ResponseCache(s.llm_cache_dir) if s.llm_cache else None
         budget = budget or RunBudget.from_settings(s)
-        return cls(primary, fallback, budget=budget, settings=s, cache=cache)
+        return cls(primary, fallback, budget=budget, settings=s, cache=cache, role=role)
 
     def invoke(
         self, messages: Sequence[MessageLikeRepresentation], *, schema: str | None = None
@@ -301,9 +345,11 @@ class LLMClient:
             return AIMessage(content=hit["content"])
         for attempt in range(self.s.llm_retry_attempts + 1):
             self.budget.charge_provider_request()
+            started = time.monotonic()
             try:
                 reply = target.chat.invoke(msgs)
             except Exception as e:
+                self._note(target, started, error_class=type(e).__name__)
                 if not is_rate_limit(e):
                     raise
                 if attempt == self.s.llm_retry_attempts:
@@ -315,10 +361,26 @@ class LLMClient:
             usage = getattr(reply, "usage_metadata", None) or {}
             self.budget.bump("input_tokens", usage.get("input_tokens", 0))
             self.budget.bump("output_tokens", usage.get("output_tokens", 0))
+            self._note(target, started, usage.get("input_tokens", 0), usage.get("output_tokens", 0))
             if self.cache:
                 self.cache.put(key, {"content": reply.content})
             return reply
         return None
+
+    def _note(
+        self, target: Target, started: float, tin: int = 0, tout: int = 0,
+        error_class: str | None = None,
+    ) -> None:  # fmt: skip
+        self.budget.note_request(
+            self.role,
+            target.provider,
+            target.model,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            input_tokens=tin,
+            output_tokens=tout,
+            error_class=error_class,
+            fallback=target is not self.targets[0],
+        )
 
     def invoke_structured[T: BaseModel](
         self, messages: Sequence[MessageLikeRepresentation], schema: type[T]

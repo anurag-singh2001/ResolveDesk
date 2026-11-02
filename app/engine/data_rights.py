@@ -11,6 +11,7 @@ proposals, approvals, executions, refund operations and audit_events are not tou
 """
 
 import uuid
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
@@ -31,6 +32,7 @@ from app.core.models import (
     Transaction,
     User,
 )
+from app.engine import erasure_notice
 from app.engine.retention import (
     FINISHED,
     MESSAGE_MARKER,
@@ -231,10 +233,13 @@ def request_erasure(
     customer_id: uuid.UUID,
     now: datetime,
     actor_id: uuid.UUID | None = None,
+    notify_via: str | None = None,
 ) -> DataRequest:
     """File a request (one active request per customer, also enforced by a partial unique
     index: a simultaneous second call gets the first one back). If it cannot run now it is
-    created already `deferred` with the reason; otherwise it waits for a person to approve."""
+    created already `deferred` with the reason; otherwise it waits for a person to approve.
+    `notify_via` (phone | email) picks where the one completion message goes; the destination
+    is copied into a short-lived outbox row now, because the erasure wipes the contact."""
     existing = _active_request(s, tenant_id, customer_id)
     if existing is not None:
         return existing
@@ -256,6 +261,9 @@ def request_erasure(
         if existing is None:
             raise
         return existing
+    customer = s.get(Customer, customer_id)
+    channel = erasure_notice.capture(s, tenant_id, req, customer, notify_via, now)
+    s.flush()
     audit.record(
         s,
         tenant_id,
@@ -264,7 +272,43 @@ def request_erasure(
         event="privacy.erasure_requested",
         entity_type="data_request",
         entity_id=req.id,
-        payload={"status": req.status, "reason": req.reason_code},
+        # The channel kind only (phone | email | none), never the destination.
+        payload={"status": req.status, "reason": req.reason_code, "notify_channel": channel},
+    )
+    return req
+
+
+def withdraw_erasure(
+    s: Session,
+    tenant_id: uuid.UUID,
+    customer_id: uuid.UUID,
+    actor_id: uuid.UUID | None = None,
+) -> DataRequest | None:
+    """The customer takes back their open request. Returns the request (already withdrawn
+    counts as success), or None when they have no request. A completed request cannot be
+    withdrawn: the caller gets it back unchanged and must say so. The row is locked like
+    run_erasure locks it, so a withdrawal and an approval cannot both win: whichever commits
+    second sees the other's final state."""
+    req = s.scalar(
+        select(DataRequest)
+        .where(DataRequest.tenant_id == tenant_id, DataRequest.customer_id == customer_id)
+        .order_by(DataRequest.created_at.desc(), DataRequest.id)
+        .limit(1)
+        .with_for_update()
+    )
+    if req is None or req.status in ("completed", "withdrawn"):
+        return req
+    req.status, req.reason_code, req.deferred_until = "withdrawn", None, None
+    erasure_notice.drop(s, tenant_id, req.id)  # no send will happen: the destination goes now
+    audit.record(
+        s,
+        tenant_id,
+        actor_type="user",
+        actor_id=actor_id,
+        event="privacy.erasure_withdrawn",
+        entity_type="data_request",
+        entity_id=req.id,
+        payload={},
     )
     return req
 
@@ -275,16 +319,22 @@ def run_erasure(
     request_id: uuid.UUID,
     actor_id: uuid.UUID | None,
     now: datetime,
+    *,
+    guard: Callable[[DataRequest], None] | None,
 ) -> DataRequest | None:
     """Approve and execute (or re-defer) a request. None if it does not exist. Idempotent: a
-    completed request is returned unchanged."""
+    completed request is returned unchanged. `guard` (the staff approval check, S8.5e) runs
+    after the request and the customer are locked and before anything is checked or changed;
+    it raises to refuse, so an approval cannot go stale between its check and the redaction.
+    `guard` is keyword-required: staff routes pass the approval check, and `guard=None` is an
+    explicit opt-out for system callers and tests (a test fails if app code opts out)."""
     req = s.scalar(
         select(DataRequest)
         .where(DataRequest.tenant_id == tenant_id, DataRequest.id == request_id)
         .with_for_update()
     )
-    if req is None or req.status == "completed":
-        return req
+    if req is None or req.status in ("completed", "withdrawn"):
+        return req  # a withdrawn request never runs, even if a person approves it later
     # Lock the customer before checking the guards and keep it until commit: case writes take
     # a share lock on the same row (engine/cases.lock_customer), so nothing new can start
     # between the check and the redaction.
@@ -293,6 +343,8 @@ def run_erasure(
         .where(Customer.tenant_id == tenant_id, Customer.id == req.customer_id)
         .with_for_update()
     )
+    if guard is not None:
+        guard(req)
     block = erasure_block(s, tenant_id, req.customer_id, now)
     if block is not None:
         req.status, req.reason_code, req.deferred_until = "deferred", block.code, block.until

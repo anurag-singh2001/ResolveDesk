@@ -9,23 +9,35 @@ from sqlalchemy import Engine, and_, select
 from sqlalchemy.orm import Session
 
 from app.actions.base import registered_actions
+from app.api.decision_sources import SourceOut, decision_sources
 from app.api.deps import get_clock, get_db_engine, not_found, require_staff, tenant_db
 from app.core.models import (
     ActionProposal,
     Approval,
     Case,
     Location,
-    Ticket,
-    TicketMessage,
     Transaction,
+    User,
 )
 from app.core.tenancy import TenantContext
 from app.engine import approvals as engine_approvals
 from app.engine.agent_runner import resume_after_decision
-from app.engine.approvals import AlreadyDecided, Forbidden, NotEligible, NotFound, decide
+from app.engine.approvals import (
+    AlreadyDecided,
+    Forbidden,
+    NotEligible,
+    NotFound,
+    WaitingForCustomer,
+    decide,
+)
+from app.engine.case_messages import first_customer_message
 from app.engine.dispatch import executable, run_approved
 from app.engine.dispatch import reconcile as reconcile_execution
+from app.engine.offer_state import queue_reasons
+from app.engine.offer_view import staff_offer
 from app.engine.release import check_release, release_refund
+from app.engine.switch import alternatives as switch_alternatives
+from app.engine.switch import switch_remedy
 
 router = APIRouter(tags=["approvals"])
 log = logging.getLogger(__name__)
@@ -53,8 +65,18 @@ class PendingOut(BaseModel):
     created_at: datetime
     # The customer's own words (their first message on the case), shown to staff as text.
     customer_message: str | None
+    # Staff who proposed it (S7.5), by name; None for an engine proposal. An erased or unknown
+    # user shows as "Former staff member".
+    proposed_by_name: str | None = None
     location_name: str | None
     citations: list[CitationOut]
+    # S8.3: the rule that set the amount (plain lines) and the cited sections as links.
+    basis: list[str] = []
+    sources: list[SourceOut] = []
+    # S8.10: the question put to the customer, if any ("open" means: waiting for the customer).
+    offer: dict | None = None
+    # S8.10: why a person sees this one now: customer_chose | no_customer_answer | None.
+    queue_reason: str | None = None
 
 
 def _citations(raw: object) -> list[CitationOut]:
@@ -71,16 +93,6 @@ def _citations(raw: object) -> list[CitationOut]:
                 )
             )
     return out
-
-
-def _customer_message(db: Session, case_id: uuid.UUID) -> str | None:
-    return db.scalar(
-        select(TicketMessage.body)
-        .join(Ticket, Ticket.id == TicketMessage.ticket_id)
-        .where(Ticket.case_id == case_id, TicketMessage.author == "customer")
-        .order_by(TicketMessage.sent_at, TicketMessage.id)
-        .limit(1)
-    )
 
 
 # Sorts over stored columns only: a pending proposal has no expiry yet (an approval's 4-hour
@@ -121,7 +133,7 @@ def pending_approvals(
         .outerjoin(Transaction, Transaction.id == Case.transaction_id)
         .outerjoin(Location, Location.id == Transaction.location_id)
         .outerjoin(Approval, Approval.proposal_id == ActionProposal.id)
-        .where(Approval.id.is_(None))
+        .where(Approval.id.is_(None), engine_approvals.not_superseded())
     )
     if location_id is not None:
         query = query.where(Transaction.location_id == location_id)
@@ -131,8 +143,21 @@ def pending_approvals(
     if ctx.role != "hq_owner":
         query = query.where(and_(Transaction.id.is_not(None), ctx.visible_orders()))
     out = []
-    for proposal, case, order, location_name in db.execute(query).all():
+    rows = db.execute(query).all()
+    proposers = {p.proposed_by for p, *_ in rows if p.proposed_by}
+    names = {
+        uid: name if erased is None else "Former staff member"
+        for uid, name, erased in db.execute(
+            select(User.id, User.display_name, User.erased_at).where(User.id.in_(proposers))
+        ).all()
+    }
+    # One clock for every read of an open question: the gate in decide() uses real time, so
+    # the dev-clock offset must not make the screen offer Approve while the gate says wait.
+    real_now = datetime.now(UTC)
+    offer_reasons = queue_reasons(db, [p.id for p, *_ in rows], real_now)
+    for proposal, case, order, location_name in rows:
         _, _, _, result = engine_approvals.evaluate_proposal(db, ctx, proposal, now)
+        why = decision_sources(db, ctx, proposal, "en")  # staff read English
         out.append(
             PendingOut(
                 proposal_id=proposal.id,
@@ -148,9 +173,18 @@ def pending_approvals(
                 eligible=result.ok,
                 errors=result.errors,
                 created_at=proposal.created_at,
-                customer_message=_customer_message(db, case.id),
+                customer_message=first_customer_message(db, case.id),
+                proposed_by_name=(
+                    names.get(proposal.proposed_by, "Former staff member")
+                    if proposal.proposed_by
+                    else None
+                ),
                 location_name=location_name,
                 citations=_citations(proposal.citations),
+                basis=why.basis,
+                sources=why.sources,
+                offer=staff_offer(db, proposal.id, real_now),
+                queue_reason=offer_reasons.get(proposal.id),
             )
         )
     return out
@@ -211,6 +245,8 @@ def post_decision(
         raise not_found() from None
     except Forbidden as exc:
         raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
+    except WaitingForCustomer:
+        raise HTTPException(status.HTTP_409_CONFLICT, "waiting for the customer") from None
     except AlreadyDecided:
         raise HTTPException(status.HTTP_409_CONFLICT, "already decided") from None
     except NotEligible as exc:
@@ -227,6 +263,126 @@ def post_decision(
         proposal_id=proposal_id,
         decision=approval.decision,
         expires_at=approval.expires_at,
+        execution="queued" if queued else "none",
+    )
+
+
+class AlternativeOut(BaseModel):
+    action: str
+    min_paise: int
+    max_paise: int
+    step_paise: int
+    needs_hq_above_paise: int | None
+    you_can_approve_up_to_paise: int
+
+
+class AlternativesOut(BaseModel):
+    proposal_id: uuid.UUID
+    current_action: str
+    current_amount_paise: int | None
+    alternatives: list[AlternativeOut]
+
+
+@router.get("/approvals/{proposal_id}/alternatives")
+def get_alternatives(
+    proposal_id: uuid.UUID,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+) -> AlternativesOut:
+    """The remedies the rules allow for this pending proposal's case, with the amount range of
+    each. A guide for the screen: POST /switch re-checks everything."""
+    try:
+        proposal, options = switch_alternatives(db, ctx, proposal_id)
+    except NotFound:
+        raise not_found() from None
+    except AlreadyDecided:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no longer pending") from None
+    except NotEligible as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
+    return AlternativesOut(
+        proposal_id=proposal.id,
+        current_action=proposal.action,
+        current_amount_paise=proposal.amount_paise,
+        alternatives=[AlternativeOut(**vars(o)) for o in options],
+    )
+
+
+class SwitchIn(BaseModel):
+    action: str = Field(max_length=64)
+    # A request, never a fact: strict int, then checked against the rule's range server-side.
+    amount_paise: int | None = Field(None, strict=True, gt=0)
+    approve: bool = False
+    note: str = Field(max_length=500)  # the why, audited (blank is refused: 422)
+    # hq_owner only: approve a raise yourself (up to the tenant's small limit) when there is no
+    # second person. Needs a written reason; audited as self_approved.
+    self_approve_reason: str | None = Field(None, max_length=500)
+
+
+class SwitchOut(BaseModel):
+    old_proposal_id: uuid.UUID
+    proposal_id: uuid.UUID
+    action: str
+    amount_paise: int | None
+    decision: str | None  # approved, or None while it waits for an approver
+    # hq_owner: above what the caller may approve; second_person: the caller authored it, so
+    # someone else must approve (unless a downgrade or a small owner override)
+    waiting_for: str | None
+    self_approved: str | None = None  # downgrade | owner_override
+    expires_at: datetime | None
+    execution: str  # queued | none
+
+
+@router.post("/approvals/{proposal_id}/switch")
+def post_switch(
+    proposal_id: uuid.UUID,
+    body: SwitchIn,
+    background: BackgroundTasks,
+    ctx: TenantContext = Depends(require_staff),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+) -> SwitchOut:
+    """Supersede a pending proposal with another allowed remedy (S7.10). 404 out of scope or
+    another tenant, 409 not pending (decided, or already switched), 422 outside the rule.
+    The caller authors the new proposal, so they cannot approve it, except `approve: true` on a
+    downgrade, or an hq_owner's `self_approve_reason` up to the tenant's small limit; otherwise
+    it stays pending for a different approver (`waiting_for`)."""
+    try:
+        result = switch_remedy(
+            db,
+            ctx,
+            proposal_id,
+            action=body.action,
+            amount_paise=body.amount_paise,
+            approve=body.approve,
+            note=body.note,
+            now=datetime.now(UTC),
+            self_approve_reason=body.self_approve_reason,
+        )
+    except NotFound:
+        raise not_found() from None
+    except WaitingForCustomer:
+        raise HTTPException(status.HTTP_409_CONFLICT, "waiting for the customer") from None
+    except AlreadyDecided:
+        raise HTTPException(status.HTTP_409_CONFLICT, "no longer pending") from None
+    except Forbidden as exc:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, str(exc)) from None
+    except NotEligible as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, exc.errors) from None
+    new = result.proposal
+    queued = result.approval is not None and executable(new.action)
+    # When approved, the paused workflow follows the switch and runs the new proposal, after
+    # this request commits (hard rule 5).
+    if result.approval is not None:
+        background.add_task(_after_decision, engine, ctx, new.case_id, new.id, new.action, True)
+    return SwitchOut(
+        old_proposal_id=result.old_proposal_id,
+        proposal_id=new.id,
+        action=new.action,
+        amount_paise=new.amount_paise,
+        decision=result.approval.decision if result.approval else None,
+        waiting_for=result.waiting_for,
+        self_approved=result.self_approved,
+        expires_at=result.approval.expires_at if result.approval else None,
         execution="queued" if queued else "none",
     )
 

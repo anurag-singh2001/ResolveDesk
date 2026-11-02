@@ -1,0 +1,14 @@
+id: bc-wrong-004
+tenant: brewco
+kind: wrong_claim
+language: hi
+message: मैंने कैपुचीनो ऑर्डर किया था लेकिन मुझे ठंडी कॉफ़ी दे दी गई। यह गलत ऑर्डर है।
+order:
+  select: flagged
+  flag: wrong_item
+expect:
+  category: wrong_order
+  outcome: proposed
+  action: free_item_voucher
+  amount: exact
+note: 'S7.12: Devanagari variant of bc-wrong-001'

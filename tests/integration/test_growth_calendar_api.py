@@ -1,0 +1,200 @@
+"""GET /growth/calendar: scope, read-only, counts only, distinct send states.
+
+Runs for every tenant folder and never names one: who sees what comes from each user's role.
+"""
+
+import json
+import uuid
+from datetime import datetime, timedelta
+
+import pytest
+from sqlalchemy import func, select
+
+from app.api.deps import get_clock
+from app.core.db import tenant_session
+from app.core.models import Campaign, CampaignMember, Customer
+from tests.helpers import login
+from tests.integration.test_growth import ctx_of, gt, propose_for  # noqa: F401
+
+URL = "/growth/calendar"
+SEND_KEYS = {"pending", "submitted", "processing", "succeeded", "failed", "unknown", "skipped"}
+
+
+@pytest.fixture
+def cal(api, app_engine, gt):  # noqa: F811
+    cfg, tid, as_of = gt
+    if not cfg.feature_flags.get("growth"):
+        pytest.skip("growth is off for this tenant")
+    staff = [u for u in cfg.users if u.role != "customer"]
+    headers = {u.email: login(api, cfg.slug, u.email) for u in staff}
+    api.app.dependency_overrides[get_clock] = lambda: as_of  # after login: tokens use real time
+    hq = next(u.email for u in staff if u.role == "hq_owner")
+    try:
+        signals = api.post("/growth/signals/refresh", headers=headers[hq]).json()
+        hq_ctx = ctx_of(app_engine, tid, hq)
+        made = 0
+        for s in signals:
+            try:
+                propose_for(app_engine, tid, uuid.UUID(s["id"]), hq_ctx, as_of)
+                made += 1
+            except Exception:  # a location with too small an audience cannot run a campaign
+                continue
+        if not made:
+            pytest.skip("no location has an eligible audience")
+        yield api, cfg, tid, headers, staff, hq
+    finally:
+        api.app.dependency_overrides.pop(get_clock, None)
+
+
+def test_hq_lists_every_campaign_with_dates_and_counts(cal, app_engine):
+    api, cfg, tid, headers, staff, hq = cal
+    resp = api.get(URL, headers=headers[hq])
+    assert resp.status_code == 200, resp.text
+    rows = resp.json()["campaigns"]
+    with tenant_session(tid, app_engine) as s:
+        stored = {c.id: c for c in s.scalars(select(Campaign))}
+        s.expunge_all()  # keep the loaded rows usable after the session closes
+    assert {uuid.UUID(r["id"]) for r in rows} == set(stored)
+    for r in rows:
+        c = stored[uuid.UUID(r["id"])]
+        assert r["status"] == c.status == "pending_approval"
+        assert type(r["budget_paise"]) is int and r["budget_paise"] == c.budget_paise
+        assert r["audience_n"] == r["treatment_n"] + r["holdout_n"]
+        # Not sent yet: the calendar starts at the proposal expiry.
+        start = datetime.fromisoformat(r["start"])
+        assert start == c.expires_at
+        assert datetime.fromisoformat(r["window_end"]) == start + timedelta(days=r["window_days"])
+        assert set(r["send_counts"]) == SEND_KEYS
+        assert r["send_counts"]["pending"] == r["treatment_n"]
+        assert r["overlap_customers"] >= 0 and r["frequency_cap_customers"] >= 0
+
+
+def test_the_response_has_no_customer_ids_names_or_phones(cal, app_engine):
+    api, cfg, tid, headers, staff, hq = cal
+    text = json.dumps(api.get(URL, headers=headers[hq]).json())
+    with tenant_session(tid, app_engine) as s:
+        for cid, name, phone in s.execute(select(Customer.id, Customer.name, Customer.phone)):
+            assert str(cid) not in text
+            assert not name or name not in text
+            assert not phone or phone not in text
+
+
+def test_scoped_staff_see_only_campaigns_at_their_locations(cal):
+    api, cfg, tid, headers, staff, hq = cal
+    everything = {r["id"] for r in api.get(URL, headers=headers[hq]).json()["campaigns"]}
+    for u in staff:
+        resp = api.get(URL, headers=headers[u.email])
+        assert resp.status_code == 200
+        rows = resp.json()["campaigns"]
+        assert {r["id"] for r in rows} <= everything
+        if u.role == "hq_owner":
+            assert {r["id"] for r in rows} == everything
+            continue
+        visible = {x["id"] for x in api.get("/locations", headers=headers[u.email]).json()}
+        assert {r["location_id"] for r in rows} <= visible
+
+
+def test_a_location_out_of_scope_is_404(cal):
+    api, cfg, tid, headers, staff, hq = cal
+    all_locs = {x["id"] for x in api.get("/locations", headers=headers[hq]).json()}
+    for u in (u for u in staff if u.role != "hq_owner"):
+        mine = {x["id"] for x in api.get("/locations", headers=headers[u.email]).json()}
+        for loc in all_locs - mine:
+            resp = api.get(URL, params={"location_id": loc}, headers=headers[u.email])
+            assert resp.status_code == 404
+    unknown = {"location_id": str(uuid.uuid4())}
+    assert api.get(URL, params=unknown, headers=headers[hq]).status_code == 404
+    unknown = {"brand_id": str(uuid.uuid4())}
+    assert api.get(URL, params=unknown, headers=headers[hq]).status_code == 404
+
+
+def test_the_calendar_is_read_only(cal, app_engine):
+    api, cfg, tid, headers, staff, hq = cal
+
+    def snapshot():
+        with tenant_session(tid, app_engine) as s:
+            return (
+                s.scalar(select(func.count()).select_from(Campaign)),
+                s.scalar(select(func.count()).select_from(CampaignMember)),
+                sorted((str(c.id), c.status) for c in s.scalars(select(Campaign))),
+            )
+
+    before = snapshot()
+    api.get(URL, headers=headers[hq])
+    for method in (api.post, api.put, api.patch, api.delete):
+        assert method(URL, headers=headers[hq]).status_code == 405
+    assert snapshot() == before
+
+
+def test_customers_and_anonymous_are_refused(cal):
+    api, cfg, tid, headers, staff, hq = cal
+    assert api.get(URL).status_code == 401
+    customer = next(u for u in cfg.users if u.role == "customer")
+    # Tokens are minted on the real clock; with the data-time override active they look expired.
+    held = api.app.dependency_overrides.pop(get_clock)
+    try:
+        token = login(api, cfg.slug, customer.email)
+    finally:
+        api.app.dependency_overrides[get_clock] = held
+    assert api.get(URL, headers=token).status_code == 403
+
+
+def test_campaign_detail_carries_the_same_warning_counts_as_the_calendar(cal):
+    """S12.8: the approver's screen (GET /growth/campaigns/{id}) shows what the calendar shows."""
+    api, cfg, tid, headers, staff, hq = cal
+    rows = api.get(URL, headers=headers[hq]).json()["campaigns"]
+    assert rows
+    for r in rows:
+        detail = api.get(f"/growth/campaigns/{r['id']}", headers=headers[hq])
+        assert detail.status_code == 200, detail.text
+        body = detail.json()
+        assert body["overlap_customers"] == r["overlap_customers"]
+        assert body["frequency_cap_customers"] == r["frequency_cap_customers"]
+        assert not ({"customer_ids", "customers", "phones"} & set(body))  # counts only
+
+
+def test_scoped_callers_get_their_own_calendar_counts_or_a_404_never_a_false_zero(cal):
+    """S12.8: for every staff role, the detail counts equal that caller's own calendar row. A
+    campaign outside their listing is a 404 or unknown (null), never 0."""
+    api, cfg, tid, headers, staff, hq = cal
+    everything = {r["id"] for r in api.get(URL, headers=headers[hq]).json()["campaigns"]}
+    for u in staff:
+        mine = {r["id"]: r for r in api.get(URL, headers=headers[u.email]).json()["campaigns"]}
+        for cid in everything:
+            resp = api.get(f"/growth/campaigns/{cid}", headers=headers[u.email])
+            if cid in mine:
+                assert resp.status_code == 200, resp.text
+                body = resp.json()
+                assert body["status"] == "pending_approval"  # a campaign right after propose
+                assert body["overlap_customers"] == mine[cid]["overlap_customers"]
+                assert body["frequency_cap_customers"] == mine[cid]["frequency_cap_customers"]
+            elif resp.status_code == 200:
+                body = resp.json()
+                assert body["overlap_customers"] is None
+                assert body["frequency_cap_customers"] is None
+            else:
+                assert resp.status_code == 404
+
+
+def test_campaign_detail_refuses_customers_and_other_tenants(cal, seeded_history):  # noqa: F811
+    api, cfg, tid, headers, staff, hq = cal
+    cid = api.get(URL, headers=headers[hq]).json()["campaigns"][0]["id"]
+    assert api.get(f"/growth/campaigns/{cid}").status_code == 401
+    held = api.app.dependency_overrides.pop(get_clock)
+    try:
+        customer = next(u for u in cfg.users if u.role == "customer")
+        assert (
+            api.get(
+                f"/growth/campaigns/{cid}", headers=login(api, cfg.slug, customer.email)
+            ).status_code
+            == 403
+        )
+        others = [c for c in seeded_history.values() if c.slug != cfg.slug]
+        other = next((c for c in others if c.feature_flags.get("growth")), None)
+        if other is None:
+            pytest.skip("no other tenant with growth on")
+        other_hq = next(u.email for u in other.users if u.role == "hq_owner")
+        other_headers = login(api, other.slug, other_hq)
+    finally:
+        api.app.dependency_overrides[get_clock] = held
+    assert api.get(f"/growth/campaigns/{cid}", headers=other_headers).status_code == 404

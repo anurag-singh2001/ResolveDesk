@@ -36,3 +36,7 @@ Thumbs.db
 
 # Mock provider state (MOCK_STATE_FILE)
 var/
+
+web/.vite/
+
+.test-runs/

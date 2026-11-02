@@ -66,12 +66,12 @@ export function LoginPage() {
   const businessName = (slug: string) => businesses?.find((b) => b.slug === slug)?.name ?? slug;
 
   return (
-    <div className="flex min-h-screen flex-col bg-slate-50 lg:flex-row">
+    <div className="flex min-h-screen flex-col bg-background lg:flex-row">
       <div className="flex flex-1 items-center justify-center px-4 py-10 sm:px-6">
         <div className="w-full max-w-sm">
           <Logo />
-          <h1 className="mt-8 text-2xl font-semibold tracking-tight text-slate-900">Sign in</h1>
-          <p className="mt-1 text-sm text-slate-500">Track your orders, report a problem, or review cases.</p>
+          <h1 className="mt-8 text-2xl font-medium tracking-tight text-foreground sm:text-3xl">Sign in</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">Track your orders, report a problem, or review cases.</p>
 
           <form onSubmit={onSubmit} className="mt-8 space-y-5" noValidate aria-label="Sign in">
             {notice && <Alert tone="warning">{notice}</Alert>}
@@ -111,28 +111,28 @@ export function LoginPage() {
       </div>
 
       {demo.length > 0 && (
-        <aside aria-labelledby="demo-heading" className="border-t border-slate-200 bg-white px-4 py-8 sm:px-6 lg:w-[28rem] lg:border-l lg:border-t-0 lg:py-10">
+        <aside aria-labelledby="demo-heading" className="border-t border-border px-4 py-8 sm:px-6 lg:w-[28rem] lg:border-l lg:border-t-0 lg:py-10">
           <div className="mx-auto max-w-md">
             <div className="flex items-center gap-2">
-              <h2 id="demo-heading" className="text-sm font-semibold text-slate-900">
+              <h2 id="demo-heading" className="font-montserrat text-sm font-semibold text-foreground">
                 Demo accounts
               </h2>
               <Badge tone="warning">Dev only</Badge>
             </div>
-            <p className="mt-1 text-xs text-slate-500">Click an account to fill the form, then sign in.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Click an account to fill the form, then sign in.</p>
             <ul className="mt-4 max-h-[70vh] space-y-2 overflow-y-auto pr-1">
               {demo.map((acc) => (
                 <li key={`${acc.tenant}:${acc.email}`}>
                   <button
                     type="button"
                     onClick={() => fillDemo(acc)}
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2.5 text-left transition hover:border-accent-200 hover:bg-accent-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-600"
+                    className="card-chai w-full px-3 py-2.5 text-left"
                   >
                     <span className="flex items-center justify-between gap-2">
-                      <span className="truncate text-sm font-medium text-slate-900">{acc.name}</span>
+                      <span className="truncate text-sm font-medium text-foreground">{acc.name}</span>
                       <Badge tone="accent">{roleLabel(acc.role)}</Badge>
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-slate-500">
+                    <span className="mt-0.5 block truncate text-xs text-muted-foreground">
                       {businessName(acc.tenant)} · {acc.email}
                     </span>
                   </button>

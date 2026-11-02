@@ -17,13 +17,41 @@ const base: Case = {
   created_at: "2026-10-25T10:00:00Z",
 };
 
+const order = {
+  id: "t-1",
+  external_ref: "O0000042",
+  brand_id: "b-1",
+  location_id: "l-1",
+  brand_name: "Zesty Bowls",
+  location_name: "Indiranagar",
+  placed_at: "2026-10-25T09:00:00Z",
+  total_paise: 45000,
+  status: "delivered",
+  promised_at: "2026-10-25T09:40:00Z",
+  completed_at: "2026-10-25T10:05:00Z",
+  items: [
+    { sku: "a", name: "Chicken biryani", quantity: 2, quantity_fulfilled: 1, total_paise: 30000 },
+    { sku: "b", name: "Raita", quantity: 1, quantity_fulfilled: 1, total_paise: 15000 },
+  ],
+};
+
+const said: Case = {
+  ...base,
+  customer_messages: [
+    { at: "2026-10-25T10:00:00Z", text: "One biryani was missing." },
+    { at: "2026-10-25T10:20:00Z", text: "It was the chicken one." },
+  ],
+};
+
 function setup(role: Role, kase: Case | (() => Case), timeline: { status?: number; body?: unknown } = { body: [] }) {
   seedSession();
   return mockFetch({
     "GET /me": { body: makeMe(role) },
     "GET /cases/c-1": typeof kase === "function" ? () => ({ body: kase() }) : { body: kase },
     "GET /cases/c-1/timeline": timeline,
+    "GET /orders/t-1": { body: order },
     "POST /cases/c-1/messages": { status: 201, body: base },
+    "POST /cases/c-1/rerun-ai": { status: 202, body: { status: "started" } },
     "GET /cases/c-1/events": { body: [{ occurred_at: "2026-10-25T10:00:01Z", actor_type: "system", event: "case.opened", payload: { a: 1 } }] },
   });
 }
@@ -32,7 +60,21 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+const why: Case = {
+  ...base,
+  basis: ["The voucher is sized to the order total."],
+  sources: [{ doc_key: "late_delivery_v3", version: 3, document_title: "Late delivery policy", section_id: "2.1", href: "/policies#late_delivery_v3-2.1", section_changed: false, note: null }],
+};
+
 describe("case page", () => {
+  it.each(["customer", "hq_owner"] as Role[])("shows why the amount is what it is, with a link to the policy section (%s)", async (role) => {
+    setup(role, why);
+    renderApp("/cases/c-1");
+    expect(await screen.findByTestId("remedy-basis")).toHaveTextContent("sized to the order total");
+    const link = screen.getByRole("link", { name: "Late delivery policy, section 2.1" });
+    expect(link).toHaveAttribute("href", "/policies#late_delivery_v3-2.1");
+  });
+
   it("shows the API message, the proposed remedy and the timeline", async () => {
     setup("customer", base, {
       body: [{ at: "2026-10-25T10:00:00Z", stage: "received", title: "We got your report", text: "Thanks for telling us." }],
@@ -107,5 +149,53 @@ describe("case page", () => {
     });
     expect(caseCalls()).toBe(settled);
     expect(screen.queryByText(/Updating automatically/)).not.toBeInTheDocument();
+  });
+
+  it("shows staff the order card and the customer's words, apart from the status text", async () => {
+    setup("hq_owner", said);
+    renderApp("/cases/c-1");
+    expect(await screen.findByText("Customer said")).toBeInTheDocument();
+    const quotes = screen.getAllByRole("blockquote").map((q) => q.textContent);
+    expect(quotes).toEqual(["One biryani was missing.", "It was the chicken one."]);
+    expect(await screen.findByRole("heading", { name: "Order" })).toBeInTheDocument();
+    expect(screen.getByText("Zesty Bowls")).toBeInTheDocument();
+    expect(screen.getByText("Indiranagar")).toBeInTheDocument();
+    expect(screen.getByText("Chicken biryani")).toBeInTheDocument();
+    expect(screen.getByText("₹450.00")).toBeInTheDocument();
+    expect(screen.getByText(said.message)).toBeInTheDocument();
+    expect(screen.getByText("Promised by")).toBeInTheDocument();
+    expect(screen.getByText("Delivered")).toBeInTheDocument();
+  });
+
+  it("labels the customer's own messages 'You wrote' and shows no order card", async () => {
+    const { calls } = setup("customer", said);
+    renderApp("/cases/c-1");
+    expect(await screen.findByText("You wrote")).toBeInTheDocument();
+    expect(screen.queryByText("Customer said")).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Order" })).not.toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/orders/t-1")).toBe(false);
+  });
+
+  it("offers staff 'Run the AI again' on an AI-failure escalation, once, with a status line", async () => {
+    const stuck = { ...base, stage: "escalated", action: null, amount_paise: null, can_rerun_ai: true };
+    const { calls } = setup("hq_owner", stuck);
+    renderApp("/cases/c-1");
+    const button = await screen.findByRole("button", { name: "Run the AI again" });
+    await userEvent.setup().click(button);
+    expect(await screen.findByRole("status")).toHaveTextContent("The AI is running again");
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
+    expect(calls.filter((c) => c.method === "POST" && c.path === "/cases/c-1/rerun-ai")).toHaveLength(1);
+  });
+
+  it("shows no re-run button for other escalations, or to customers", async () => {
+    setup("hq_owner", { ...base, stage: "escalated", can_rerun_ai: false });
+    const first = renderApp("/cases/c-1");
+    await screen.findByText(base.message);
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
+    first.unmount();
+    setup("customer", { ...base, stage: "escalated", can_rerun_ai: true });
+    renderApp("/cases/c-1");
+    await screen.findByText(base.message);
+    expect(screen.queryByRole("button", { name: "Run the AI again" })).not.toBeInTheDocument();
   });
 });

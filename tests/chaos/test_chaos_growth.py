@@ -34,6 +34,7 @@ from tests.integration.test_growth import (  # noqa: F401  (gt is a fixture)
     gt,
     make_signal,
     propose_for,
+    third_party,
 )
 
 pytestmark = pytest.mark.chaos
@@ -120,7 +121,9 @@ def test_campaign_send_survives_messaging_chaos(
         loc = s.get(Signal, signal_id).location_id
     hq, other = approvers(app_engine, cfg, tid, loc)
     try:
-        cid, _ = propose_for(app_engine, tid, signal_id, hq)
+        cid, _ = propose_for(
+            app_engine, tid, signal_id, third_party(app_engine, cfg, tid, loc, hq, other)
+        )
     except Exception:
         pytest.skip("history too small for an audience at this scale")
     decide_as(app_engine, tid, hq, cid)

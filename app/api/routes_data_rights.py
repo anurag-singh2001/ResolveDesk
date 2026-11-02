@@ -3,15 +3,19 @@ customer is found from the token's user id, never from an id in the request (har
 Staff cannot call /me/* for a customer. Erasure is requested here and executed by code once an
 hq_owner approves it."""
 
+import logging
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session
 
-from app.api.deps import get_tenant_context, not_found, tenant_db
+from app.api.deps import get_clock, get_db_engine, get_tenant_context, not_found, tenant_db
+from app.core import audit
+from app.core.i18n import normalize
 from app.core.models import (
     Brand,
     Case,
@@ -24,9 +28,18 @@ from app.core.models import (
 )
 from app.core.settings_resolver import effective_settings
 from app.core.tenancy import TenantContext
+from app.engine import (
+    consent_benefits,
+    data_export,
+    data_held,
+    erasure_info,
+    erasure_notice,
+    privacy_queue,
+)
 from app.engine import data_rights as privacy
 from app.engine.case_status import case_status
 
+log = logging.getLogger(__name__)
 router = APIRouter(tags=["privacy"])
 
 
@@ -55,13 +68,29 @@ class ConsentEventOut(BaseModel):
     at: datetime
 
 
-class ConsentsOut(BaseModel):
+class ConsentStateOut(BaseModel):
+    """The plain record of choices; this is what the data export embeds."""
+
     notice_version: str
     consents: list[ConsentOut]
     history: list[ConsentEventOut]
 
 
+class ConsentsOut(ConsentStateOut):
+    # Benefit wording, frequency cap and the always-on help note (S8.5b), in the customer's
+    # language. Page copy, so it is not part of the export.
+    benefits: consent_benefits.Benefits
+
+
 def _consents(db: Session, customer: Customer) -> ConsentsOut:
+    state, current, events = _state(db, customer)
+    return ConsentsOut(
+        **state.model_dump(),
+        benefits=consent_benefits.build(customer.preferred_language, current, events),
+    )
+
+
+def _state(db: Session, customer: Customer):
     rows = {
         (c.purpose, c.channel): c
         for c in db.scalars(select(Consent).where(Consent.customer_id == customer.id))
@@ -83,7 +112,8 @@ def _consents(db: Session, customer: Customer) -> ConsentsOut:
         .where(ConsentEvent.customer_id == customer.id)
         .order_by(ConsentEvent.created_at, ConsentEvent.id)
     )
-    return ConsentsOut(
+    events = list(events)
+    state = ConsentStateOut(
         notice_version=privacy.NOTICE_VERSION,
         consents=current,
         history=[
@@ -98,6 +128,7 @@ def _consents(db: Session, customer: Customer) -> ConsentsOut:
             for e in events
         ],
     )
+    return state, current, events
 
 
 @router.get("/me/consents")
@@ -135,10 +166,13 @@ def set_my_consent(
 
 @router.get("/me/data-export")
 def my_data_export(
-    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+    response: Response,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
 ) -> dict:
     """A summary of the customer's own personal data and who else processes it (DPDP s.11).
     Case text is the customer-safe status message, not internal notes or model output."""
+    response.headers["Cache-Control"] = "no-store"  # personal data: no shared or disk cache
     customer = own_customer(ctx, db)
     now = datetime.now(UTC)
     orders = db.execute(
@@ -164,7 +198,7 @@ def my_data_export(
                 "message": st.message,
             }
         )
-    consent = _consents(db, customer)
+    consent = _state(db, customer)[0]
     return {
         "generated_at": now,
         "profile": {
@@ -190,17 +224,56 @@ def my_data_export(
     }
 
 
+@router.get("/me/data-export/readable")
+def my_readable_export(
+    response: Response,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> dict:
+    """The same customer's data as print-friendly sections in their language (S8.5c). The
+    customer comes from the token; there is no id to pass. The audit row carries no personal
+    content, only that an export happened."""
+    response.headers["Cache-Control"] = "no-store"
+    customer = own_customer(ctx, db)
+    body = data_export.readable_export(db, customer, effective_settings(db), datetime.now(UTC))
+    audit.record(
+        db,
+        ctx.tenant_id,
+        actor_type="user",
+        actor_id=ctx.user_id,
+        event="data.exported",
+        entity_type="customer",
+        entity_id=customer.id,
+        payload={"format": "readable"},
+    )
+    return body
+
+
+@router.get("/me/data-held")
+def my_data_held(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """What we hold about the signed-in customer: per item the purpose, retention (tenant
+    settings, labelled provisional), use and the customer's own count. The customer comes from
+    the token and there is no id to pass, so another customer's or tenant's data is unreachable."""
+    customer = own_customer(ctx, db)
+    return data_held.what_we_hold(db, customer, effective_settings(db))
+
+
 # --- erasure -----------------------------------------------------------------------------
 
 
 class DataRequestOut(BaseModel):
     id: uuid.UUID
     kind: str
-    status: str  # pending_approval | deferred | completed
+    status: str  # pending_approval | deferred | completed | withdrawn
     reason: str | None  # template text, set when deferred
     deferred_until: datetime | None
     requested_at: datetime
     completed_at: datetime | None
+    # What happened to the one completion message: sent | failed | unknown | expired | none.
+    # null until it is final. "unknown" is never shown as delivered.
+    completion_message: str | None = None
 
 
 def _request_out(r: DataRequest) -> DataRequestOut:
@@ -212,24 +285,61 @@ def _request_out(r: DataRequest) -> DataRequestOut:
         deferred_until=r.deferred_until,
         requested_at=r.created_at,
         completed_at=r.completed_at,
+        completion_message=r.completion_message,
     )
+
+
+def _my_request(req: DataRequest, db: Session, customer: Customer) -> dict:
+    """The customer's view of a request: the plain fields plus stage, dates and the contact,
+    in the customer's language. The text of a stage never says more than the row proves."""
+    lang = normalize(customer.preferred_language)
+    body = _request_out(req).model_dump(mode="json")
+    return body | erasure_info.view(req, effective_settings(db), lang) | {"id": str(req.id)}
+
+
+@router.get("/me/erasure-info")
+def my_erasure_info(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """What erasure removes, keeps and may wait for, in the customer's language."""
+    customer = own_customer(ctx, db)
+    return erasure_info.info(
+        effective_settings(db),
+        normalize(customer.preferred_language),
+        channels=erasure_notice.held_channels(customer),
+    )
+
+
+class ErasureRequestIn(BaseModel):
+    # Where the one completion message goes: a destination the customer already has on file.
+    notify_via: Literal["phone", "email"] | None = None
 
 
 @router.post("/me/erasure-request", status_code=status.HTTP_201_CREATED)
 def request_erasure(
-    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
-) -> DataRequestOut:
+    body: ErasureRequestIn | None = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> dict:
+    """File a request. If one is already open the same request comes back (not a second one).
+    `notify_via` (optional) picks phone or email for the completion message; default is the
+    phone, else the email, else none."""
     customer = own_customer(ctx, db)
     req = privacy.request_erasure(
-        db, ctx.tenant_id, customer.id, datetime.now(UTC), actor_id=ctx.user_id
+        db,
+        ctx.tenant_id,
+        customer.id,
+        datetime.now(UTC),
+        actor_id=ctx.user_id,
+        notify_via=body.notify_via if body else None,
     )
-    return _request_out(req)
+    return _my_request(req, db, customer)
 
 
 @router.get("/me/erasure-request")
 def my_erasure_request(
     ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
-) -> DataRequestOut | None:
+) -> dict | None:
     """The latest request, or null when there is none."""
     customer = own_customer(ctx, db)
     req = db.scalar(
@@ -238,7 +348,22 @@ def my_erasure_request(
         .order_by(DataRequest.created_at.desc(), DataRequest.id)
         .limit(1)
     )
-    return _request_out(req) if req else None
+    return _my_request(req, db, customer) if req else None
+
+
+@router.post("/me/erasure-request/cancel")
+def withdraw_my_erasure_request(
+    ctx: TenantContext = Depends(get_tenant_context), db: Session = Depends(tenant_db)
+) -> dict:
+    """Withdraw the open request. 404 when there is none; 409 once it has been carried out
+    (it cannot be undone, and we do not pretend otherwise)."""
+    customer = own_customer(ctx, db)
+    req = privacy.withdraw_erasure(db, ctx.tenant_id, customer.id, actor_id=ctx.user_id)
+    if req is None:
+        raise not_found()
+    if req.status == "completed":
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request has already been carried out")
+    return _my_request(req, db, customer)
 
 
 class StaffRequestOut(DataRequestOut):
@@ -264,16 +389,94 @@ def list_data_requests(
     return [StaffRequestOut(**_request_out(r).model_dump(), customer_ref=ref) for r, ref in rows]
 
 
-@router.post("/data-requests/{request_id}/approve")
-def approve_data_request(
+@router.get("/data-requests/queue")
+def privacy_queue_list(
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    now: datetime = Depends(get_clock),
+) -> dict:
+    """The owner's queue of open erasure requests (S8.5e). Customers are masked references."""
+    _hq(ctx)
+    return privacy_queue.queue(db, now)
+
+
+@router.get("/data-requests/{request_id}/dry-run")
+def privacy_dry_run(
     request_id: uuid.UUID,
     ctx: TenantContext = Depends(get_tenant_context),
     db: Session = Depends(tenant_db),
-) -> DataRequestOut:
-    """Approve an erasure: code re-checks the guards, then redacts or stays deferred with the
-    reason. Safe to call again on a deferred request (it re-checks) or a completed one."""
+    now: datetime = Depends(get_clock),
+) -> dict:
+    """What approving would remove and keep, as counts, plus the hash and a short-lived approval
+    token bound to it. Looking is audited (no personal content)."""
     _hq(ctx)
-    req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, datetime.now(UTC))
+    req = db.get(DataRequest, request_id)  # RLS: another tenant's request is absent
     if req is None:
         raise not_found()
+    if req.status not in privacy_queue.OPEN:
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request is no longer open")
+    body = privacy_queue.dry_run(db, ctx.tenant_id, req, now)
+    token, expires = privacy_queue.issue_approval(
+        ctx.tenant_id, req.id, ctx.user_id, body["payload_hash"], now
+    )
+    privacy_queue.record_review(db, ctx.tenant_id, ctx.user_id, req, now)
+    return body | {"approval_token": token, "expires_at": expires}
+
+
+class ApproveIn(BaseModel):
+    payload_hash: str | None = None
+    approval_token: str | None = None
+
+
+STALE = {
+    "missing": "review what will be erased first: an approval needs the dry run",
+    "invalid": "this approval is not valid; review the request again",
+    "expired": "this approval expired; review the request again",
+    "changed": "the request or the customer's data changed since you reviewed it; review again",
+}
+
+
+@router.post("/data-requests/{request_id}/approve")
+def approve_data_request(
+    request_id: uuid.UUID,
+    background: BackgroundTasks,
+    body: ApproveIn | None = None,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+    engine: Engine = Depends(get_db_engine),
+    now: datetime = Depends(get_clock),
+) -> DataRequestOut:
+    """Approve an erasure. The approval must carry the dry run's hash and its unexpired token;
+    if the request or the customer's data changed since, it is refused (409) and nothing is
+    erased. Then code re-checks the guards, then redacts or stays deferred with the reason.
+    Safe to call again on a completed request. Once it is completed, the one completion message
+    is sent after this request commits (never before the erasure succeeded; sending it again is
+    a no-op)."""
+    _hq(ctx)
+    body = body or ApproveIn()
+    checked: list[bool] = []
+
+    def guard(req: DataRequest) -> None:
+        try:
+            privacy_queue.check_approval(
+                db, ctx.tenant_id, req, ctx.user_id, body.payload_hash, body.approval_token, now
+            )
+        except privacy_queue.StaleApproval as e:
+            # The 409 rolls the transaction back, so the refusal goes to the log (ids and a
+            # code only, no personal data).
+            log.warning("erasure approval refused: %s request=%s", e.code, request_id)
+            raise HTTPException(status.HTTP_409_CONFLICT, STALE[e.code]) from None
+        checked.append(True)
+
+    req = privacy.run_erasure(db, ctx.tenant_id, request_id, ctx.user_id, now, guard=guard)
+    if req is None:
+        raise not_found()
+    if req.status == "withdrawn":
+        raise HTTPException(
+            status.HTTP_409_CONFLICT, "the customer withdrew this request; nothing was erased"
+        )
+    if checked and body.payload_hash:
+        privacy_queue.record_approval(db, ctx.tenant_id, ctx.user_id, req, body.payload_hash)
+    if req.status == "completed" and req.completion_message is None:
+        background.add_task(erasure_notice.send_completion_notice, engine, ctx.tenant_id, req.id)
     return _request_out(req)

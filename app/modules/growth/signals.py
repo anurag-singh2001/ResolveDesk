@@ -31,6 +31,7 @@ from app.core.business_time import DEFAULT_TIMEZONE
 from app.core.db import tenant_session
 from app.core.models import Location, Signal, Transaction
 from app.core.settings_resolver import effective_settings
+from app.core.telemetry import run_job
 
 log = logging.getLogger(__name__)
 
@@ -321,7 +322,20 @@ def run_signal_job(session: Session, tenant_id: uuid.UUID, as_of: datetime) -> l
 def run_nightly(
     engine: Engine, tenant_id: uuid.UUID, as_of: datetime, client=None
 ) -> list[uuid.UUID]:
-    """The scheduled job, in three phases so no transaction is open during an LLM call (hard
+    """The scheduled job, recorded in job_runs (S9.2; a recording problem never fails it)."""
+    return run_job(
+        engine,
+        tenant_id,
+        "growth_nightly",
+        lambda: _run_nightly(engine, tenant_id, as_of, client),
+        lambda ids: {"signals": len(ids)},
+    )
+
+
+def _run_nightly(
+    engine: Engine, tenant_id: uuid.UUID, as_of: datetime, client=None
+) -> list[uuid.UUID]:
+    """The job itself, in three phases so no transaction is open during an LLM call (hard
     rule 5): read and flag, summarise, then store. Returns the flagged signals' ids."""
     with tenant_session(tenant_id, engine) as s:
         flagged = [(r, gather_evidence(s, tenant_id, r)) for r in readings(s, tenant_id, as_of)

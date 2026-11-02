@@ -1,17 +1,27 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
-import type { Consents, ErasureRequest } from "../api/types";
-import { Alert, Badge, Button, Card, ErrorState, Loading, PageHeader } from "../components/ui";
+import type { Consents, DataHeld, ErasureInfo, ErasureRequest, ErasureStage, PrivacyContact } from "../api/types";
+import {
+  Alert,
+  Badge,
+  Button,
+  Card,
+  ErrorState,
+  Field,
+  Loading,
+  PageHeader,
+  Switch,
+  inputClass,
+  numClass,
+  tableClass,
+  tableWrapClass,
+  tdClass,
+  thClass,
+} from "../components/ui";
 import { useApi } from "../lib/useApi";
 
-const CHANNEL_LABEL: Record<string, string> = { whatsapp: "WhatsApp" };
-
-const STATUS: Record<ErasureRequest["status"], { label: string; tone: "warning" | "info" | "success" }> = {
-  pending_approval: { label: "Waiting for review", tone: "info" },
-  deferred: { label: "Deferred", tone: "warning" },
-  completed: { label: "Completed", tone: "success" },
-};
 
 function when(iso: string): string {
   return new Date(iso).toLocaleString();
@@ -20,6 +30,7 @@ function when(iso: string): string {
 function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consents) => void }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const b = data.benefits;
 
   async function toggle(purpose: string, granted: boolean) {
     setBusy(true);
@@ -35,39 +46,43 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
 
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Offers and promotions</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        Help with an order never needs this. Turn it on only if you want offers from us; turn it off any time, in one click.
-      </p>
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{b.headings.title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{b.headings.intro}</p>
       {error && <Alert>{error}</Alert>}
-      <ul className="mt-3 divide-y divide-slate-100">
-        {data.consents.map((c) => {
-          const label = `Marketing messages on ${CHANNEL_LABEL[c.channel] ?? c.channel}`;
-          return (
-            <li key={`${c.purpose}-${c.channel}`} className="flex items-center justify-between gap-3 py-3">
-              <label htmlFor={`consent-${c.purpose}-${c.channel}`} className="text-sm text-slate-800">
-                {label}
-              </label>
-              <input
-                id={`consent-${c.purpose}-${c.channel}`}
-                type="checkbox"
-                role="switch"
-                className="h-5 w-5"
-                checked={c.granted}
-                disabled={busy}
-                onChange={(e) => void toggle(c.purpose, e.target.checked)}
-              />
-            </li>
-          );
-        })}
+      <ul className="mt-3 divide-y divide-border">
+        {b.purposes.map((p) => (
+          <li key={`${p.purpose}-${p.channel}`} className="space-y-2 py-3" data-testid={`consent-${p.purpose}`}>
+            <h3 className="text-sm font-semibold text-foreground">{p.title}</h3>
+            <p className="text-sm text-foreground">{p.benefit}</p>
+            <p className="text-sm text-muted-foreground">
+              {p.sent} {p.cap} {p.channel_label}.
+            </p>
+            <Switch
+              id={`consent-${p.purpose}-${p.channel}`}
+              label={p.switch_label}
+              stateLabel={p.state_label}
+              checked={p.granted}
+              disabled={busy}
+              onChange={(next) => void toggle(p.purpose, next)}
+            />
+          </li>
+        ))}
+        <li className="space-y-1 py-3" data-testid="consent-always-on">
+          <h3 className="text-sm font-semibold text-foreground">
+            {b.always_on.title}
+            <Badge tone="muted" className="ml-2">{b.always_on.badge}</Badge>
+          </h3>
+          <p className="text-sm text-muted-foreground">{b.always_on.body}</p>
+        </li>
       </ul>
-      {data.history.length > 0 && (
-        <details className="mt-2 text-sm text-slate-600">
-          <summary className="cursor-pointer">History of your choices</summary>
-          <ul className="mt-2 space-y-1">
-            {data.history.map((h, i) => (
+      <p className="mt-2 text-sm text-foreground" data-testid="consent-note">{b.headings.note}</p>
+      {b.history_labelled.length > 0 && (
+        <details className="mt-3 text-sm text-muted-foreground" open>
+          <summary className="cursor-pointer">{b.headings.history}</summary>
+          <ul className="mt-2 space-y-1" data-testid="consent-history">
+            {b.history_labelled.map((h, i) => (
               <li key={i}>
-                {when(h.at)}: {h.granted ? "agreed to" : "stopped"} {h.purpose} on {CHANNEL_LABEL[h.channel] ?? h.channel}
+                {when(h.at)}: {h.action_label} {h.purpose_label} {h.channel_label}. {b.headings.notice}: {h.notice_version}
               </li>
             ))}
           </ul>
@@ -77,21 +92,77 @@ function ConsentCard({ data, onChange }: { data: Consents; onChange: (c: Consent
   );
 }
 
+function List({ items, testId }: { items: ReactNode[]; testId: string }) {
+  return (
+    <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-muted-foreground" data-testid={testId}>
+      {items.map((item, i) => (
+        <li key={i}>{item}</li>
+      ))}
+    </ul>
+  );
+}
+
+function ErasureExplained({ info }: { info: ErasureInfo }) {
+  const h = info.headings;
+  return (
+    <div className="mt-3 space-y-4">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.remove}</h3>
+        <List testId="erase-remove" items={info.remove} />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.keep}</h3>
+        <List
+          testId="erase-keep"
+          items={info.keep.map((k) => (
+            <span key={k.key}>
+              <span className="text-foreground">{k.label}.</span> {k.reason}
+              {k.provisional && info.provisional_label && (
+                <Badge tone="warning" className="ml-1">{info.provisional_label}</Badge>
+              )}
+            </span>
+          ))}
+        />
+      </div>
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">{h.wait}</h3>
+        <List testId="erase-wait" items={info.wait} />
+      </div>
+      <p className="text-sm text-muted-foreground" data-testid="erase-timing">{info.timing}</p>
+    </div>
+  );
+}
+
+const STAGE_TONE: Record<ErasureStage, "info" | "warning" | "success" | "neutral"> = {
+  received: "info",
+  deferred: "warning",
+  done: "success",
+  withdrawn: "neutral",
+};
+
 function ErasureCard() {
-  const { data, error, loading, reload } = useApi(() => api.myErasureRequest(), []);
+  const info = useApi(() => api.erasureInfo(), []);
+  const current = useApi(() => api.myErasureRequest(), []);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
+  const [latest, setLatest] = useState<ErasureRequest | null>(null);
+  const [via, setVia] = useState<"phone" | "email" | null>(null);
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorState error={error} onRetry={reload} />;
-  const active = data && data.status !== "completed" ? data : null;
+  if (info.loading || current.loading) return <Loading />;
+  if (info.error || !info.data) return <ErrorState error={info.error} onRetry={info.reload} />;
+  if (current.error) return <ErrorState error={current.error} onRetry={current.reload} />;
+  const text = info.data;
+  const notice = text.completion_notice;
+  const req = latest ?? current.data;
+  const open = req?.can_withdraw ?? false;
 
-  async function request() {
+  async function act(call: () => Promise<ErasureRequest>) {
     setBusy(true);
     setFailure(null);
     try {
-      await api.requestErasure();
-      await reload();
+      setLatest(await call());
+      setConfirming(false);
     } catch (err) {
       setFailure(errorMessage(err));
     } finally {
@@ -101,31 +172,163 @@ function ErasureCard() {
 
   return (
     <Card className="p-5">
-      <h2 className="text-base font-semibold text-slate-900">Erase my data</h2>
-      <p className="mt-1 text-sm text-slate-600">
-        We remove your name, contact details and message text. Records of payments and refunds are kept, and the
-        request waits while any case or refund of yours is still open.
-      </p>
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{text.title}</h2>
+      <p className="mt-1 text-sm text-muted-foreground">{text.intro}</p>
+      <ErasureExplained info={text} />
       {failure && <Alert>{failure}</Alert>}
-      {data && (
-        <div className="mt-3 text-sm" data-testid="erasure-status">
-          <Badge tone={STATUS[data.status].tone}>{STATUS[data.status].label}</Badge>
-          <span className="ml-2 text-slate-500">asked on {when(data.requested_at)}</span>
-          {data.reason && <p className="mt-2 text-slate-700">{data.reason}</p>}
+      {req && (
+        <div className="mt-4 border-t border-border pt-3 text-sm" data-testid="erasure-status">
+          <h3 className="font-semibold text-foreground">{text.status_title}</h3>
+          <p className="mt-2">
+            <Badge tone={STAGE_TONE[req.stage]}>{req.stage_label}</Badge>
+          </p>
+          <p className="mt-2 text-foreground">{req.stage_text}</p>
+          <p className="mt-1 text-muted-foreground">{req.received_text}</p>
+          {req.expected_text && <p className="text-muted-foreground">{req.expected_text}</p>}
+          <div className="mt-2">
+            <ContactLine contact={req.contact} />
+          </div>
         </div>
       )}
-      {!active && (
+      {open && (
         <div className="mt-3">
-          <Button variant="danger" loading={busy} onClick={() => void request()}>
-            Request erasure
+          <Button variant="outline" loading={busy} onClick={() => void act(() => api.withdrawErasure())}>
+            {text.buttons.withdraw}
           </Button>
+        </div>
+      )}
+      {!open && !confirming && (
+        <div className="mt-3">
+          <Button variant="danger" onClick={() => setConfirming(true)}>
+            {text.buttons.request}
+          </Button>
+        </div>
+      )}
+      {!open && confirming && (
+        <div role="alertdialog" aria-labelledby="erase-confirm-title" className="mt-3 rounded-md border border-border p-4" data-testid="erase-confirm">
+          <h3 id="erase-confirm-title" className="text-sm font-semibold text-foreground">{text.confirm.title}</h3>
+          <p className="mt-1 text-sm text-muted-foreground">{text.confirm.body}</p>
+          <p className="mt-2 text-sm text-foreground" data-testid="erase-notice">{notice.text}</p>
+          {notice.channels.length > 1 && (
+            <div className="mt-2">
+              <Field label={notice.choose} htmlFor="erase-notify-via">
+                <select
+                  id="erase-notify-via"
+                  className={inputClass}
+                  value={via ?? notice.default ?? ""}
+                  onChange={(e) => setVia(e.target.value as "phone" | "email")}
+                >
+                  {notice.channels.map((c) => (
+                    <option key={c} value={c}>{notice.labels[c]}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+          )}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button variant="outline" autoFocus disabled={busy} onClick={() => setConfirming(false)}>
+              {text.buttons.back}
+            </Button>
+            <Button
+              variant="danger"
+              loading={busy}
+              onClick={() => void act(() => api.requestErasure(via ?? notice.default ?? undefined))}
+            >
+              {text.buttons.confirm}
+            </Button>
+          </div>
         </div>
       )}
     </Card>
   );
 }
 
+function ContactLine({ contact }: { contact: PrivacyContact }) {
+  const who = [contact.name, contact.email].filter(Boolean).join(", ");
+  return (
+    <p className="text-sm text-foreground" data-testid="privacy-contact">
+      <span className="font-medium">{contact.label}:</span> {who}
+      {who ? ". " : ""}
+      {contact.response_text}
+    </p>
+  );
+}
+
+function HeldCard({ data }: { data: DataHeld }) {
+  const h = data.headings;
+  return (
+    <Card className="p-5">
+      <h2 className="font-montserrat text-base font-semibold text-foreground">{h.title}</h2>
+      <div className={`mt-3 ${tableWrapClass}`}>
+        <table className={tableClass} data-testid="held-table">
+          <thead>
+            <tr>
+              <th scope="col" className={thClass}>{h.item}</th>
+              <th scope="col" className={thClass}>{h.yours}</th>
+              <th scope="col" className={thClass}>{h.purpose}</th>
+              <th scope="col" className={thClass}>{h.keep}</th>
+              <th scope="col" className={thClass}>{h.use}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.items.map((item) => (
+              <tr key={item.key} data-testid={`held-${item.key}`}>
+                <th scope="row" className={`${tdClass} text-left font-medium`}>{item.label}</th>
+                <td className={`${tdClass} ${numClass}`}>{item.summary}</td>
+                <td className={`${tdClass} text-muted-foreground`}>{item.purpose}</td>
+                <td className={`${tdClass} text-muted-foreground`}>
+                  {item.retention}
+                  {item.retention_provisional && data.provisional_label && (
+                    <Badge tone="warning" className="ml-1">{data.provisional_label}</Badge>
+                  )}
+                </td>
+                <td className={`${tdClass} text-muted-foreground`}>{item.use_label}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data.processors.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-sm font-semibold text-foreground">
+            {h.processors}
+            {data.provisional_label && (
+              <Badge tone="warning" className="ml-2">{data.provisional_label}</Badge>
+            )}
+          </h3>
+          <ul className="mt-1 space-y-1 text-sm text-muted-foreground" data-testid="held-processors">
+            {data.processors.map((p) => (
+              <li key={p.name}>
+                {p.name} ({p.role}): {p.data}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {data.not_kept.length > 0 && (
+        <div className="mt-4" data-testid="held-not-kept">
+          <h3 className="text-sm font-semibold text-foreground">{h.not_kept}</h3>
+          <ul className="mt-1 space-y-1 text-sm text-muted-foreground">
+            {data.not_kept.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </Card>
+  );
+}
+
+// Getting your own data must not depend on the "what we hold" read succeeding.
+const FALLBACK = {
+  page_title: "Privacy & data",
+  download_title: "Download my data",
+  download_body: "A copy of your details, orders, cases and choices.",
+  readable_link: "Open readable version",
+};
+
 export function PrivacyPage() {
+  const held = useApi(() => api.dataHeld(), []);
   const consents = useApi(() => api.myConsents(), []);
   const [downloading, setDownloading] = useState(false);
   const [dlError, setDlError] = useState<string | null>(null);
@@ -151,10 +354,23 @@ export function PrivacyPage() {
   }
 
   const current = latest ?? consents.data;
+  const downloadText = held.data?.headings ?? FALLBACK;
   return (
     <>
-      <PageHeader title="Privacy & data" subtitle="Choose what we may send you, see what we hold, or ask us to erase it." />
+      <PageHeader title={held.data?.headings.page_title ?? FALLBACK.page_title} subtitle={held.data?.headings.page_subtitle} />
       <div className="space-y-4">
+        {held.data && (
+          <Card className="p-4">
+            <ContactLine contact={held.data.contact} />
+          </Card>
+        )}
+        {held.loading ? (
+          <Loading />
+        ) : held.error || !held.data ? (
+          <ErrorState error={held.error} onRetry={held.reload} />
+        ) : (
+          <HeldCard data={held.data} />
+        )}
         {consents.loading ? (
           <Loading />
         ) : consents.error || !current ? (
@@ -162,19 +378,30 @@ export function PrivacyPage() {
         ) : (
           <ConsentCard data={current} onChange={setLatest} />
         )}
+        {!held.loading && (
         <Card className="p-5">
-          <h2 className="text-base font-semibold text-slate-900">Download my data</h2>
-          <p className="mt-1 text-sm text-slate-600">
-            A copy of your details, orders, cases and choices, and the companies that process data for us.
-          </p>
+          <h2 className="font-montserrat text-base font-semibold text-foreground">{downloadText.download_title}</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{downloadText.download_body}</p>
           {dlError && <Alert>{dlError}</Alert>}
           <div className="mt-3">
-            <Button variant="secondary" loading={downloading} onClick={() => void download()}>
-              Download my data
+            <Button variant="outline" loading={downloading} onClick={() => void download()}>
+              {downloadText.download_title}
             </Button>
+            <Link
+              to="/privacy/export"
+              className="ml-4 text-sm font-medium text-foreground underline underline-offset-2 transition-colors duration-200 hover:text-brand"
+            >
+              {downloadText.readable_link}
+            </Link>
           </div>
         </Card>
+        )}
         <ErasureCard />
+        {held.data && (
+          <footer className="border-t border-border pt-3">
+            <ContactLine contact={held.data.contact} />
+          </footer>
+        )}
       </div>
     </>
   );

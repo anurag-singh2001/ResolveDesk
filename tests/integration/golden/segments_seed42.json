@@ -1,0 +1,184 @@
+{
+  "brewco": {
+    "cohort_sizes": {
+      "All brands": [
+        0,
+        0,
+        0,
+        101,
+        16,
+        0
+      ],
+      "BrewCo Coffee": [
+        0,
+        0,
+        0,
+        101,
+        16,
+        0
+      ]
+    },
+    "contactable": {
+      "All brands": {
+        "active": 83,
+        "at_risk": 10,
+        "lapsed": 15,
+        "lapsed_regular": 0,
+        "loyal": 19,
+        "new": 11,
+        "one_and_done": 7
+      },
+      "BrewCo Coffee": {
+        "active": 83,
+        "at_risk": 10,
+        "lapsed": 15,
+        "lapsed_regular": 0,
+        "loyal": 19,
+        "new": 11,
+        "one_and_done": 7
+      }
+    },
+    "customers": [
+      117,
+      117
+    ],
+    "segments": {
+      "All brands": {
+        "active": 100,
+        "at_risk": 11,
+        "lapsed": 17,
+        "lapsed_regular": 0,
+        "loyal": 23,
+        "new": 16,
+        "one_and_done": 8
+      },
+      "BrewCo Coffee": {
+        "active": 100,
+        "at_risk": 11,
+        "lapsed": 17,
+        "lapsed_regular": 0,
+        "loyal": 23,
+        "new": 16,
+        "one_and_done": 8
+      }
+    }
+  },
+  "spice_route": {
+    "cohort_sizes": {
+      "All brands": [
+        0,
+        0,
+        1,
+        66,
+        83,
+        0
+      ],
+      "Biryani Box": [
+        0,
+        0,
+        0,
+        28,
+        40,
+        0
+      ],
+      "Bowl Theory": [
+        0,
+        0,
+        1,
+        34,
+        36,
+        0
+      ],
+      "Midnight Pizza Co.": [
+        0,
+        0,
+        0,
+        35,
+        32,
+        0
+      ]
+    },
+    "contactable": {
+      "All brands": {
+        "active": 111,
+        "at_risk": 7,
+        "lapsed": 37,
+        "lapsed_regular": 1,
+        "loyal": 22,
+        "new": 82,
+        "one_and_done": 22
+      },
+      "Biryani Box": {
+        "active": 41,
+        "at_risk": 1,
+        "lapsed": 26,
+        "lapsed_regular": 4,
+        "loyal": 4,
+        "new": 39,
+        "one_and_done": 19
+      },
+      "Bowl Theory": {
+        "active": 47,
+        "at_risk": 1,
+        "lapsed": 23,
+        "lapsed_regular": 4,
+        "loyal": 9,
+        "new": 36,
+        "one_and_done": 16
+      },
+      "Midnight Pizza Co.": {
+        "active": 44,
+        "at_risk": 2,
+        "lapsed": 22,
+        "lapsed_regular": 1,
+        "loyal": 11,
+        "new": 32,
+        "one_and_done": 17
+      }
+    },
+    "customers": [
+      150,
+      68,
+      71,
+      67
+    ],
+    "segments": {
+      "All brands": {
+        "active": 113,
+        "at_risk": 7,
+        "lapsed": 37,
+        "lapsed_regular": 1,
+        "loyal": 23,
+        "new": 83,
+        "one_and_done": 22
+      },
+      "Biryani Box": {
+        "active": 42,
+        "at_risk": 1,
+        "lapsed": 26,
+        "lapsed_regular": 4,
+        "loyal": 4,
+        "new": 40,
+        "one_and_done": 19
+      },
+      "Bowl Theory": {
+        "active": 47,
+        "at_risk": 1,
+        "lapsed": 24,
+        "lapsed_regular": 4,
+        "loyal": 9,
+        "new": 36,
+        "one_and_done": 16
+      },
+      "Midnight Pizza Co.": {
+        "active": 45,
+        "at_risk": 2,
+        "lapsed": 22,
+        "lapsed_regular": 1,
+        "loyal": 12,
+        "new": 32,
+        "one_and_done": 17
+      }
+    }
+  }
+}

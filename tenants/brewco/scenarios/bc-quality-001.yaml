@@ -1,7 +1,7 @@
 id: bc-quality-001
 tenant: brewco
 kind: plain
-message: The coffee was lukewarm and tasted burnt.
+message: My order was lukewarm and tasted burnt.
 order:
   select: latest
 expect:

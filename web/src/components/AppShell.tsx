@@ -1,10 +1,13 @@
-import { NavLink, Link, Outlet } from "react-router-dom";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { NavLink, Link, Outlet, useLocation } from "react-router-dom";
+import { CHANGED_EVENT } from "../api/client";
 import { useAuth } from "../auth/session";
-import { homePath, navFor, roleLabel } from "../lib/roles";
+import { homePath, isStaff, navFor, roleLabel } from "../lib/roles";
 import type { NavItem } from "../lib/roles";
 import { api } from "../api/endpoints";
 import { useApi } from "../lib/useApi";
-import { Badge, Button, cx } from "./ui";
+import { ThemeSwitcher } from "./theme";
+import { Badge, Button, Loading, cx } from "./ui";
 
 const ICON: Record<NavItem["icon"], string> = {
   orders: "M3 4h2l2.4 10.2a2 2 0 0 0 2 1.8h7.7a2 2 0 0 0 2-1.6L21 8H6.2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2Zm9 0a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z",
@@ -12,8 +15,10 @@ const ICON: Record<NavItem["icon"], string> = {
   approvals: "M9 12l2 2 4-4M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Z",
   dev: "M8 9l-4 3 4 3m8-6l4 3-4 3M14 6l-4 12",
   insights: "M4 20V10m6 10V4m6 16v-7m4 7H2",
+  dashboard: "M3 3h8v8H3zM13 3h8v5h-8zM13 11h8v10h-8zM3 14h8v7H3z",
   growth: "M3 17l6-6 4 4 8-8m0 0h-5m5 0v5",
   privacy: "M12 3l7 3v6c0 4.4-3 7.8-7 9-4-1.2-7-4.6-7-9V6l7-3Zm-2 8.5h4v3h-4v-3Z",
+  policies: "M7 3h7l5 5v13H7V3Zm7 0v5h5M10 13h6m-6 3h6",
   help: "M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Zm-2.5-11.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.5V14m0 3h.01",
 };
 
@@ -26,68 +31,114 @@ function Icon({ name }: { name: NavItem["icon"] }) {
 }
 
 export function Logo() {
+  // Onest wordmark; the orange dot is the one place the brand colour appears.
   return (
-    <span className="flex items-center gap-2">
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-accent-600 text-white" aria-hidden="true">
-        <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M5 10.5l3 3 7-7" />
-        </svg>
-      </span>
-      <span className="text-sm font-semibold tracking-tight text-slate-900">ResolveDesk</span>
+    <span className="font-brand text-base font-semibold tracking-tight text-foreground">
+      ResolveDesk<span className="text-brand">.</span>
     </span>
   );
 }
 
+/** True once the page has scrolled, so the header can blur only then. */
+function useScrolled(): boolean {
+  const [scrolled, setScrolled] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  return scrolled;
+}
+
 export function AppShell() {
   const { me, businessName, signOut } = useAuth();
+  const scrolled = useScrolled();
   if (!me) return null;
-  // The dev panel exists only where the API mounts /admin (dev/test): a 404 hides it.
+  // The demo controls exist only where the API mounts /admin (dev/test): a 404 hides it.
   const { data: chaos } = useApi(() => (me.role === "hq_owner" ? api.chaos() : Promise.reject(new Error("n/a"))), [me.role]);
   const { data: privacy } = useApi(() => api.privacyContact(), [me.role]);
+  // Count of cases waiting for a person, shown on the "Cases to handle" item (staff only).
+  const { data: queue, reload: reloadQueue } = useApi(() => (isStaff(me.role) ? api.caseQueue() : Promise.reject(new Error("n/a"))), [me.role]);
+  const waiting = queue?.length ?? 0;
+  // The count goes stale when a case moves (e.g. the AI is re-run, which finishes later), so
+  // refresh it after any change, on every navigation, when the tab regains focus, and slowly.
+  const { pathname } = useLocation();
+  useEffect(() => {
+    if (!isStaff(me.role)) return;
+    const refresh = () => void reloadQueue();
+    window.addEventListener(CHANGED_EVENT, refresh);
+    window.addEventListener("focus", refresh);
+    const id = window.setInterval(() => {
+      if (!document.hidden) refresh();
+    }, 30_000);
+    return () => {
+      window.removeEventListener(CHANGED_EVENT, refresh);
+      window.removeEventListener("focus", refresh);
+      window.clearInterval(id);
+    };
+  }, [reloadQueue, me.role]);
+  const firstPath = useRef(pathname);
+  useEffect(() => {
+    // The first mount already fetched through useApi; refresh only when the route changes.
+    if (firstPath.current === pathname) return;
+    firstPath.current = pathname;
+    if (isStaff(me.role)) void reloadQueue();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname]);
   const base = navFor(me.role, me.growth_enabled === true);
-  const nav = chaos ? [...base.slice(0, -1), { to: "/dev", label: "Dev panel", icon: "dev" as const }, base[base.length - 1]] : base;
+  const nav = chaos ? [...base.slice(0, -1), { to: "/demo", label: "Demo controls", icon: "dev" as const }, base[base.length - 1]] : base;
 
+  // A parent item (/growth) must not stay lit on its children (/growth/calendar): match exactly.
+  const hasChild = (to: string) => nav.some((o) => o.to.startsWith(`${to}/`));
   const linkClass = ({ isActive }: { isActive: boolean }) =>
     cx(
-      "flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium transition",
-      isActive ? "bg-accent-50 text-accent-700" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+      "flex items-center gap-2.5 rounded-md border px-3 py-2 text-sm font-medium transition-colors duration-200",
+      isActive ? "border-card-edge text-foreground" : "border-transparent text-muted-foreground hover:text-foreground",
     );
 
   return (
-    <div className="min-h-screen">
-      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2">
+    <div className="min-h-screen bg-background text-foreground">
+      <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-50 focus:rounded focus:bg-background focus:px-3 focus:py-2 focus:text-foreground">
         Skip to content
       </a>
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-14 max-w-7xl items-center gap-3 px-4 sm:px-6">
+      <header
+        className={cx(
+          "sticky top-0 z-30 border-b transition-colors duration-200",
+          scrolled ? "border-border bg-background/70 backdrop-blur-md" : "border-transparent bg-transparent",
+        )}
+      >
+        <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-6 sm:px-12">
           <Link to={homePath(me.role)} className="shrink-0" aria-label="ResolveDesk home">
             <Logo />
           </Link>
-          <span className="hidden h-5 w-px bg-slate-200 sm:block" aria-hidden="true" />
-          <span className="min-w-0 truncate text-sm font-medium text-slate-700" data-testid="business-name">
+          <span className="hidden h-5 w-px bg-border sm:block" aria-hidden="true" />
+          <span className="min-w-0 truncate text-sm text-muted-foreground" data-testid="business-name">
             {businessName}
           </span>
           <div className="ml-auto flex items-center gap-2 sm:gap-3">
             <div className="hidden min-w-0 text-right sm:block">
-              <div className="truncate text-sm font-medium text-slate-900">{me.name}</div>
+              <div className="truncate text-sm font-medium text-foreground">{me.name}</div>
             </div>
-            <Badge tone="accent">{roleLabel(me.role)}</Badge>
-            <NavLink to="/help" className="hidden rounded-lg px-2.5 py-1.5 text-sm text-slate-600 hover:bg-slate-100 sm:inline-flex">
+            <Badge tone="neutral" className="hidden sm:inline-flex">{roleLabel(me.role)}</Badge>
+            <NavLink to="/help" className="hidden rounded-md px-2.5 py-1.5 text-sm text-muted-foreground transition-colors duration-200 hover:text-foreground sm:inline-flex">
               Help
             </NavLink>
-            <Button variant="secondary" onClick={signOut} className="px-2.5 py-1.5">
+            <ThemeSwitcher />
+            <Button variant="outline" onClick={signOut} className="h-8 shrink-0 whitespace-nowrap px-3">
               Sign out
             </Button>
           </div>
         </div>
         {/* Phone: nav as a scrollable tab row under the top bar. */}
-        <nav aria-label="Main" className="border-t border-slate-100 md:hidden">
-          <ul className="flex gap-1 overflow-x-auto px-3 py-2">
+        <nav aria-label="Main" className="border-t border-border md:hidden">
+          {/* The row still scrolls by swipe; the bar itself is hidden so it does not clutter the header. */}
+          <ul className="flex gap-1 overflow-x-auto px-3 py-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             {nav.map((item) => (
-              <li key={item.to}>
-                <NavLink to={item.to} className={linkClass}>
+              <li key={item.to} className="shrink-0 whitespace-nowrap">
+                <NavLink to={item.to} end={hasChild(item.to)} className={linkClass}>
                   <Icon name={item.icon} />
-                  {item.label}
+                  {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                 </NavLink>
               </li>
             ))}
@@ -95,37 +146,39 @@ export function AppShell() {
         </nav>
       </header>
 
-      <div className="mx-auto flex max-w-7xl gap-8 px-4 sm:px-6">
+      <div className="mx-auto flex max-w-6xl gap-8 px-6 sm:px-12">
         <aside className="hidden w-52 shrink-0 py-6 md:block">
           <nav aria-label="Main">
             <ul className="space-y-1" data-testid="side-nav">
               {nav.map((item) => (
                 <li key={item.to}>
-                  <NavLink to={item.to} className={linkClass}>
+                  <NavLink to={item.to} end={hasChild(item.to)} className={linkClass}>
                     <Icon name={item.icon} />
-                    {item.label}
+                    {item.label}{item.to === "/queue" && waiting > 0 && <Badge tone="accent" className="ml-auto">{waiting}</Badge>}
                   </NavLink>
                 </li>
               ))}
             </ul>
           </nav>
-          <div className="mt-8 rounded-lg border border-slate-200 bg-white p-3 text-xs text-slate-500">
-            <div className="font-medium text-slate-700">{me.name}</div>
+          <div className="card-chai mt-8 p-3 text-xs text-muted-foreground">
+            <div className="font-medium text-foreground">{me.name}</div>
             <div className="truncate">{me.email}</div>
           </div>
         </aside>
         <main id="main" className="min-w-0 flex-1 py-6 sm:py-8">
-          <Outlet />
+          <Suspense fallback={<Loading />}>
+            <Outlet />
+          </Suspense>
         </main>
       </div>
-      <footer className="mx-auto max-w-7xl border-t border-slate-200 px-4 py-4 text-xs text-slate-500 sm:px-6">
+      <footer className="mx-auto max-w-6xl border-t border-border px-6 py-4 text-xs text-muted-foreground sm:px-12">
         {privacy && privacy.email ? (
-          <a href={`mailto:${privacy.email}`} title={privacy.name} className="underline hover:text-slate-700">
-            Privacy contact
+          <a href={`mailto:${privacy.email}`} title={privacy.name} className="underline underline-offset-2 transition-colors duration-200 hover:text-brand">
+            Privacy and grievance contact
           </a>
         ) : (
-          <NavLink to="/help" className="underline hover:text-slate-700">
-            Privacy contact
+          <NavLink to="/help" className="underline underline-offset-2 transition-colors duration-200 hover:text-brand">
+            Privacy and grievance contact
           </NavLink>
         )}
       </footer>

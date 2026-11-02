@@ -37,6 +37,18 @@ class Facts:
 
 
 @dataclass(frozen=True)
+class AmountRange:
+    """The amounts an approver may switch a case to for one action (S7.10). Advice for the
+    screen only: `validate` stays the authority and re-checks every amount server-side."""
+
+    min_paise: int
+    max_paise: int
+    step_paise: int = 1
+    # Above this amount the action needs an hq_owner to approve (None: no such limit).
+    hq_above_paise: int | None = None
+
+
+@dataclass(frozen=True)
 class ValidationResult:
     ok: bool
     errors: list[str] = field(default_factory=list)
@@ -74,6 +86,11 @@ class Action(ABC):
 
     def can_auto_approve(self, inp: ActionInput, facts: "Facts") -> bool:
         return False
+
+    def amount_range(self, facts: "Facts") -> AmountRange | None:
+        """The amounts this action may be switched to for the order in `facts`, or None when it
+        can't be offered as a switch (default). Pure: no I/O."""
+        return None
 
     @abstractmethod
     def execute(

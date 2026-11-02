@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 ROOT = Path(__file__).resolve().parents[2]
 VERTICALS_DIR = ROOT / "verticals"
@@ -28,6 +28,47 @@ class SettingSpec(BaseModel):
         return self
 
 
+class RefundPercentOption(BaseModel):
+    """`{refund_percent: 50}`: a refund of that percent of the order. The tenant's
+    refund_max_percent and the refundable balance still cap it, in code."""
+
+    model_config = ConfigDict(extra="forbid")
+    refund_percent: int = Field(ge=1, le=100)
+
+
+RemedyOption = Literal["voucher", "refund_missing"] | RefundPercentOption
+
+
+def option_code(option: "RemedyOption") -> str:
+    """The stable code a customer's pick is stored and audited under."""
+    if isinstance(option, RefundPercentOption):
+        return f"refund_{option.refund_percent}pct"
+    return option
+
+
+class RemedyOptions(BaseModel):
+    """`{options: [voucher, {refund_percent: 50}]}`: the remedies a customer may choose between
+    for one category (S7.9). A plain rule name stays valid and means a single option."""
+
+    model_config = ConfigDict(extra="forbid")
+    options: list[RemedyOption] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _codes_are_unique(self) -> "RemedyOptions":
+        codes = [option_code(o) for o in self.options]
+        if len(set(codes)) != len(codes):
+            raise ValueError("remedy options must be distinct")
+        return self
+
+
+RemedyRule = Literal["late_tiers", "refund_missing", "voucher"] | RemedyOptions
+
+
+def rule_options(rule: "RemedyRule") -> list:
+    """The options a rule offers: a plain rule name is one option."""
+    return list(rule.options) if isinstance(rule, RemedyOptions) else [rule]
+
+
 class VerticalPack(BaseModel):
     slug: str
     name: str
@@ -38,7 +79,7 @@ class VerticalPack(BaseModel):
     issue_categories: list[str]
     actions: list[str]
     # issue category -> deterministic remedy rule (app/engine/resolver.py); others escalate
-    remedies: dict[str, Literal["late_tiers", "refund_missing", "voucher"]] = {}
+    remedies: dict[str, RemedyRule] = {}
     metrics: list[str]
     features: dict[str, bool]
     settings: dict[str, SettingSpec]

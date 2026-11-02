@@ -106,10 +106,16 @@ def test_removing_a_location_with_orders_fails_cleanly(app_engine, restore):
     for user in trimmed.users:
         user.locations = [slug for slug in user.locations if slug != gone]
     trimmed.settings.locations.pop(gone, None)
-    for problem in trimmed.simulation.problems if trimmed.simulation else []:
-        if problem.location == gone:
-            problem.location = None
     if trimmed.simulation:
+        # A repeat_drop can't exist without its location; other problems can apply everywhere.
+        trimmed.simulation.problems = [
+            p
+            for p in trimmed.simulation.problems
+            if not (p.kind == "repeat_drop" and p.location == gone)
+        ]
+        for problem in trimmed.simulation.problems:
+            if problem.location == gone:
+                problem.location = None
         trimmed.simulation.location_weights.pop(gone, None)
     if not trimmed.locations:
         trimmed.locations = [cfg.locations[0].model_copy(update={"slug": "replacement"})]
