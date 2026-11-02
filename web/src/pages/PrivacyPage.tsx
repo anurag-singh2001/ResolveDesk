@@ -138,6 +138,7 @@ const STAGE_TONE: Record<ErasureStage, "info" | "warning" | "success" | "neutral
   deferred: "warning",
   done: "success",
   withdrawn: "neutral",
+  rejected: "warning",
 };
 
 function ErasureCard() {

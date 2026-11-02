@@ -100,6 +100,8 @@ export const api = {
   erasureInfo: () => request<ErasureInfo>("/me/erasure-info"),
   privacyQueue: () => request<PrivacyQueue>("/data-requests/queue"),
   privacyDryRun: (id: string) => request<PrivacyDryRun>(`/data-requests/${enc(id)}/dry-run`),
+  rejectErasure: (id: string, reason: string) =>
+    request<unknown>(`/data-requests/${enc(id)}/reject`, { method: "POST", body: { reason } }),
   approveErasure: (id: string, d: PrivacyDryRun) =>
     request<unknown>(`/data-requests/${enc(id)}/approve`, {
       method: "POST",

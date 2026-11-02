@@ -29,7 +29,9 @@ MAX_FAILURES = 5
 WINDOW = timedelta(minutes=15)
 
 _lock = threading.Lock()
-_failures: list[datetime] = []
+# Failed attempts per source address, so one source cannot lock the operator out of another.
+_failures: dict[str, list[datetime]] = {}
+MAX_FAILURES_ALL_SOURCES = 50  # many sources together still meet a limit
 
 
 class PlatformDisabled(AuthError):
@@ -53,13 +55,18 @@ def reset_failures() -> None:
         _failures.clear()
 
 
-def _recent(now: datetime) -> list[datetime]:
+def _recent(source: str, now: datetime) -> list[datetime]:
     cutoff = now - WINDOW
-    _failures[:] = [t for t in _failures if t > cutoff]
-    return _failures
+    for key in list(_failures):
+        _failures[key] = [t for t in _failures[key] if t > cutoff]
+        if not _failures[key]:
+            del _failures[key]
+    return _failures.setdefault(source, [])
 
 
-def authenticate_platform(email: str, password: str, now: datetime | None = None) -> IssuedToken:
+def authenticate_platform(
+    email: str, password: str, now: datetime | None = None, source: str = "unknown"
+) -> IssuedToken:
     s = get_settings()
     if not platform_admin_enabled(s):
         raise PlatformDisabled()
@@ -67,10 +74,14 @@ def authenticate_platform(email: str, password: str, now: datetime | None = None
     # Reserve an attempt slot BEFORE the slow bcrypt check, under the lock: parallel guesses
     # each take a slot, so at most MAX_FAILURES run at all. A success gives its slot back.
     with _lock:
-        if len(_recent(now)) >= MAX_FAILURES:
+        mine = _recent(source, now)
+        if (
+            len(mine) >= MAX_FAILURES
+            or sum(map(len, _failures.values())) >= MAX_FAILURES_ALL_SOURCES
+        ):
             log.warning("platform login locked out")
             raise PlatformLocked()
-        _failures.append(now)
+        mine.append(now)
     # Always one bcrypt run and a constant-time email compare, so timing doesn't say which
     # part was wrong.
     stored = s.platform_admin_password_hash.get_secret_value().strip()  # type: ignore[union-attr]
@@ -82,7 +93,7 @@ def authenticate_platform(email: str, password: str, now: datetime | None = None
         log.warning("platform login failed")  # never the email or password
         raise AuthError("invalid credentials")
     with _lock:
-        _failures.clear()
+        _failures.pop(source, None)
     expires_at = now + timedelta(minutes=min(s.jwt_ttl_minutes, s.platform_jwt_ttl_minutes))
     claims = {
         "sub": PRINCIPAL,

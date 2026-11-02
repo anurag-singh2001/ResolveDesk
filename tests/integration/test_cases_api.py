@@ -4,12 +4,14 @@
 import uuid
 
 import pytest
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 
+from app.config import get_settings
 from app.core.db import tenant_session
 from app.core.models import (
     ActionProposal,
     Approval,
+    AuditEvent,
     Case,
     Customer,
     Execution,
@@ -24,6 +26,7 @@ from app.core.models import (
 )
 from app.core.tenancy import tenant_id_for
 from app.engine.approvals import check_usable
+from app.engine.cases import MAX_CUSTOMER_MESSAGES
 from mocks.base import Chaos
 from mocks.registry import get_mock, merchant_id_for, reset_mocks
 from tests.helpers import login
@@ -684,3 +687,61 @@ def test_case_detail_gives_staff_the_customer_and_customers_nothing(api, app_eng
             assert resp.json()["customer"] == want
         else:  # another location: the case does not exist for them
             assert resp.status_code == 404
+
+
+def test_staff_view_of_contact_details_is_audited_once_and_holds_none_of_them(
+    api, app_engine, flow
+):
+    f = flow
+    opened = _open(api, f)
+    url = f"/cases/{opened['id']}"
+    api.get(url, headers=f["customer"])
+    for _ in range(3):  # the page polls: one row, not one per poll
+        assert api.get(url, headers=f["hq"]).status_code == 200
+    with tenant_session(f["tid"], app_engine) as s:
+        rows = list(
+            s.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.event == "case.customer_details_viewed",
+                    AuditEvent.entity_id == uuid.UUID(opened["id"]),
+                )
+            )
+        )
+        hq_id = s.scalar(
+            select(User.id).where(
+                User.email == next(u.email for u in f["cfg"].users if u.role == "hq_owner")
+            )
+        )
+        assert len(rows) == 1
+        assert rows[0].actor_id == str(hq_id)
+        assert rows[0].payload == {}
+
+
+def test_repeating_a_report_starts_no_second_ai_run(api, flow, monkeypatch):
+    """Pen test: each repeat of POST /cases used to queue another paid agent run."""
+    f = flow
+    runs = []
+    agents = get_settings().model_copy(update={"engine_mode": "agents"})
+    monkeypatch.setattr("app.api.routes_cases.get_settings", lambda: agents)
+    monkeypatch.setattr(
+        "app.api.routes_cases.run_agents", lambda *args, **kwargs: runs.append(args)
+    )
+    body = {"transaction_id": str(f["order_id"]), "message": "Something was wrong."}
+    first = api.post("/cases", headers=f["customer"], json=body)
+    assert first.status_code == 201, first.text
+    for _ in range(3):
+        assert api.post("/cases", headers=f["customer"], json=body).status_code == 201
+    assert len(runs) == 1
+
+
+def test_repeated_reports_cannot_grow_a_case_without_limit(api, app_engine, flow):
+    f = flow
+    opened = _open(api, f)
+    for _ in range(MAX_CUSTOMER_MESSAGES + 3):
+        _open(api, f, message="Again.")
+    with tenant_session(f["tid"], app_engine) as s:
+        ticket = s.scalar(select(Ticket.id).where(Ticket.case_id == uuid.UUID(opened["id"])))
+        count = s.scalar(
+            select(func.count()).select_from(TicketMessage).where(TicketMessage.ticket_id == ticket)
+        )
+    assert count == MAX_CUSTOMER_MESSAGES

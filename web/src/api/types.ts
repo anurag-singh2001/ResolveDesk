@@ -540,7 +540,7 @@ export interface DataHeld {
   contact: PrivacyContact;
 }
 
-export type ErasureStage = "received" | "deferred" | "done" | "withdrawn";
+export type ErasureStage = "received" | "deferred" | "done" | "withdrawn" | "rejected";
 export interface ExportField {
   label: string;
   value: string;
@@ -570,7 +570,7 @@ export interface ReadableExport {
 export interface ErasureRequest {
   id: string;
   kind: string;
-  status: "pending_approval" | "deferred" | "completed" | "withdrawn";
+  status: "pending_approval" | "deferred" | "completed" | "withdrawn" | "rejected";
   stage: ErasureStage;
   stage_label: string;
   stage_text: string;

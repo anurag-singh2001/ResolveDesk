@@ -34,6 +34,7 @@ STAGE = {
     "deferred": "deferred",
     "completed": "done",
     "withdrawn": "withdrawn",
+    "rejected": "rejected",
 }
 CAN_WITHDRAW = ("pending_approval", "deferred")
 
@@ -110,8 +111,12 @@ def view(req: DataRequest, settings: dict[str, Any], lang: str) -> dict:
     stage = STAGE[req.status]
     days = data_held.target_days(settings)
     expected = req.created_at + timedelta(days=days)
-    reason = privacy.reason_text(req.reason_code, req.deferred_until)
+    # A rejection's reason is its own wording below, not a "waiting because" reason.
+    rejected = req.status == "rejected"
+    reason = None if rejected else privacy.reason_text(req.reason_code, req.deferred_until)
     text = t(f"erase.stage.{stage}.text", lang, date="")
+    if rejected and req.reason_code in privacy.REJECT_REASONS:
+        text += t(f"erase.reject.{req.reason_code}", lang)
     if stage == "deferred" and req.reason_code in privacy.REASONS:
         until = req.deferred_until.date() if req.deferred_until else None
         date = format_date(until, lang) if until else ""

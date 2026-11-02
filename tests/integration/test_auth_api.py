@@ -1,3 +1,4 @@
+import threading
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -8,7 +9,7 @@ from sqlalchemy import func, select, text, update
 
 from app.api.deps import get_clock, get_db_engine, get_tenant_context, tenant_db
 from app.config import get_settings
-from app.core.auth import issue_token
+from app.core.auth import InvalidCredentials, LockedOut, authenticate, issue_token
 from app.core.db import tenant_session
 from app.core.models import LoginFailure, Membership, User
 from app.core.tenancy import tenant_id_for
@@ -295,3 +296,30 @@ def test_demo_passwords_stop_working_when_demo_auth_is_off(api, app_engine, demo
     resp = api.post("/auth/login", json=_body(cfg))
     assert resp.status_code == 401
     assert resp.json() == {"detail": "invalid credentials"}
+
+
+def test_parallel_guesses_cannot_outrun_the_lockout(app_engine, seeded, tenant):
+    """Pen test: the failure count used to be read before bcrypt and written after it."""
+    cfg = seeded[tenant.name]
+    email = next(u.email for u in cfg.users if u.role == "hq_owner")
+    limit = get_settings().login_max_failures
+    gate = threading.Barrier(limit + 7)
+    outcomes: list[str] = []
+
+    def guess():
+        gate.wait()
+        try:
+            authenticate(app_engine, cfg.slug, email, "wrong-password")
+            outcomes.append("ok")
+        except LockedOut:
+            outcomes.append("locked")
+        except InvalidCredentials:
+            outcomes.append("bad")
+
+    threads = [threading.Thread(target=guess) for _ in range(limit + 7)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert outcomes.count("bad") == limit
+    assert outcomes.count("locked") == 7

@@ -104,6 +104,9 @@ def authenticate(
     since = now - timedelta(minutes=s.login_window_minutes)
     recent = (LoginFailure.email_hash == key) & (LoginFailure.failed_at > since)
     with tenant_session(tenant_id, engine) as session:
+        # Take the attempt's slot BEFORE the slow bcrypt check, one caller per key at a time, so
+        # parallel guesses cannot all read a low count. A success gives the slots back.
+        session.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(key, 0))))
         org_exists = session.get(Organization, tenant_id) is not None
         failures = session.scalar(select(func.count()).select_from(LoginFailure).where(recent))
         row = session.execute(
@@ -111,6 +114,8 @@ def authenticate(
         ).first()
         user_id, stored_hash, is_demo = row if row else (None, None, False)
         ctx = load_context(session, tenant_id, user_id or uuid.UUID(int=0))
+        if org_exists and failures < s.login_max_failures:  # no organization row: no FK target
+            session.add(LoginFailure(tenant_id=tenant_id, email_hash=key, failed_at=now))
     if failures >= s.login_max_failures:
         raise LockedOut()
     # bcrypt is CPU only; run it with no transaction (and no pooled connection) held open.
@@ -123,10 +128,9 @@ def authenticate(
         mine = LoginFailure.email_hash == key
         if ok:
             session.execute(delete(LoginFailure).where(mine))
-        elif org_exists:  # no organization row to attach a failure to otherwise (FK)
+        elif org_exists:
             # Prune the tenant's expired rows (every key), so one-off emails can't grow the table.
             session.execute(delete(LoginFailure).where(LoginFailure.failed_at <= since))
-            session.add(LoginFailure(tenant_id=tenant_id, email_hash=key, failed_at=now))
     if not ok:
         raise InvalidCredentials()
     return issue_token_with_expiry(tenant_id, user_id, now)

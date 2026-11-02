@@ -463,3 +463,82 @@ def test_queue_says_when_it_is_truncated(
     monkeypatch.setattr(privacy_queue, "QUEUE_LIMIT", 0)
     body = api.get("/data-requests/queue", headers=hq).json()
     assert body["truncated"] is True and body["items"] == []
+
+
+def _reject(api, hq, rid, reason="legal_hold"):
+    return api.post(f"/data-requests/{rid}/reject", json={"reason": reason}, headers=hq)
+
+
+def test_rejecting_erases_nothing_tells_the_customer_and_leaves_the_queue(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    r = _reject(api, hq, req["id"])
+    assert r.status_code == 200, r.text
+    assert r.json()["status"] == "rejected"
+    assert _name(app_engine, tid, cid) == "Real Person"
+    assert req["id"] not in str(api.get("/data-requests/queue", headers=hq).json())
+    seen = api.get("/me/erasure-request", headers=auth).json()
+    assert seen["status"] == "rejected" and seen["stage"] == "rejected"
+    assert seen["can_withdraw"] is False
+    assert seen["reason_code"] == "legal_hold"
+    assert seen["stage_text"] != ""
+    # A rejection is not final for the customer: they can ask again.
+    again = api.post("/me/erasure-request", json={}, headers=auth)
+    assert again.status_code == 201 and again.json()["id"] != req["id"]
+
+
+def test_reject_needs_hq_a_known_reason_and_an_open_request(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    assert (
+        api.post(
+            f"/data-requests/{req['id']}/reject", json={"reason": "legal_hold"}, headers=auth
+        ).status_code
+        == 403
+    )
+    assert _reject(api, hq, req["id"], "because").status_code == 422
+    assert api.post(f"/data-requests/{req['id']}/reject", json={}, headers=hq).status_code == 422
+    assert _reject(api, hq, uuid.uuid4()).status_code == 404
+    other_cfg = load_tenant(next(p for p in tenant_dirs() if p.name != tenant.name))
+    email = next(u.email for u in other_cfg.users if u.role == "hq_owner")
+    assert _reject(api, login(api, other_cfg.slug, email), req["id"]).status_code == 404
+    assert api.post("/me/erasure-request/cancel", headers=auth).status_code == 200
+    assert _reject(api, hq, req["id"]).status_code == 409
+
+
+def test_a_completed_request_cannot_be_rejected(api, app_engine, tid, made, people, tenant, slug):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    done = _approve_with(api, hq, req["id"], _look(api, hq, req["id"]))
+    assert done.status_code == 200 and done.json()["status"] == "completed", done.text
+    assert _reject(api, hq, req["id"]).status_code == 409
+
+
+def test_rejection_is_audited_once_without_personal_content(
+    api, app_engine, tid, made, people, tenant, slug
+):
+    cid, auth = people()
+    _erasable(app_engine, tid, made, cid)
+    hq = staff(api, tenant, slug, "hq_owner")
+    req = _request(api, auth)
+    assert _reject(api, hq, req["id"]).status_code == 200
+    with tenant_session(tid, app_engine) as s:
+        rows = list(
+            s.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.event == "privacy.erasure_rejected",
+                    AuditEvent.entity_id == uuid.UUID(req["id"]),
+                )
+            )
+        )
+        assert len(rows) == 1 and rows[0].payload == {"reason": "legal_hold"}

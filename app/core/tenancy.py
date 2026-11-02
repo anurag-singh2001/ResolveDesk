@@ -22,7 +22,7 @@ STAFF_ROLES: frozenset[str] = frozenset({"location_manager", "franchisee_owner",
 LOCATION_SCOPED_ROLES: frozenset[str] = frozenset({"location_manager", "franchisee_owner"})
 
 NAMESPACE = uuid.UUID("6f1c2a52-5f0e-4c7e-9a43-6a3e0b1d2c10")
-SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+SLUG_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}\Z")
 
 
 def tenant_id_for(slug: str) -> uuid.UUID:

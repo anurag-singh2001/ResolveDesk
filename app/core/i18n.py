@@ -811,6 +811,31 @@ TEMPLATES: dict[str, dict[str, str]] = {
         "hi-Latn": "Aapne yeh request wapas le li. Kuch mitaya nahin gaya.",
         "hi": "आपने यह अनुरोध वापस ले लिया। कुछ मिटाया नहीं गया।",
     },
+    "erase.stage.rejected": {
+        "en": "Not accepted",
+        "hi-Latn": "Sweekar nahin hua",
+        "hi": "स्वीकार नहीं हुआ",
+    },
+    "erase.stage.rejected.text": {
+        "en": "Nothing was erased. You can ask again. Reason: ",
+        "hi-Latn": "Kuch mitaya nahin gaya. Aap dobara request kar sakte hain. Wajah: ",
+        "hi": "कुछ मिटाया नहीं गया। आप दोबारा अनुरोध कर सकते हैं। वजह: ",
+    },
+    "erase.reject.legal_hold": {
+        "en": "the law requires us to keep these records for now.",
+        "hi-Latn": "kanoon ke mutabik humein abhi yeh record rakhne hain.",
+        "hi": "कानून के मुताबिक़ हमें अभी ये रिकॉर्ड रखने हैं।",
+    },
+    "erase.reject.identity_unverified": {
+        "en": "we could not confirm that this request came from you.",
+        "hi-Latn": "hum pakka nahin kar paaye ki yeh request aapki taraf se thi.",
+        "hi": "हम पक्का नहीं कर पाए कि यह अनुरोध आपकी तरफ़ से था।",
+    },
+    "erase.reject.duplicate": {
+        "en": "we already have another request of yours for the same thing.",
+        "hi-Latn": "isi baat ke liye aapki ek aur request hamare paas pehle se hai.",
+        "hi": "इसी बात के लिए आपका एक और अनुरोध हमारे पास पहले से है।",
+    },
     "erase.received_on": {
         "en": "Received on {date}",
         "hi-Latn": "{date} ko mili",

@@ -3,7 +3,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.core import audit, events
@@ -16,6 +16,7 @@ from app.engine.remedy_choice import check_choice, record_choice
 from app.engine.resolver import propose_for_case
 
 OPEN_STATUSES = ("open", "investigating", "awaiting_info", "awaiting_approval", "executing")
+MAX_CUSTOMER_MESSAGES = 50  # on one case through repeat reports
 
 
 UNCLASSIFIED = "unknown"  # ticket category until the agent pipeline classifies the case
@@ -95,15 +96,21 @@ def open_case(
         ticket_id = session.scalar(select(Ticket.id).where(Ticket.case_id == existing.id))
         if ticket_id is not None:  # keep what the customer said, on the same thread
             observe_language(session, existing, message)
-            session.add(
-                TicketMessage(
-                    tenant_id=ctx.tenant_id,
-                    ticket_id=ticket_id,
-                    author="customer",
-                    body=message,
-                    sent_at=now,
-                )
+            held = session.scalar(
+                select(func.count())
+                .select_from(TicketMessage)
+                .where(TicketMessage.ticket_id == ticket_id)
             )
+            if held < MAX_CUSTOMER_MESSAGES:  # a loop of repeats can't grow the case for ever
+                session.add(
+                    TicketMessage(
+                        tenant_id=ctx.tenant_id,
+                        ticket_id=ticket_id,
+                        author="customer",
+                        body=message,
+                        sent_at=now,
+                    )
+                )
         return existing, None
 
     case = Case(

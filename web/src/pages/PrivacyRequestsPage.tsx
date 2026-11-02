@@ -1,7 +1,8 @@
 import { useState } from "react";
+import { errorMessage } from "../api/client";
 import { api } from "../api/endpoints";
 import type { PrivacyDryRun, PrivacyQueueItem } from "../api/types";
-import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading, PageHeader, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
+import { Alert, Badge, Button, Card, EmptyState, ErrorState, Loading, PageHeader, inputClass, numClass, tableClass, tableWrapClass, tdClass, thClass } from "../components/ui";
 import { formatDateTime } from "../lib/format";
 import { useApi } from "../lib/useApi";
 
@@ -42,6 +43,66 @@ function Counts({ title, labels, counts }: { title: string; labels: Record<strin
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+const REJECT_REASONS: [string, string][] = [
+  ["legal_hold", "The law requires us to keep these records"],
+  ["identity_unverified", "We could not confirm it came from the customer"],
+  ["duplicate", "Duplicate of another request"],
+];
+
+/** Refuse a request: nothing is erased and the customer sees the reason on their Privacy page. */
+function RejectRequest({ itemId, onDone }: { itemId: string; onDone: () => void }) {
+  const [reason, setReason] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+
+  async function reject() {
+    setBusy(true);
+    setFailure(null);
+    try {
+      await api.rejectErasure(itemId, reason);
+      onDone();
+    } catch (err) {
+      setFailure(errorMessage(err));
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="mt-6 border-t border-border pt-4">
+      <h3 className="text-sm font-semibold text-foreground">Reject this request</h3>
+      <label htmlFor="pq-reject-reason" className="mt-2 block text-sm text-muted-foreground">
+        Reason shown to the customer
+      </label>
+      <select id="pq-reject-reason" className={`${inputClass} mt-1`} value={reason} disabled={confirming} onChange={(e) => setReason(e.target.value)}>
+        <option value="">Choose a reason…</option>
+        {REJECT_REASONS.map(([v, label]) => (
+          <option key={v} value={v}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {failure && <Alert>{failure}</Alert>}
+      {confirming ? (
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button variant="outline" autoFocus disabled={busy} onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+          <Button variant="danger" loading={busy} onClick={() => void reject()}>
+            Yes, reject
+          </Button>
+        </div>
+      ) : (
+        <Button variant="outline" className="mt-3" disabled={!reason} onClick={() => setConfirming(true)}>
+          Reject…
+        </Button>
+      )}
     </div>
   );
 }
@@ -131,6 +192,7 @@ function Review({ item, onDone, onClose }: { item: PrivacyQueueItem; onDone: () 
               </div>
             </div>
           )}
+          <RejectRequest itemId={item.id} onDone={onDone} />
         </>
       )}
     </Card>

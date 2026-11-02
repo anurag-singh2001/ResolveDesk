@@ -65,6 +65,7 @@ REASONS = {
     ),
 }
 ACTIVE = ("pending_approval", "deferred")
+REJECT_REASONS = ("legal_hold", "identity_unverified", "duplicate")
 
 
 @dataclass(frozen=True)
@@ -274,6 +275,36 @@ def request_erasure(
         entity_id=req.id,
         # The channel kind only (phone | email | none), never the destination.
         payload={"status": req.status, "reason": req.reason_code, "notify_channel": channel},
+    )
+    return req
+
+
+def reject_erasure(
+    s: Session,
+    tenant_id: uuid.UUID,
+    request_id: uuid.UUID,
+    actor_id: uuid.UUID,
+    reason: str,
+) -> DataRequest | None:
+    """An owner refuses an open request, with a reason from REJECT_REASONS. Nothing is erased.
+    Returns the request, or None when there is none; a request that is no longer open comes
+    back unchanged and the caller must say so. Locked like run_erasure, so a rejection, an
+    approval and a withdrawal cannot both win."""
+    req = s.scalar(select(DataRequest).where(DataRequest.id == request_id).with_for_update())
+    if req is None or req.status not in ACTIVE:
+        return req
+    req.status, req.reason_code, req.deferred_until = "rejected", reason, None
+    req.decided_by = actor_id
+    erasure_notice.drop(s, tenant_id, req.id)  # no send will happen: the destination goes now
+    audit.record(
+        s,
+        tenant_id,
+        actor_type="user",
+        actor_id=actor_id,
+        event="privacy.erasure_rejected",
+        entity_type="data_request",
+        entity_id=req.id,
+        payload={"reason": reason},
     )
     return req
 

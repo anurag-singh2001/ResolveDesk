@@ -87,7 +87,7 @@ class Scenario(BaseModel):
 
 
 MAX_SCENARIO_BYTES = 16_000  # one scenario is a few lines; bigger input is refused unparsed
-SCENARIO_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}$")  # also the file name: no dots, no slashes
+SCENARIO_ID = re.compile(r"^[a-z0-9][a-z0-9-]{0,62}\Z")  # also the file name: no dots, no slashes
 
 
 class ScenarioError(ValueError):

@@ -542,3 +542,26 @@ def test_downgrade_then_upgrade_restores_exactly_the_same_rights(app_engine):
         ).scalar()
     eng.dispose()
     assert (views, raw) == (len(ALL_VIEWS), 0)
+
+
+def test_one_source_cannot_lock_the_operator_out_of_another(platform_env):
+    """Pen test: five bad logins from anywhere used to lock the operator out everywhere."""
+    for _ in range(5):
+        with pytest.raises(AuthError):
+            authenticate_platform(EMAIL, "wrong", source="10.0.0.1")
+    with pytest.raises(PlatformLocked):
+        authenticate_platform(EMAIL, PASSWORD, source="10.0.0.1")
+    assert authenticate_platform(EMAIL, PASSWORD, source="10.0.0.2").token
+
+
+def test_many_sources_together_still_hit_a_limit(platform_env):
+    now = datetime.now(UTC)
+    for i in range(50):
+        try:
+            authenticate_platform(EMAIL, "wrong", now, source=f"10.0.1.{i}")
+        except PlatformLocked:
+            raise AssertionError("locked too early") from None
+        except AuthError:
+            pass
+    with pytest.raises(PlatformLocked):
+        authenticate_platform(EMAIL, PASSWORD, now, source="10.0.2.1")

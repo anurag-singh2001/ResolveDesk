@@ -9,7 +9,7 @@ raw table, no tenant setting, no customer row. Every read writes a platform audi
 import re
 from datetime import date, datetime
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from sqlalchemy import Engine, text
@@ -163,9 +163,12 @@ def require_platform(
 
 
 @router.post("/auth/login")
-def platform_login(body: PlatformLoginIn) -> PlatformTokenOut:  # real time, not get_clock
+def platform_login(  # real time, not get_clock
+    body: PlatformLoginIn, request: Request
+) -> PlatformTokenOut:
     try:
-        issued = authenticate_platform(body.email, body.password)
+        source = request.client.host if request.client else "unknown"
+        issued = authenticate_platform(body.email, body.password, source=source)
     except PlatformDisabled:
         raise _off() from None
     except PlatformLocked:

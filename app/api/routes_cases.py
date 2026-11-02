@@ -1,11 +1,11 @@
 import logging
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, StrictInt
-from sqlalchemy import Engine, and_, or_, select
+from sqlalchemy import Engine, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.api.decision_sources import SourceOut, decision_sources
@@ -19,6 +19,7 @@ from app.api.deps import (
 )
 from app.api.routes_approvals import run_execution
 from app.config import get_settings
+from app.core import audit
 from app.core.i18n import case_language
 from app.core.models import (
     ActionProposal,
@@ -191,6 +192,7 @@ def create_case(
     agents = get_settings().engine_mode == "agents"
     if body.category is None and not agents:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, "category is required")
+    now = datetime.now(UTC)  # a write: real time, never the dev clock
     try:
         case, proposal_id = open_case(
             db,
@@ -198,7 +200,7 @@ def create_case(
             transaction_id=body.transaction_id,
             category=body.category,
             message=body.message,
-            now=datetime.now(UTC),  # a write: real time, never the dev clock
+            now=now,
             remedy_choice=body.remedy_choice,
         )
     except CaseNotFound:
@@ -208,7 +210,8 @@ def create_case(
     except InvalidCategory as exc:
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from None
     db.flush()
-    if body.category is None and case.status == "investigating":
+    # A repeat report returns the open case: only a case opened by this call starts a paid run.
+    if body.category is None and case.status == "investigating" and case.opened_at == now:
         background.add_task(run_agents, engine, ctx.tenant_id, case.id, body.message)
     elif case.status == "awaiting_info":  # a reply on a case waiting for it: resume its thread
         background.add_task(resume_info, engine, ctx.tenant_id, case.id, body.message)
@@ -546,6 +549,34 @@ def set_case_owner(
     return OwnerOut(case_id=case.id, owner_user_id=body.user_id)
 
 
+CONTACT_VIEW_WINDOW = timedelta(hours=1)
+
+
+def _audit_contact_view(db: Session, ctx: TenantContext, case: Case, now: datetime) -> None:
+    """Who saw this customer's phone and email. One row per person, case and hour, because the
+    page polls. The row names the case only, never the details themselves."""
+    seen = db.scalar(
+        select(func.count()).where(
+            AuditEvent.event == "case.customer_details_viewed",
+            AuditEvent.entity_id == case.id,
+            AuditEvent.actor_id == str(ctx.user_id),
+            AuditEvent.occurred_at >= now - CONTACT_VIEW_WINDOW,
+        )
+    )
+    if seen:
+        return
+    audit.record(
+        db,
+        ctx.tenant_id,
+        actor_type="user",
+        actor_id=ctx.user_id,
+        event="case.customer_details_viewed",
+        entity_type="case",
+        entity_id=case.id,
+        payload={},
+    )
+
+
 @router.get("/cases/{case_id}")
 def get_case(
     case_id: uuid.UUID,
@@ -575,6 +606,8 @@ def get_case(
     lang = case_language(db, case) if ctx.role == "customer" else "en"
     why = decision_sources(db, ctx, proposal, lang) if proposal is not None else None
     person = db.get(Customer, case.customer_id) if ctx.role != "customer" else None
+    if person is not None:
+        _audit_contact_view(db, ctx, case, now)
     return CaseDetailOut(
         **out.model_dump(),
         basis=why.basis if why else [],

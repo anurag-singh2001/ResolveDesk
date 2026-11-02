@@ -423,6 +423,28 @@ def privacy_dry_run(
     return body | {"approval_token": token, "expires_at": expires}
 
 
+class RejectIn(BaseModel):
+    reason: Literal["legal_hold", "identity_unverified", "duplicate"]
+
+
+@router.post("/data-requests/{request_id}/reject")
+def reject_data_request(
+    request_id: uuid.UUID,
+    body: RejectIn,
+    ctx: TenantContext = Depends(get_tenant_context),
+    db: Session = Depends(tenant_db),
+) -> DataRequestOut:
+    """Refuse an open erasure request with a fixed reason. Nothing is erased, the customer is
+    told why on their Privacy page, and they can ask again. Other-tenant requests are 404."""
+    _hq(ctx)
+    req = privacy.reject_erasure(db, ctx.tenant_id, request_id, ctx.user_id, body.reason)
+    if req is None:
+        raise not_found()
+    if req.status != "rejected":
+        raise HTTPException(status.HTTP_409_CONFLICT, "this request is no longer open")
+    return _request_out(req)
+
+
 class ApproveIn(BaseModel):
     payload_hash: str | None = None
     approval_token: str | None = None
